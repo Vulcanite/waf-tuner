@@ -26,8 +26,8 @@ sudo mkdir -p /var/log/modsec
 sudo touch /etc/nginx/modsecurity/exceptions/exception_00_placeholder.conf
 echo "# Placeholder exception" | sudo tee /etc/nginx/modsecurity/exceptions/exception_00_placeholder.conf > /dev/null
 
-# Make sure permissions allow Nginx to write logs and local user to read them
-sudo chmod -R 777 /var/log/modsec
+# Make sure permissions allow Nginx to write logs, and local user to read logs and write exceptions
+sudo chmod -R 777 /var/log/modsec /etc/nginx/modsecurity/exceptions
 
 # 3. Configure core ModSecurity properties
 echo "Configuring modsecurity.conf..."
