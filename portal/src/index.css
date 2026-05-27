@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-zinc-950 text-zinc-100 font-mono;
+    font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-zinc-900;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-zinc-700 rounded;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply px-3 py-1.5 text-sm font-medium rounded transition-colors duration-150 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-amber-500 text-zinc-950 hover:bg-amber-400;
+  }
+  .btn-success {
+    @apply btn bg-emerald-600 text-white hover:bg-emerald-500;
+  }
+  .btn-danger {
+    @apply btn bg-red-700 text-white hover:bg-red-600;
+  }
+  .btn-ghost {
+    @apply btn bg-zinc-800 text-zinc-300 hover:bg-zinc-700;
+  }
+  .card {
+    @apply bg-zinc-900 border border-zinc-800 rounded-lg p-4;
+  }
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium;
+  }
+  .badge-pending {
+    @apply badge bg-amber-900/50 text-amber-400 border border-amber-800;
+  }
+  .badge-approved {
+    @apply badge bg-blue-900/50 text-blue-400 border border-blue-800;
+  }
+  .badge-deployed {
+    @apply badge bg-emerald-900/50 text-emerald-400 border border-emerald-800;
+  }
+  .badge-rejected {
+    @apply badge bg-red-900/50 text-red-400 border border-red-800;
+  }
+  .badge-stale {
+    @apply badge bg-zinc-800 text-zinc-400 border border-zinc-700;
+  }
+  .mono-block {
+    @apply font-mono text-xs bg-zinc-950 border border-zinc-800 rounded p-3 overflow-x-auto whitespace-pre;
+  }
+}

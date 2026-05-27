@@ -1,0 +1,133 @@
+networks:
+  waf-net:
+    driver: bridge
+
+volumes:
+  modsec-logs:
+  waf-data:
+  postgres-data:
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-waf}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-waf}
+      POSTGRES_DB: ${POSTGRES_DB:-wafdb}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - waf-net
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-waf} -d ${POSTGRES_DB:-wafdb}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    volumes:
+      - modsec-logs:/var/log/modsec
+      - waf-data:/waf-data
+    networks:
+      - waf-net
+    ports:
+      - "8090:8080"
+    environment:
+      # Proxy backend
+      BACKEND: "http://target-app:5000"
+      PORT: "8080"
+      SSL_PORT: "8443"
+      # ModSecurity — DetectionOnly so traffic is never blocked
+      MODSEC_RULE_ENGINE: "DetectionOnly"
+      # CRS paranoia level 2
+      PARANOIA: "2"
+      EXECUTING_PARANOIA: "2"
+      ANOMALY_INBOUND: "10"
+      ANOMALY_OUTBOUND: "4"
+      # JSON audit log written to shared modsec-logs volume
+      MODSEC_AUDIT_ENGINE: "On"
+      MODSEC_AUDIT_LOG: "/var/log/modsec/audit.log"
+      MODSEC_AUDIT_LOG_FORMAT: "JSON"
+      MODSEC_AUDIT_LOG_PARTS: "ABCFHIJKZ"
+      MODSEC_REQ_BODY_ACCESS: "On"
+      MODSEC_RESP_BODY_ACCESS: "On"
+    depends_on:
+      - target-app
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  target-app:
+    build:
+      context: ./target-app
+      dockerfile: Dockerfile
+    networks:
+      - waf-net
+
+  api-server:
+    build:
+      context: ./api-server
+      dockerfile: Dockerfile
+    volumes:
+      - modsec-logs:/var/log/modsec:ro
+      # api-server writes events.jsonl, tracker.json, and exception .conf files
+      - waf-data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - waf-net
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      MODSEC_AUDIT_LOG: /var/log/modsec/audit.log
+      EVENTS_JSONL_PATH: /app/data/events.jsonl
+      TRACKER_PATH: /app/data/tracker.json
+      MODSEC_EXCEPTIONS_DIR: /app/data/exceptions/
+      CRS_RULES_DIR: /app/data/crs-rules/
+      POSTGRES_HOST: postgres
+      NGINX_CONTAINER_NAME: nginx
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nginx:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  portal:
+    build:
+      context: ./portal
+      dockerfile: Dockerfile
+    networks:
+      - waf-net
+    ports:
+      - "3000:3000"
+    depends_on:
+      api-server:
+        condition: service_healthy
+
+  traffic-generator:
+    build:
+      context: ./traffic-generator
+      dockerfile: Dockerfile
+    networks:
+      - waf-net
+    environment:
+      - TARGET_HOST=http://nginx:8080
+    profiles:
+      - traffic
+    depends_on:
+      nginx:
+        condition: service_healthy
