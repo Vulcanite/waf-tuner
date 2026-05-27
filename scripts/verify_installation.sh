@@ -118,7 +118,7 @@ check_endpoint "Flask Target App" "http://127.0.0.1:5000" "200"
 check_endpoint "FastAPI API Server" "http://127.0.0.1:8000/health" "200"
 
 # Nginx reverse proxy
-check_endpoint "Nginx Proxy Server" "http://127.0.0.1:8080" "200"
+check_endpoint "Nginx Proxy Server" "http://127.0.0.1:80" "200"
 
 # React Portal
 # Vite runs on 3000 or 5173 by default - check both
@@ -138,7 +138,7 @@ echo ""
 echo "5. Testing ModSecurity Event Logging..."
 # Send a trigger string (SQL Injection pattern) through the Nginx proxy
 echo "Sending mock SQL Injection trigger: '/search?q=1%27+OR+%271%27%3D%271'"
-TRIGGER_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:8080/search?q=1%27+OR+%271%27%3D%271" --connect-timeout 2)
+TRIGGER_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:80/search?q=1%27+OR+%271%27%3D%271" --connect-timeout 2)
 
 if [ "$TRIGGER_CODE" = "000" ]; then
     echo -e "[${RED}FAIL${NC}] Could not send trigger to Nginx proxy."

@@ -92,7 +92,7 @@ EOF
 echo "Configuring default Nginx virtual host..."
 sudo tee /etc/nginx/sites-available/default > /dev/null <<EOF
 server {
-    listen 8080 default_server;
+    listen 80 default_server;
     server_name _;
 
     # Enable ModSecurity
@@ -119,6 +119,6 @@ sudo systemctl enable nginx
 sudo systemctl restart nginx
 
 echo "=== Nginx + ModSecurity Setup Complete ==="
-echo "Nginx proxy is running on http://localhost:8080 (routing to backend Flask on http://127.0.0.1:5000)"
+echo "Nginx proxy is running on http://localhost:80 (routing to backend Flask on http://127.0.0.1:5000)"
 echo "ModSecurity Audit log: /var/log/modsec/audit.log"
 EOF
