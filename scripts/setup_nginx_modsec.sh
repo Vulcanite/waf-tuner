@@ -7,9 +7,14 @@ set -e
 echo "=== Starting Nginx + ModSecurity + CRS Setup ==="
 
 # 1. Install Nginx and ModSecurity dynamic module
-echo "Installing Nginx and libnginx-mod-security..."
+echo "Installing Nginx and ModSecurity dynamic module..."
 sudo apt-get update
-sudo apt-get install -y nginx libnginx-mod-security git curl
+if sudo apt-get install -y nginx libnginx-mod-http-modsecurity git curl; then
+    echo "Successfully installed libnginx-mod-http-modsecurity."
+else
+    echo "libnginx-mod-http-modsecurity not found. Trying libnginx-mod-security..."
+    sudo apt-get install -y nginx libnginx-mod-security git curl
+fi
 
 # 2. Configure directory structure
 echo "Setting up directories..."
@@ -33,6 +38,14 @@ elif [ -f "/etc/modsecurity/modsecurity.conf-recommended" ]; then
 else
     echo "Warning: modsecurity.conf-recommended not found. Downloading raw recommended config..."
     sudo curl -sSLo /etc/nginx/modsecurity/modsecurity.conf https://raw.githubusercontent.com/owasp-modsecurity/ModSecurity/v3/master/modsecurity.conf-recommended
+fi
+
+# Ensure unicode.mapping is present in the rules directory
+if [ -f "/etc/modsecurity/unicode.mapping" ]; then
+    sudo cp /etc/modsecurity/unicode.mapping /etc/nginx/modsecurity/unicode.mapping
+else
+    echo "unicode.mapping not found in /etc/modsecurity/. Downloading it..."
+    sudo curl -sSLo /etc/nginx/modsecurity/unicode.mapping https://raw.githubusercontent.com/owasp-modsecurity/ModSecurity/v3/master/unicode.mapping
 fi
 
 # Apply custom configurations (DetectionOnly, JSON Audit logs, body parser activation)
