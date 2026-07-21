@@ -33,10 +33,17 @@ dist-ssr/
 .vite/
 
 # Application logs, tracking offsets and generated exceptions (local run data)
-api-server/data/events.jsonl
-api-server/data/tracker.json
-api-server/data/tracker.tmp
-api-server/data/exceptions/
+backend/data/events.jsonl
+backend/data/audit_cursor.json
+backend/data/audit_cursor.json.tmp
+backend/data/fingerprint.key
+backend/data/exceptions/
+backend/data/modsec_settings.json
+backend/data/.apply_engine_mode.sh
+backend/data/*.key
+
+# Generated screenshots / local lab artifacts
+docs/screenshots/
 
 # System and editor files
 .DS_Store
@@ -56,3 +63,21 @@ Thumbs.db
 
 # Graphify output directory
 graphify-out/
+
+# SQLite database (local / volume)
+*.db
+*.db-wal
+*.db-shm
+backend/data/waf-tuner.db*
+
+# Lab shared data (keep only example/README via lab-data/.gitignore)
+lab-data/*
+!lab-data/.gitignore
+!lab-data/.env.example
+!lab-data/README.md
+
+# E2E outputs
+e2e-output/*
+
+
+docs/

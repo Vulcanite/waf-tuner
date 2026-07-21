@@ -1,103 +1,99 @@
+# WAF Tuner — lab stack
+#
+# LLM / secrets: lab-data/.env (mounted via env_file — edit & recreate backend)
+# Paths: fixed below for the shared volume layout
+#
+#   cp lab-data/.env.example lab-data/.env   # or use your NIM keys
+#   docker compose up --build
+#   open http://localhost:3000
+#   open http://localhost:8080               # DVWA admin / password
+#   ./scripts/run_incident_matrix.sh
+
 networks:
   waf-net:
     driver: bridge
 
-volumes:
-  modsec-logs:
-  waf-data:
-  postgres-data:
-
 services:
-  postgres:
-    image: postgres:15-alpine
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-waf}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-waf}
-      POSTGRES_DB: ${POSTGRES_DB:-wafdb}
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    networks:
-      - waf-net
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-waf} -d ${POSTGRES_DB:-wafdb}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
   nginx:
     build:
       context: ./nginx
       dockerfile: Dockerfile
+    container_name: waf-lab-nginx
     volumes:
-      - modsec-logs:/var/log/modsec
-      - waf-data:/waf-data
+      - ./lab-data:/shared
+      - ./lab-data:/waf-data
+      - ./lab-data/modsec:/var/log/modsec
     networks:
       - waf-net
     ports:
-      - "8090:8080"
+      - "8080:8080"
     environment:
-      # Proxy backend
-      BACKEND: "http://target-app:5000"
+      BACKEND: "http://dvwa:80"
       PORT: "8080"
       SSL_PORT: "8443"
-      # ModSecurity — DetectionOnly so traffic is never blocked
       MODSEC_RULE_ENGINE: "DetectionOnly"
-      # CRS paranoia level 2
       PARANOIA: "2"
       EXECUTING_PARANOIA: "2"
       ANOMALY_INBOUND: "10"
       ANOMALY_OUTBOUND: "4"
-      # JSON audit log written to shared modsec-logs volume
       MODSEC_AUDIT_ENGINE: "On"
       MODSEC_AUDIT_LOG: "/var/log/modsec/audit.log"
       MODSEC_AUDIT_LOG_FORMAT: "JSON"
+      MODSEC_AUDIT_LOG_TYPE: "Serial"
       MODSEC_AUDIT_LOG_PARTS: "ABCFHIJKZ"
       MODSEC_REQ_BODY_ACCESS: "On"
       MODSEC_RESP_BODY_ACCESS: "On"
+      WAF_SHARED_DIR: "/shared"
     depends_on:
-      - target-app
+      - dvwa
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8080/ || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 12
+      retries: 15
+      start_period: 20s
 
-  target-app:
-    build:
-      context: ./target-app
-      dockerfile: Dockerfile
+  dvwa:
+    image: vulnerables/web-dvwa:latest
+    container_name: waf-lab-dvwa
     networks:
       - waf-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
 
-  api-server:
+  waf-tuner-backend:
     build:
-      context: ./api-server
+      context: ./backend
       dockerfile: Dockerfile
+    container_name: waf-tuner-backend
     volumes:
-      - modsec-logs:/var/log/modsec:ro
-      # api-server writes events.jsonl, tracker.json, and exception .conf files
-      - waf-data:/app/data
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./lab-data:/shared
+      - ./lab-data:/waf-data
     networks:
       - waf-net
     ports:
       - "8000:8000"
+    # LLM keys, agent concurrency, fingerprint, etc.
     env_file:
-      - .env
+      - path: ./lab-data/.env
+        required: true
     environment:
-      MODSEC_AUDIT_LOG: /var/log/modsec/audit.log
-      EVENTS_JSONL_PATH: /app/data/events.jsonl
-      TRACKER_PATH: /app/data/tracker.json
-      MODSEC_EXCEPTIONS_DIR: /app/data/exceptions/
-      CRS_RULES_DIR: /app/data/crs-rules/
-      POSTGRES_HOST: postgres
-      NGINX_CONTAINER_NAME: nginx
+      # Lab filesystem layout (override host-relative DATABASE_PATH from .env)
+      MODSEC_AUDIT_LOG: /shared/modsec/audit.log
+      EVENTS_JSONL_PATH: /shared/events.jsonl
+      AUDIT_CURSOR_PATH: /shared/audit_cursor.json
+      DATABASE_PATH: /shared/waf-tuner.db
+      RUNTIME_CONFIG_PATH: /shared/runtime_config.json
+      CRS_RULES_DIR: /shared/crs-rules/
+      # Structure-only validation (no edge nginx -t)
+      RULE_VALIDATION_MODE: skip
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
-      postgres:
-        condition: service_healthy
       nginx:
         condition: service_healthy
     healthcheck:
@@ -106,28 +102,15 @@ services:
       timeout: 5s
       retries: 10
 
-  portal:
+  waf-tuner-frontend:
     build:
-      context: ./portal
+      context: ./frontend
       dockerfile: Dockerfile
+    container_name: waf-tuner-frontend
     networks:
       - waf-net
     ports:
       - "3000:3000"
     depends_on:
-      api-server:
-        condition: service_healthy
-
-  traffic-generator:
-    build:
-      context: ./traffic-generator
-      dockerfile: Dockerfile
-    networks:
-      - waf-net
-    environment:
-      - TARGET_HOST=http://nginx:8080
-    profiles:
-      - traffic
-    depends_on:
-      nginx:
+      waf-tuner-backend:
         condition: service_healthy
