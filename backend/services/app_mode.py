@@ -63,8 +63,3 @@ def product_info() -> dict:
         },
         "ingest": audit_log_status(),
     }
-
-
-# Back-compat alias used by older imports
-def mode_public_info() -> dict:
-    return product_info()

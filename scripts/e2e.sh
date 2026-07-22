@@ -33,13 +33,18 @@ if [[ ! -f lab-data/.env ]]; then
 fi
 ok "lab-data ready"
 
+if ! command -v docker >/dev/null; then
+ bad "docker not available — full E2E requires Compose"
+ exit 1
+fi
+
 # --- 1. unit tests ---
 note "Unit tests"
-if [[ ! -x backend/.venv/bin/python ]]; then
- python3 -m venv backend/.venv
- backend/.venv/bin/pip install -q -r backend/requirements.txt pytest
-fi
-if (cd backend && PYTHONPATH=. .venv/bin/python -m pytest tests/test_core.py -q --tb=line > "$OUT/unit-tests.txt" 2>&1); then
+docker compose build waf-tuner-backend > "$OUT/backend-test-image.log" 2>&1
+if docker compose run --rm --no-deps \
+  -v "$ROOT/backend:/app" waf-tuner-backend \
+  sh -lc 'pip install -q pytest && PYTHONPATH=. pytest -q --tb=line' \
+  > "$OUT/unit-tests.txt" 2>&1; then
  ok "unit tests"
  tail -5 "$OUT/unit-tests.txt"
 else
@@ -49,7 +54,8 @@ fi
 
 # --- 2. builder smoke ---
 note "Exception builder (DVWA SQLi scope)"
-if RULE=$(cd backend && PYTHONPATH=. .venv/bin/python - <<'PY'
+if RULE=$(docker compose run --rm --no-deps -T \
+  -v "$ROOT/backend:/app" waf-tuner-backend python - <<'PY'
 from services.exception_builder import build_exception_rule
 scope = {"uri": "/vulnerabilities/sqli", "collection": "ARGS", "parameter": "id", "rule_id": "942100"}
 print(build_exception_rule(scope))
@@ -63,21 +69,22 @@ fi
 
 # --- 3. docker compose ---
 note "Docker compose up"
-if ! command -v docker >/dev/null; then
- bad "docker not available — skipping stack E2E"
- cat > "$SUMMARY" <<EOF
-# E2E $STAMP
-
-- Unit tests + builder only (no Docker)
-- pass=$pass fail=$fail
-EOF
- exit 1
-fi
 
 AUDIT_BEFORE=$(wc -c < lab-data/modsec/audit.log | tr -d ' ')
 
 docker compose build > "$OUT/compose-build.log" 2>&1 || { bad "compose build"; tail -30 "$OUT/compose-build.log"; }
 docker compose up -d > "$OUT/compose-up.log" 2>&1 || { bad "compose up"; tail -30 "$OUT/compose-up.log"; }
+docker compose config --format json > "$OUT/compose-config.json"
+if python3 -c "
+import json
+d=json.load(open('$OUT/compose-config.json'))
+published=[p for service in d['services'].values() for p in service.get('ports', [])]
+assert published and all(p.get('host_ip') == '127.0.0.1' for p in published), published
+"; then
+ ok "all published ports bind to loopback"
+else
+ bad "one or more published ports are not loopback-only"
+fi
 
 note "Wait for health"
 for i in $(seq 1 60); do
@@ -96,6 +103,7 @@ done
 
 curl -sS http://localhost:8000/health | tee "$OUT/health.json" || true
 curl -sS http://localhost:8000/api/settings/product | tee "$OUT/settings-product.json" || true
+curl -sS http://localhost:8000/api/analytics/analysis-health | tee "$OUT/analysis-health.json" || true
 
 # assertions
 if python3 -c "import json; d=json.load(open('$OUT/health.json')); assert d.get('status')=='ok'; assert d.get('deploy_enabled') is False" 2>/dev/null; then
@@ -170,12 +178,40 @@ if python3 -c "
 import json
 s=json.load(open('$OUT/analytics-summary.json'))
 assert 'total_events' in s
-assert 'deployed' not in s or True # tolerate leftover key if any
+assert 'deployed' not in s
 print('events', s.get('total_events'))
 " 2>/dev/null; then
  ok "analytics summary"
 else
  bad "analytics summary"
+fi
+
+for i in $(seq 1 40); do
+ curl -sS http://localhost:8000/api/analytics/analysis-health > "$OUT/analysis-health.json" || true
+ if python3 -c "
+import json
+h=json.load(open('$OUT/analysis-health.json'))
+busy=sum(h['cases_by_state'].get(s, 0) for s in ('queued','analyzing','retryable_error'))
+assert busy == 0 and h['active_attempts'] == 0
+" 2>/dev/null; then
+  break
+ fi
+ sleep 3
+done
+
+if python3 -c "
+import json, sqlite3
+h=json.load(open('$OUT/analysis-health.json'))
+db=sqlite3.connect('lab-data/waf-tuner.db')
+cases=dict(db.execute('select state,count(*) from analysis_cases group by state'))
+attempts=db.execute(\"select count(*) from inference_attempts where status='active'\").fetchone()[0]
+assert h['cases_by_state'] == cases, (h['cases_by_state'], cases)
+assert h['active_attempts'] == attempts, (h['active_attempts'], attempts)
+assert h['prompt_version'].startswith('offpath-v5')
+"; then
+ ok "analysis health matches SQLite state"
+else
+ bad "analysis health does not match SQLite state"
 fi
 
 # --- 6. e2e builder script ---
@@ -200,11 +236,11 @@ cat > "$SUMMARY" <<EOF
 
 - \`unit-tests.txt\`
 - \`sample-exclusion.secrule\`
-- \`health.json\`, \`settings-mode.json\`, \`ingest.json\`
+- \`health.json\`, \`settings-product.json\`, \`analysis-health.json\`, \`ingest.json\`
 - \`attack-matrix.txt\`
 - \`audit-size.txt\`, \`audit-log-sample.txt\`
 - \`analytics-summary.json\`, \`events-sample.json\`, \`cases-sample.json\`
-- \`compose-build.log\`, \`compose-up.log\`, \`run.log\`
+- \`compose-build.log\`, \`compose-up.log\`, \`compose-config.json\`, \`backend-test-image.log\`, \`run.log\`
 
 ## Containers
 

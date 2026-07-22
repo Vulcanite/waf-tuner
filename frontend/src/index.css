@@ -4,6 +4,22 @@
 
 /* Default = light; html.dark overrides for dark theme */
 
+:root {
+  --chart-text: #57534e;
+  --chart-grid: #d6d3d1;
+  --chart-tooltip-bg: #ffffff;
+  --chart-tooltip-border: #d6d3d1;
+  --chart-tooltip-label: #44403c;
+}
+
+html.dark {
+  --chart-text: #a1a1aa;
+  --chart-grid: #3f3f46;
+  --chart-tooltip-bg: #18181b;
+  --chart-tooltip-border: #52525b;
+  --chart-tooltip-label: #d4d4d8;
+}
+
 @layer base {
   body {
     @apply font-mono antialiased bg-stone-50 text-stone-900;
@@ -73,10 +89,10 @@
   html.dark .badge-approved {
     @apply bg-blue-900/50 text-blue-400 border-blue-800;
   }
-  .badge-deployed {
+  .badge-complete, .badge-valid {
     @apply badge bg-emerald-100 text-emerald-800 border border-emerald-300;
   }
-  html.dark .badge-deployed {
+  html.dark .badge-complete, html.dark .badge-valid {
     @apply bg-emerald-900/50 text-emerald-400 border-emerald-800;
   }
   .badge-rejected {
@@ -100,7 +116,7 @@
   }
 
   .section-label {
-    @apply text-xs uppercase tracking-widest text-stone-500 mb-1;
+    @apply block text-xs uppercase tracking-widest text-stone-500 mb-2;
   }
   html.dark .section-label {
     @apply text-zinc-500;
@@ -153,5 +169,26 @@
   }
   html.dark .rule-ok {
     @apply text-emerald-400;
+  }
+
+  .surface-subtle {
+    @apply bg-stone-100 border-stone-200;
+  }
+  html.dark .surface-subtle {
+    @apply bg-zinc-900/60 border-zinc-800;
+  }
+
+  .heading-text {
+    @apply text-stone-900;
+  }
+  html.dark .heading-text {
+    @apply text-zinc-100;
+  }
+
+  .secondary-text {
+    @apply text-stone-600;
+  }
+  html.dark .secondary-text {
+    @apply text-zinc-400;
   }
 }

@@ -2,7 +2,6 @@
 Exceptions Router — Phase 5
 """
 import io
-import json
 import os
 from datetime import datetime, timezone
 from typing import Optional
@@ -79,8 +78,10 @@ def _draft_to_dict(
         "rejection_reason": d.rejection_reason,
         "created_at": d.created_at.isoformat() if d.created_at else None,
         "reviewed_at": d.reviewed_at.isoformat() if d.reviewed_at else None,
-        "deployed_at": d.deployed_at.isoformat() if d.deployed_at else None,
         "last_seen_at": d.last_seen_at.isoformat() if d.last_seen_at else None,
+        "supporting_case_count": d.supporting_case_count or 1,
+        "scope_key": d.scope_key,
+        "rule_numeric_id": d.rule_numeric_id,
         "analysis_revision_id": d.analysis_revision_id,
         "analysis_case_id": case.id if case else (
             revision.analysis_case_id if revision else None
@@ -391,6 +392,43 @@ async def approve_exception(draft_id: int, db: AsyncSession = Depends(get_db)):
         draft.status = "stale"
         await db.commit()
         raise HTTPException(status_code=409, detail=SCOPE_CONFLICT_ERROR)
+
+    active_scope_conflict = (
+        await db.execute(
+            select(ExceptionDraft.id).where(
+                ExceptionDraft.id != draft.id,
+                ExceptionDraft.scope_key == draft.scope_key,
+                ExceptionDraft.status.in_(["pending", "approved"]),
+            ).limit(1)
+        )
+    ).scalar_one_or_none()
+    if active_scope_conflict is not None:
+        draft.proposed_rule = None
+        draft.rule_placement = None
+        draft.validation_status = "duplicate_scope"
+        draft.validation_error = f"Active draft {active_scope_conflict} already owns this scope."
+        draft.status = "stale"
+        await db.commit()
+        raise HTTPException(status_code=409, detail=draft.validation_error)
+    if draft.rule_numeric_id is not None:
+        id_conflict = (
+            await db.execute(
+                select(ExceptionDraft.id).where(
+                    ExceptionDraft.id != draft.id,
+                    ExceptionDraft.rule_numeric_id == draft.rule_numeric_id,
+                    ExceptionDraft.status.in_(["pending", "approved"]),
+                ).limit(1)
+            )
+        ).scalar_one_or_none()
+        if id_conflict is not None:
+            draft.proposed_rule = None
+            draft.rule_placement = None
+            draft.rule_numeric_id = None
+            draft.validation_status = "id_conflict"
+            draft.validation_error = f"Rule ID is already used by active draft {id_conflict}."
+            draft.status = "stale"
+            await db.commit()
+            raise HTTPException(status_code=409, detail=draft.validation_error)
 
     draft.status = "approved"
     draft.reviewed_at = datetime.now(timezone.utc)

@@ -172,12 +172,6 @@ def _last_archived_transaction(path: str) -> str | None:
     return None
 
 
-async def _update_last_seen(uri: str) -> None:
-    """No edge-deploy lifecycle — no-op kept for call-site stability."""
-    _ = uri
-    return
-
-
 async def log_tailer():
     """
     Background task: tail ModSecurity audit log and append to events.jsonl.
@@ -270,7 +264,6 @@ async def log_tailer():
                             cursor["next_event_line"] = event_line + 1
                             archive_line_count = event_line + 1
                             appended += 1
-                            await _update_last_seen(event["uri"])
                         elif not archive_has_event:
                             # Archive line was written but DB insert raced/conflicted.
                             # Still advance the line counter so event_line stays monotonic.

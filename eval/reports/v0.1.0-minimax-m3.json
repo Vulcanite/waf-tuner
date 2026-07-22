@@ -1,0 +1,422 @@
+{
+  "generated_at": "2026-07-21T16:57:43.621803+00:00",
+  "model": "MiniMax-M3",
+  "prompt_version": "offpath-v5-classify",
+  "prompt_sha256": "e87bbf2567b341ec655821fff07af16c11508d237140e864820749dd939de386",
+  "settings": {
+    "base_url": "https://api.tokenrouter.com/v1",
+    "model": "MiniMax-M3",
+    "max_tokens": 1200,
+    "temperature": 0.01,
+    "timeout": 60.0
+  },
+  "summary": {
+    "fixtures": 19,
+    "schema_valid": 19,
+    "repair_rate": 0.10526315789473684,
+    "attack_false_positives": 0,
+    "attack_uncertain": 0,
+    "benign_accuracy": 0.8333333333333334
+  },
+  "results": [
+    {
+      "id": "benign-natural-language-select",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 7408,
+      "token_usage": {
+        "total_tokens": 1355,
+        "total_characters": 0,
+        "prompt_tokens": 718,
+        "completion_tokens": 637,
+        "completion_tokens_details": {
+          "reasoning_tokens": 372
+        },
+        "prompt_tokens_details": {
+          "cached_tokens": 128
+        }
+      },
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-apostrophe-name",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 15306,
+      "token_usage": {
+        "total_tokens": 1446,
+        "total_characters": 0,
+        "prompt_tokens": 705,
+        "completion_tokens": 741,
+        "completion_tokens_details": {
+          "reasoning_tokens": 523
+        },
+        "prompt_tokens_details": {
+          "cached_tokens": 128
+        }
+      },
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-html-editor",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 16290,
+      "token_usage": {
+        "total_tokens": 1417,
+        "total_characters": 0,
+        "prompt_tokens": 698,
+        "completion_tokens": 719,
+        "completion_tokens_details": {
+          "reasoning_tokens": 579
+        },
+        "prompt_tokens_details": {
+          "cached_tokens": 384
+        }
+      },
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-shell-documentation",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 11292,
+      "token_usage": {
+        "total_tokens": 1673,
+        "total_characters": 0,
+        "prompt_tokens": 701,
+        "completion_tokens": 972,
+        "completion_tokens_details": {
+          "reasoning_tokens": 647
+        },
+        "prompt_tokens_details": {
+          "cached_tokens": 256
+        }
+      },
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-windows-path",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 11767,
+      "token_usage": {
+        "total_tokens": 1842,
+        "total_characters": 0,
+        "prompt_tokens": 703,
+        "completion_tokens": 1139,
+        "completion_tokens_details": {
+          "reasoning_tokens": 813
+        },
+        "prompt_tokens_details": {
+          "cached_tokens": 128
+        }
+      },
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-url-field",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": true,
+      "classification": "uncertain",
+      "latency_ms": 18951,
+      "token_usage": {
+        "prompt_tokens": 2157,
+        "completion_tokens_details": {
+          "reasoning_tokens": 307
+        },
+        "total_characters": 0,
+        "prompt_tokens_details": {
+          "cached_tokens": 128
+        },
+        "total_tokens": 4028,
+        "completion_tokens": 1871
+      },
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-union",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 10932,
+      "token_usage": {
+        "total_tokens": 1182,
+        "total_characters": 0,
+        "prompt_tokens": 638,
+        "completion_tokens": 544,
+        "completion_tokens_details": {
+          "reasoning_tokens": 436
+        },
+        "prompt_tokens_details": {
+          "cached_tokens": 384
+        }
+      },
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-boolean",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 6782,
+      "token_usage": {
+        "total_tokens": 1236,
+        "total_characters": 0,
+        "prompt_tokens": 640,
+        "completion_tokens": 596,
+        "completion_tokens_details": {
+          "reasoning_tokens": 358
+        },
+        "prompt_tokens_details": {
+          "cached_tokens": 128
+        }
+      },
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-time",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 6687,
+      "token_usage": {
+        "total_tokens": 1340,
+        "total_characters": 0,
+        "prompt_tokens": 644,
+        "completion_tokens": 696,
+        "completion_tokens_details": {
+          "reasoning_tokens": 497
+        },
+        "prompt_tokens_details": {
+          "cached_tokens": 128
+        }
+      },
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-script",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 7780,
+      "token_usage": {
+        "total_tokens": 1250,
+        "total_characters": 0,
+        "prompt_tokens": 625,
+        "completion_tokens": 625,
+        "completion_tokens_details": {
+          "reasoning_tokens": 346
+        },
+        "prompt_tokens_details": {
+          "cached_tokens": 128
+        }
+      },
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-handler",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 15211,
+      "token_usage": {
+        "total_tokens": 1339,
+        "total_characters": 0,
+        "prompt_tokens": 628,
+        "completion_tokens": 711,
+        "completion_tokens_details": {
+          "reasoning_tokens": 476
+        },
+        "prompt_tokens_details": {
+          "cached_tokens": 384
+        }
+      },
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-svg",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 13200,
+      "token_usage": {
+        "total_tokens": 1294,
+        "total_characters": 0,
+        "prompt_tokens": 626,
+        "completion_tokens": 668,
+        "completion_tokens_details": {
+          "reasoning_tokens": 418
+        },
+        "prompt_tokens_details": {
+          "cached_tokens": 384
+        }
+      },
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-command-semicolon",
+      "expected": "attack",
+      "valid": true,
+      "repaired": true,
+      "classification": "true_positive",
+      "latency_ms": 16769,
+      "token_usage": {
+        "prompt_tokens": 2037,
+        "completion_tokens_details": {
+          "reasoning_tokens": 204
+        },
+        "total_characters": 0,
+        "prompt_tokens_details": {
+          "cached_tokens": 128
+        },
+        "total_tokens": 3705,
+        "completion_tokens": 1668
+      },
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-command-subshell",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 6129,
+      "token_usage": {
+        "total_tokens": 1207,
+        "total_characters": 0,
+        "prompt_tokens": 620,
+        "completion_tokens": 587,
+        "completion_tokens_details": {
+          "reasoning_tokens": 347
+        },
+        "prompt_tokens_details": {
+          "cached_tokens": 128
+        }
+      },
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-command-pipe",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 12092,
+      "token_usage": {
+        "total_tokens": 1805,
+        "total_characters": 0,
+        "prompt_tokens": 638,
+        "completion_tokens": 1167,
+        "completion_tokens_details": {
+          "reasoning_tokens": 836
+        },
+        "prompt_tokens_details": {
+          "cached_tokens": 256
+        }
+      },
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-traversal-unix",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 5617,
+      "token_usage": {
+        "total_tokens": 1137,
+        "total_characters": 0,
+        "prompt_tokens": 634,
+        "completion_tokens": 503,
+        "completion_tokens_details": {
+          "reasoning_tokens": 259
+        },
+        "prompt_tokens_details": {
+          "cached_tokens": 128
+        }
+      },
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-traversal-encoded",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 4589,
+      "token_usage": {
+        "total_tokens": 1119,
+        "total_characters": 0,
+        "prompt_tokens": 652,
+        "completion_tokens": 467,
+        "completion_tokens_details": {
+          "reasoning_tokens": 220
+        },
+        "prompt_tokens_details": {
+          "cached_tokens": 128
+        }
+      },
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-path-probe-env",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 5462,
+      "token_usage": {
+        "total_tokens": 1195,
+        "total_characters": 0,
+        "prompt_tokens": 623,
+        "completion_tokens": 572,
+        "completion_tokens_details": {
+          "reasoning_tokens": 403
+        },
+        "prompt_tokens_details": {
+          "cached_tokens": 128
+        }
+      },
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-path-probe-git",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 5177,
+      "token_usage": {
+        "total_tokens": 1042,
+        "total_characters": 0,
+        "prompt_tokens": 626,
+        "completion_tokens": 416,
+        "completion_tokens_details": {
+          "reasoning_tokens": 255
+        },
+        "prompt_tokens_details": {
+          "cached_tokens": 128
+        }
+      },
+      "finish_reason": "stop"
+    }
+  ]
+}

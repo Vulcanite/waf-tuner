@@ -25,30 +25,46 @@ check_service() {
   fi
 }
 
-# 1. Verify Core System Services
+# 1. Verify Core System Services (bare-metal optional)
 echo "1. Checking System Services..."
-# check_service postgresql # replaced by SQLite
-check_service nginx
+if command -v systemctl &> /dev/null && systemctl list-unit-files nginx.service &> /dev/null; then
+  check_service nginx
+else
+  echo -e "[${YELLOW}WARN${NC}] systemctl/nginx unit not present (Compose lab is fine without host nginx)."
+fi
 echo ""
 
-# 2. Verify PostgreSQL Connection & Schema
-echo "2. Checking PostgreSQL Connection and Database Schema..."
-if command -v psql &> /dev/null; then
-  if PGPASSWORD=waf psql -h 127.0.0.1 -U waf -d wafdb -c "SELECT 1;" &> /dev/null; then
-    echo -e "[${GREEN} OK ${NC}] Successfully connected to PostgreSQL (wafdb)."
-    
-    # Check if table exists
-    TABLE_EXISTS=$(PGPASSWORD=waf psql -h 127.0.0.1 -U waf -d wafdb -tAc "SELECT EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'exception_drafts');")
-    if [ "$TABLE_EXISTS" = "t" ]; then
-      echo -e "[${GREEN} OK ${NC}] Database table 'exception_drafts' exists."
+# 2. Verify SQLite workflow database (lab default or DATABASE_PATH)
+echo "2. Checking SQLite workflow database..."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+DB_CANDIDATES=(
+  "${DATABASE_PATH:-}"
+  "${SQLITE_PATH:-}"
+  "$REPO_ROOT/lab-data/waf-tuner.db"
+  "/shared/waf-tuner.db"
+)
+DB_PATH=""
+for candidate in "${DB_CANDIDATES[@]}"; do
+  if [ -n "$candidate" ] && [ -f "$candidate" ]; then
+    DB_PATH="$candidate"
+    break
+  fi
+done
+
+if [ -n "$DB_PATH" ]; then
+  echo -e "[${GREEN} OK ${NC}] SQLite database found at $DB_PATH."
+  if command -v sqlite3 &> /dev/null; then
+    if sqlite3 "$DB_PATH" "SELECT 1 FROM sqlite_master WHERE type='table' AND name='exception_drafts';" | grep -q 1; then
+      echo -e "[${GREEN} OK ${NC}] Table 'exception_drafts' exists."
     else
-      echo -e "[${RED}FAIL${NC}] Table 'exception_drafts' does NOT exist!"
+      echo -e "[${YELLOW}WARN${NC}] Table 'exception_drafts' not found yet (start the backend once to init schema)."
     fi
   else
-    echo -e "[${RED}FAIL${NC}] Connection to PostgreSQL database (wafdb) failed!"
+    echo -e "[${YELLOW}WARN${NC}] sqlite3 CLI not installed; skipped table check."
   fi
 else
-  echo -e "[${RED}FAIL${NC}] 'psql' client command not found!"
+  echo -e "[${YELLOW}WARN${NC}] No SQLite DB at lab-data/waf-tuner.db yet (created on first backend start)."
 fi
 echo ""
 

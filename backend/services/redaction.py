@@ -2,7 +2,7 @@
 import json
 import os
 import re
-from urllib.parse import parse_qsl
+from urllib.parse import parse_qsl, urlsplit
 
 
 SENSITIVE_HEADERS = {
@@ -84,3 +84,46 @@ def redact_request(raw_request: dict) -> dict:
         result["body"] = _truncate(json.dumps(body, ensure_ascii=False, default=str), max(0, total_limit - 1024))
         result["truncated"] = True
     return result
+
+
+def sanitize_inference_context(context: dict) -> tuple[dict, list[str]]:
+    """Redact every inference field and report paths changed for model uncertainty."""
+    field_limit = int(os.environ.get("AI_MAX_FIELD_CHARS", "8192"))
+    redacted: list[str] = []
+
+    def walk(value, path: str = "", key: str | None = None):
+        if key and _SENSITIVE_KEY_RE.search(key):
+            redacted.append(path)
+            return REDACTED
+        if isinstance(value, dict):
+            parameter = str(value.get("parameter") or value.get("variable") or "")
+            result = {}
+            for child_key, child_value in value.items():
+                child_path = f"{path}.{child_key}" if path else str(child_key)
+                if str(child_key).lower() == "transaction_id":
+                    redacted.append(child_path)
+                    continue
+                if child_key == "matched_data" and _SENSITIVE_KEY_RE.search(parameter):
+                    redacted.append(child_path)
+                    result[str(child_key)] = REDACTED
+                elif path.endswith("headers") and str(child_key).lower() in SENSITIVE_HEADERS:
+                    redacted.append(child_path)
+                    result[str(child_key)] = REDACTED
+                else:
+                    result[str(child_key)] = walk(child_value, child_path, str(child_key))
+            return result
+        if isinstance(value, list):
+            return [walk(item, f"{path}[{index}]") for index, item in enumerate(value)]
+        return _redact_value(value, key, field_limit)
+
+    return walk(context), redacted
+
+
+def split_and_redact_uri(uri: str | None) -> dict:
+    """Return a query-free path and a sensitive-key-redacted query mapping."""
+    parsed = urlsplit(str(uri or ""))
+    query = {
+        key: _redact_value(value, key)
+        for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+    }
+    return {"path": parsed.path or "/", "query": query}

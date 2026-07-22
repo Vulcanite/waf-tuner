@@ -91,6 +91,26 @@ export const getTimeline = (params: Record<string, string> = {}) => {
     .join('&')
   return req<any>(`/api/analytics/timeline${qs ? '?' + qs : ''}`)
 }
+export type AnalysisHealth = {
+  worker_count: number
+  hourly_budget: number
+  cases_by_state: Record<string, number>
+  revisions_by_state: Record<string, number>
+  revisions_by_error_code: Record<string, number>
+  active_attempts: number
+  oldest_queued_at?: string | null
+  last_successful_completion?: string | null
+  valid_output_rate?: number | null
+  repair_rate?: number | null
+  hourly_requests_used: number
+  hourly_requests_remaining: number
+  model: string
+  prompt_version: string
+  prompt_sha256: string
+  structured_output: boolean
+  paused_by_budget: boolean
+}
+export const getAnalysisHealth = () => req<AnalysisHealth>('/api/analytics/analysis-health')
 
 // ---- Settings ----
 export type IngestStatus = {
@@ -122,6 +142,18 @@ export type AppModeInfo = {
     example_snippet?: string
   }
   env?: Record<string, string>
+  inference?: {
+    provider: string
+    model: string
+    max_tokens: number
+    temperature: number
+    structured_output: boolean
+    reasoning_enabled: boolean
+    verify_ssl: boolean
+    egress_notice: string
+    redaction: { sensitive_headers: string[]; sensitive_keys: string; scope: string }
+    retention: string
+  }
 }
 
 export const getAppMode = () => req<AppModeInfo>('/api/settings/product')

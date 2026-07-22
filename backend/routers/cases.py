@@ -43,6 +43,9 @@ def _revision_dict(revision: AnalysisRevision | None) -> Optional[dict]:
         "state": revision.state,
         "model": revision.model,
         "prompt_version": revision.prompt_version,
+        "prompt_sha256": revision.prompt_sha256,
+        "model_settings": revision.model_settings,
+        "error_code": revision.error_code,
         "profile_version": revision.profile_version,
         "crs_digest": revision.crs_digest,
         "classification": revision.classification,
@@ -145,7 +148,7 @@ async def reanalyze_case(case_id: int, db: AsyncSession = Depends(get_db)):
             ExceptionDraft.analysis_revision_id.in_(revision_ids),
             ExceptionDraft.status.in_(["pending", "approved"]),
         )
-        .values(status="stale")
+        .values(status="stale", proposed_rule=None, rule_placement=None)
     )
     await db.commit()
     return _case_dict(case)

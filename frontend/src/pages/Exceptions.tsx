@@ -123,7 +123,29 @@ function ExceptionCard({
     !!draft.proposed_rule
 
   return (
-    <div className={`card ${confidenceBorder(draft.confidence)} space-y-4`}>
+    <details className={`card ${confidenceBorder(draft.confidence)}`}>
+      <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className={draft.classification === 'false_positive' ? 'badge-valid' : draft.classification === 'true_positive' ? 'badge-rejected' : 'badge-pending'}>
+                {draft.classification}
+              </span>
+              <span className="font-semibold text-amber-700 dark:text-amber-400">
+                model score {Math.round((draft.confidence || 0) * 100)}%
+              </span>
+              <span className="badge-stale">{draft.status}</span>
+              <span className={draft.validation_status === 'valid' ? 'badge-valid' : draft.validation_status === 'missing_application_context' ? 'badge-pending' : 'badge-stale'}>
+                {draft.validation_status}
+              </span>
+            </div>
+            <p className="mt-2 text-sm font-semibold break-all">{zone.method || event.method || '—'} {path}</p>
+            <p className="mt-1 text-xs muted">rule {ruleId || '—'} · {collection}:{parameter} · {draft.supporting_case_count || 1} supporting case(s)</p>
+          </div>
+          <span className="text-xs muted">Open details ▾</span>
+        </div>
+      </summary>
+      <div className="space-y-4 mt-4 border-t border-stone-200 dark:border-zinc-800 pt-4">
       {/* 1. Decision summary */}
       <section>
         <p className="section-label">Decision</p>
@@ -132,7 +154,7 @@ function ExceptionCard({
           <span
             className={`badge badge-${
               draft.classification === 'false_positive'
-                ? 'deployed'
+                ? 'valid'
                 : draft.classification === 'true_positive'
                   ? 'rejected'
                   : 'pending'
@@ -140,8 +162,8 @@ function ExceptionCard({
           >
             {draft.classification}
           </span>
-          <span className="text-amber-500 font-semibold">
-            {Math.round((draft.confidence || 0) * 100)}% confidence
+          <span className="text-amber-700 dark:text-amber-400 font-semibold">
+            model score {Math.round((draft.confidence || 0) * 100)}%
           </span>
           <span className="muted">{draft.status}</span>
           {event.anomaly_score != null && (
@@ -174,7 +196,7 @@ function ExceptionCard({
         <p className="section-label">Matched signature (CRS)</p>
         <div className="text-sm space-y-2">
           <p>
-            <span className="text-amber-500 font-semibold">[{ruleId || '—'}]</span>{' '}
+            <span className="text-amber-700 dark:text-amber-400 font-semibold">[{ruleId || '—'}]</span>{' '}
             {sig.message || match.rule_message || '—'}
           </p>
           <div className="flex flex-wrap gap-3 text-xs">
@@ -193,7 +215,7 @@ function ExceptionCard({
             {sig.targets?.length > 0 && (
               <p>
                 <span className="muted">CRS targets: </span>
-                <span className="font-mono text-amber-500">{sig.targets.join(' | ')}</span>
+                <span className="font-mono text-amber-700 dark:text-amber-400">{sig.targets.join(' | ')}</span>
               </p>
             )}
           </div>
@@ -244,11 +266,11 @@ function ExceptionCard({
           </div>
           <div>
             <span className="muted">collection</span>
-            <p className="font-semibold text-amber-500">{collection}</p>
+            <p className="font-semibold text-amber-700 dark:text-amber-400">{collection}</p>
           </div>
           <div>
             <span className="muted">parameter</span>
-            <p className="font-semibold text-amber-500">{parameter}</p>
+            <p className="font-semibold text-amber-700 dark:text-amber-400">{parameter}</p>
           </div>
         </div>
         {event.uri && event.uri !== zone.uri && (
@@ -272,7 +294,7 @@ function ExceptionCard({
             {evidence?.variable && (
               <p className="text-xs muted">
                 Inspected variable:{' '}
-                <span className="text-amber-500 font-mono">{evidence.variable}</span>
+                <span className="text-amber-700 dark:text-amber-400 font-mono">{evidence.variable}</span>
               </p>
             )}
             {evidence?.full_value != null && evidence.full_value !== evidence.snippet && (
@@ -311,7 +333,7 @@ function ExceptionCard({
           <span
             className={
               draft.validation_status === 'valid'
-                ? 'badge-deployed'
+                ? 'badge-valid'
                 : draft.validation_status === 'not_applicable' ||
                     draft.validation_status === 'not_requested'
                   ? 'badge-stale'
@@ -341,12 +363,12 @@ function ExceptionCard({
             </div>
             <p className="text-xs muted mt-2 leading-relaxed border-l-2 border-amber-600/60 pl-2">
               Copy this rule into your ModSecurity exceptions include (Nginx or Apache). It disables{' '}
-              <span className="text-amber-500 font-mono">rule {ruleId}</span> only for{' '}
-              <span className="text-amber-500 font-mono">
+              <span className="text-amber-700 dark:text-amber-400 font-mono">rule {ruleId}</span> only for{' '}
+              <span className="text-amber-700 dark:text-amber-400 font-mono">
                 {collection}
                 {parameter !== '—' ? `:${parameter}` : ''}
               </span>{' '}
-              on path <span className="text-amber-500 font-mono">{path}</span>. This app does not
+              on path <span className="text-amber-700 dark:text-amber-400 font-mono">{path}</span>. This app does not
               write edge config.
             </p>
           </>
@@ -362,34 +384,42 @@ function ExceptionCard({
         {draft.analysis_case_id && (
           <Link
             to={`/cases/${draft.analysis_case_id}`}
-            className="text-xs text-amber-500 hover:underline font-medium"
+            className="text-xs text-amber-700 dark:text-amber-400 hover:underline font-medium"
             title="Open this analysis case"
+            onClick={(e) => e.stopPropagation()}
           >
             Related case #{draft.analysis_case_id} →
           </Link>
         )}
         {draft.status === 'pending' && (
           <>
-            <button
-              type="button"
-              onClick={doApprove}
-              disabled={busy || !canApprove}
-              title={
-                !canApprove
-                  ? 'Requires false_positive + validation_status=valid + proposed rule'
-                  : `Mark reviewed / ready to copy for rule ${ruleId}`
-              }
-              className="btn-success text-xs"
-            >
-              ✓ Mark ready to copy
-            </button>
+            {draft.classification === 'false_positive' && (
+              <button
+                type="button"
+                onClick={doApprove}
+                disabled={busy || !canApprove}
+                title={
+                  !canApprove
+                    ? 'Requires validation_status=valid + proposed rule'
+                    : `Mark reviewed / ready to copy for rule ${ruleId}`
+                }
+                className="btn-success text-xs"
+              >
+                ✓ Mark ready to copy
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setShowReject((s) => !s)}
               disabled={busy}
               className="btn-danger text-xs"
+              title={
+                draft.classification === 'true_positive'
+                  ? 'Dismiss this draft from the review queue'
+                  : 'Reject this draft'
+              }
             >
-              ✗ Reject
+              {draft.classification === 'true_positive' ? 'Dismiss' : '✗ Reject'}
             </button>
             {showReject && (
               <>
@@ -400,7 +430,7 @@ function ExceptionCard({
                   className="input-field flex-1 min-w-32 text-xs"
                 />
                 <button type="button" onClick={doReject} disabled={busy} className="btn-danger text-xs">
-                  Confirm reject
+                  Confirm
                 </button>
               </>
             )}
@@ -410,15 +440,16 @@ function ExceptionCard({
           <span className="badge-approved badge">Ready to copy into your config</span>
         )}
         {draft.status === 'rejected' && draft.rejection_reason && (
-          <span className="text-xs text-red-400">Reason: {draft.rejection_reason}</span>
+          <span className="text-xs text-red-700 dark:text-red-400">Reason: {draft.rejection_reason}</span>
         )}
       </div>
       {actionError && (
-        <div aria-live="polite" className="text-xs text-red-400">
+        <div aria-live="polite" className="text-xs text-red-700 dark:text-red-400">
           {actionError}
         </div>
       )}
-    </div>
+      </div>
+    </details>
   )
 }
 
@@ -488,7 +519,7 @@ export default function Exceptions() {
       </div>
 
       <div className="border-l-2 border-amber-600/60 bg-amber-500/5 px-3 py-2 text-xs leading-relaxed">
-        <strong className="text-amber-500">Copy-paste workflow</strong> — paste rules under your
+        <strong className="text-amber-700 dark:text-amber-400">Copy-paste workflow</strong> — paste rules under your
         ModSecurity exceptions include, run <span className="font-mono">nginx -t</span> / Apache
         configtest, then reload. See Settings for the audit log contract.
       </div>
@@ -500,7 +531,7 @@ export default function Exceptions() {
             type="button"
             onClick={() => setTab(t.key)}
             className={`px-3 py-1.5 text-sm rounded ${
-              tab === t.key ? 'bg-amber-500/20 text-amber-500' : 'muted'
+              tab === t.key ? 'bg-amber-500/20 text-amber-700 dark:text-amber-400' : 'muted'
             }`}
           >
             {t.label}
@@ -516,7 +547,7 @@ export default function Exceptions() {
             onClick={() => setClassification(c.key)}
             className={`text-xs px-2 py-1 rounded border ${
               classification === c.key
-                ? 'border-amber-500 text-amber-500'
+                ? 'border-amber-500 text-amber-700 dark:text-amber-400'
                 : 'border-stone-300 dark:border-zinc-700 muted'
             }`}
           >
@@ -525,10 +556,32 @@ export default function Exceptions() {
         ))}
       </div>
 
-      {error && <div className="text-red-400 text-sm">{error}</div>}
+      {error && <div className="text-red-700 dark:text-red-400 text-sm">{error}</div>}
       {loading && <p className="muted text-sm">Loading…</p>}
       {!loading && drafts.length === 0 && (
-        <p className="muted text-sm">No drafts in this view.</p>
+        <p className="muted text-sm leading-relaxed">
+          No drafts in this view
+          {classification ? (
+            <>
+              {' '}
+              for <span className="font-mono">{classification}</span>
+            </>
+          ) : null}
+          {tab ? (
+            <>
+              {' '}
+              (status=<span className="font-mono">{tab}</span>)
+            </>
+          ) : null}
+          .
+          {classification === 'true_positive' && (
+            <>
+              {' '}
+              True positives appear after analysis completes. Older runs only stored FP drafts —
+              reanalyze cases or re-run the matrix after upgrading the backend.
+            </>
+          )}
+        </p>
       )}
 
       <div className="space-y-4">

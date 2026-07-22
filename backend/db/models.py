@@ -7,6 +7,9 @@ lives in a local SQLite database (lightweight default for lab / bare metal).
 from __future__ import annotations
 
 import os
+import hashlib
+import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -183,6 +186,9 @@ class AnalysisRevision(Base):
     crs_digest = Column(Text, nullable=True)
     model = Column(Text, nullable=False)
     prompt_version = Column(Text, nullable=False)
+    prompt_sha256 = Column(Text, nullable=True)
+    model_settings = Column(JSON, nullable=False, default=dict)
+    error_code = Column(Text, nullable=True)
     state = Column(Text, nullable=False, default="analyzing")
     context = Column(JSON, nullable=False, default=dict)
     classification = Column(Text, nullable=True)
@@ -231,12 +237,42 @@ class ExceptionDraft(Base):
     rule_placement = Column(Text, nullable=True)
     created_at = Column(TIMESTAMP(timezone=True), default=_utcnow)
     reviewed_at = Column(TIMESTAMP(timezone=True), nullable=True)
-    deployed_at = Column(TIMESTAMP(timezone=True), nullable=True)
     last_seen_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    scope_key = Column(Text, nullable=True)
+    rule_numeric_id = Column(Integer, nullable=True)
+    supporting_case_count = Column(Integer, nullable=False, default=1)
 
     __table_args__ = (
         Index("exception_drafts_status_idx", "status"),
         Index("exception_drafts_transaction_id_idx", "transaction_id"),
+    )
+
+
+class InferenceAttempt(Base):
+    """One provider request, including repairs and transport retries."""
+
+    __tablename__ = "inference_attempts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    analysis_revision_id = Column(
+        Integer, ForeignKey("analysis_revisions.id", ondelete="CASCADE"), nullable=False
+    )
+    attempt_type = Column(Text, nullable=False)
+    started_at = Column(TIMESTAMP(timezone=True), nullable=False, default=_utcnow)
+    completed_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    latency_ms = Column(Integer, nullable=True)
+    status = Column(Text, nullable=False, default="active")
+    error_code = Column(Text, nullable=True)
+    finish_reason = Column(Text, nullable=True)
+    prompt_tokens = Column(Integer, nullable=True)
+    completion_tokens = Column(Integer, nullable=True)
+    total_tokens = Column(Integer, nullable=True)
+    raw_response = Column(Text, nullable=True)
+
+    __table_args__ = (
+        Index("inference_attempts_revision_idx", "analysis_revision_id"),
+        Index("inference_attempts_started_idx", "started_at"),
+        Index("inference_attempts_status_idx", "status"),
     )
 
 
@@ -297,11 +333,12 @@ async def init_db():
         # Lightweight compatibility: add columns if an older SQLite file exists.
         def _migrate(sync_conn):
             if not str(engine.url).startswith("sqlite"):
-                return
+                return {}
             try:
                 cols = _table_columns(sync_conn, "exception_drafts")
             except Exception:
-                return
+                return {}
+            reconciliation = {"non_false_positive": 0, "duplicate_scope": 0, "id_conflict": 0}
             alters = []
             if "analysis_revision_id" not in cols:
                 alters.append(
@@ -318,8 +355,139 @@ async def init_db():
                 alters.append("ALTER TABLE exception_drafts ADD COLUMN validation_error TEXT")
             if "rule_placement" not in cols:
                 alters.append("ALTER TABLE exception_drafts ADD COLUMN rule_placement TEXT")
+            if "scope_key" not in cols:
+                alters.append("ALTER TABLE exception_drafts ADD COLUMN scope_key TEXT")
+            if "rule_numeric_id" not in cols:
+                alters.append("ALTER TABLE exception_drafts ADD COLUMN rule_numeric_id INTEGER")
+            if "supporting_case_count" not in cols:
+                alters.append(
+                    "ALTER TABLE exception_drafts ADD COLUMN supporting_case_count INTEGER "
+                    "NOT NULL DEFAULT 1"
+                )
             for statement in alters:
                 sync_conn.execute(text(statement))
+
+            revision_cols = _table_columns(sync_conn, "analysis_revisions")
+            revision_alters = []
+            if "prompt_sha256" not in revision_cols:
+                revision_alters.append(
+                    "ALTER TABLE analysis_revisions ADD COLUMN prompt_sha256 TEXT"
+                )
+            if "model_settings" not in revision_cols:
+                revision_alters.append(
+                    "ALTER TABLE analysis_revisions ADD COLUMN model_settings JSON "
+                    "NOT NULL DEFAULT '{}'"
+                )
+            if "error_code" not in revision_cols:
+                revision_alters.append(
+                    "ALTER TABLE analysis_revisions ADD COLUMN error_code TEXT"
+                )
+            for statement in revision_alters:
+                sync_conn.execute(text(statement))
+
+            rows = sync_conn.execute(
+                text(
+                    "SELECT id, proposed_rule_scope, proposed_rule FROM exception_drafts "
+                    "WHERE scope_key IS NULL OR rule_numeric_id IS NULL"
+                )
+            ).fetchall()
+            for draft_id, raw_scope, proposed_rule in rows:
+                try:
+                    scope = json.loads(raw_scope) if isinstance(raw_scope, str) else (raw_scope or {})
+                except (TypeError, json.JSONDecodeError):
+                    scope = {}
+                parts = [
+                    str(scope.get("uri") or "").split("?", 1)[0].rstrip("/") or "/",
+                    str(scope.get("rule_id") or ""),
+                    str(scope.get("collection") or "").upper(),
+                    str(scope.get("parameter") or ""),
+                ]
+                scope_key = hashlib.sha256("\x1f".join(parts).encode()).hexdigest()
+                match = re.search(r"(?:^|[,\s])id:(\d+)", proposed_rule or "")
+                rule_numeric_id = int(match.group(1)) if match else None
+                sync_conn.execute(
+                    text(
+                        "UPDATE exception_drafts SET scope_key=:scope_key, "
+                        "rule_numeric_id=:rule_numeric_id WHERE id=:id"
+                    ),
+                    {"scope_key": scope_key, "rule_numeric_id": rule_numeric_id, "id": draft_id},
+                )
+
+            retired = sync_conn.execute(
+                text(
+                    "UPDATE exception_drafts SET status='stale', proposed_rule=NULL, "
+                    "rule_placement=NULL WHERE classification!='false_positive' "
+                    "AND status IN ('pending','approved')"
+                )
+            )
+            reconciliation["non_false_positive"] = retired.rowcount
+
+            # Reconcile old active duplicates before adding uniqueness constraints.
+            duplicate_scopes = sync_conn.execute(
+                text(
+                    "SELECT scope_key FROM exception_drafts "
+                    "WHERE status IN ('pending','approved') AND scope_key IS NOT NULL "
+                    "GROUP BY scope_key HAVING COUNT(*) > 1"
+                )
+            ).fetchall()
+            for (scope_key,) in duplicate_scopes:
+                duplicates = sync_conn.execute(
+                    text(
+                        "SELECT id FROM exception_drafts WHERE scope_key=:scope_key "
+                        "AND status IN ('pending','approved') "
+                        "ORDER BY CASE status WHEN 'approved' THEN 0 ELSE 1 END, "
+                        "created_at DESC, id DESC"
+                    ),
+                    {"scope_key": scope_key},
+                ).fetchall()
+                keep = duplicates[0][0]
+                stale_ids = [row[0] for row in duplicates[1:]]
+                reconciliation["duplicate_scope"] += len(stale_ids)
+                for stale_id in stale_ids:
+                    sync_conn.execute(
+                        text(
+                            "UPDATE exception_drafts SET status='stale', proposed_rule=NULL, "
+                            "rule_placement=NULL, validation_status='duplicate_scope', "
+                            "validation_error='Superseded by canonical active scope draft' "
+                            "WHERE id=:id"
+                        ),
+                        {"id": stale_id},
+                    )
+                sync_conn.execute(
+                    text(
+                        "UPDATE exception_drafts SET supporting_case_count=:count WHERE id=:id"
+                    ),
+                    {"count": len(duplicates), "id": keep},
+                )
+
+            duplicate_rule_ids = sync_conn.execute(
+                text(
+                    "SELECT rule_numeric_id FROM exception_drafts "
+                    "WHERE status IN ('pending','approved') AND rule_numeric_id IS NOT NULL "
+                    "GROUP BY rule_numeric_id HAVING COUNT(*) > 1"
+                )
+            ).fetchall()
+            for (numeric_id,) in duplicate_rule_ids:
+                duplicates = sync_conn.execute(
+                    text(
+                        "SELECT id FROM exception_drafts WHERE rule_numeric_id=:numeric_id "
+                        "AND status IN ('pending','approved') "
+                        "ORDER BY CASE status WHEN 'approved' THEN 0 ELSE 1 END, "
+                        "created_at DESC, id DESC"
+                    ),
+                    {"numeric_id": numeric_id},
+                ).fetchall()
+                for (stale_id,) in duplicates[1:]:
+                    reconciliation["id_conflict"] += 1
+                    sync_conn.execute(
+                        text(
+                            "UPDATE exception_drafts SET status='stale', proposed_rule=NULL, "
+                            "rule_placement=NULL, validation_status='id_conflict', "
+                            "validation_error='Numeric rule ID conflicts with another active scope' "
+                            "WHERE id=:id"
+                        ),
+                        {"id": stale_id},
+                    )
             sync_conn.execute(
                 text(
                     "CREATE UNIQUE INDEX IF NOT EXISTS exception_drafts_analysis_revision_uq "
@@ -329,10 +497,31 @@ async def init_db():
             )
             sync_conn.execute(
                 text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS exception_drafts_active_scope_uq "
+                    "ON exception_drafts(scope_key) WHERE status IN ('pending','approved')"
+                )
+            )
+            sync_conn.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS exception_drafts_active_rule_id_uq "
+                    "ON exception_drafts(rule_numeric_id) "
+                    "WHERE status IN ('pending','approved') AND rule_numeric_id IS NOT NULL"
+                )
+            )
+            sync_conn.execute(
+                text(
+                    "UPDATE analysis_revisions SET error_code='invalid_output' "
+                    "WHERE error_code IS NULL AND state='complete' "
+                    "AND verdict LIKE 'Model response could not be validated:%'"
+                )
+            )
+            sync_conn.execute(
+                text(
                     "UPDATE exception_drafts SET status='stale' "
                     "WHERE validation_status='scope_conflict' "
                     "AND status IN ('pending', 'approved')"
                 )
             )
+            return reconciliation
 
-        await conn.run_sync(_migrate)
+        return await conn.run_sync(_migrate)

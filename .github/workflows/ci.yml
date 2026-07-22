@@ -15,23 +15,23 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.13"
       - name: Install test dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install sqlalchemy pytest
+          python -m pip install -r requirements.txt pytest
       - name: Unit tests
-        run: PYTHONPATH=. pytest tests/test_core.py -q
+        run: PYTHONPATH=. pytest -q
 
-  portal-build:
+  frontend-build:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: portal
+        working-directory: frontend
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - run: npm install --no-audit --no-fund
+      - run: npm ci
       - run: npm run build

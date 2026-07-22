@@ -24,7 +24,7 @@ function NavItem({ to, label }: { to: string; label: string }) {
       className={({ isActive }) =>
         `px-4 py-2 text-sm transition-colors rounded ${
           isActive
-            ? 'text-amber-500 bg-amber-50 dark:bg-zinc-800'
+            ? 'text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-zinc-800'
             : 'muted hover:text-inherit'
         }`
       }
@@ -61,7 +61,7 @@ function SetupGate({
     <div className="min-h-screen flex items-center justify-center px-4">
       <div className="card max-w-lg w-full space-y-4">
         <div>
-          <p className="text-amber-500 text-xs font-semibold uppercase tracking-wide">
+          <p className="text-amber-700 dark:text-amber-400 text-xs font-semibold uppercase tracking-wide">
             WAF Tuner · setup
           </p>
           <h1 className="text-xl font-bold mt-1">ModSecurity audit log path</h1>
@@ -144,7 +144,7 @@ function Shell() {
       <div className="min-h-screen flex items-center justify-center px-4">
         <div className="card max-w-md space-y-2">
           <h1 className="font-bold text-lg">Backend unreachable</h1>
-          <p className="text-xs text-red-400">{bootError}</p>
+          <p className="text-xs text-red-700 dark:text-red-400">{bootError}</p>
         </div>
       </div>
     )
@@ -156,10 +156,11 @@ function Shell() {
 
   return (
     <BrowserRouter>
-      <div className="min-h-screen flex flex-col">
-        <header className="surface-header sticky top-0 z-50 backdrop-blur">
+      {/* Fixed viewport shell: page itself does not grow; children scroll internally */}
+      <div className="h-dvh flex flex-col overflow-hidden">
+        <header className="surface-header flex-shrink-0 z-50 backdrop-blur">
           <div className="max-w-screen-xl mx-auto px-6 flex items-center h-14 gap-2 flex-wrap">
-            <span className="text-amber-500 font-bold tracking-tight mr-2">⚡ WAF Tuner</span>
+            <span className="text-amber-700 dark:text-amber-400 font-bold tracking-tight mr-2">⚡ WAF Tuner</span>
             {ingest && !ingest.exists && (
               <span className="text-[10px] text-amber-600" title={ingest.modsec_audit_log}>
                 log missing
@@ -177,19 +178,21 @@ function Shell() {
           </div>
         </header>
 
-        <main className="flex-1 max-w-screen-xl mx-auto w-full px-6 py-6">
-          <Routes>
-            <Route path="/" element={<Analytics />} />
-            <Route path="/events" element={<Events />} />
-            <Route path="/cases" element={<Cases />} />
-            <Route path="/cases/:caseId" element={<Cases />} />
-            <Route path="/exceptions" element={<Exceptions />} />
-            <Route path="/profiles" element={<ApplicationProfiles />} />
-            <Route path="/settings" element={<Settings />} />
-          </Routes>
+        <main className="flex-1 min-h-0 overflow-y-auto">
+          <div className="max-w-screen-xl mx-auto w-full h-full px-6 py-4">
+            <Routes>
+              <Route path="/" element={<Analytics />} />
+              <Route path="/events" element={<Events />} />
+              <Route path="/cases" element={<Cases />} />
+              <Route path="/cases/:caseId" element={<Cases />} />
+              <Route path="/exceptions" element={<Exceptions />} />
+              <Route path="/profiles" element={<ApplicationProfiles />} />
+              <Route path="/settings" element={<Settings />} />
+            </Routes>
+          </div>
         </main>
 
-        <footer className="border-t border-stone-200 dark:border-zinc-900 py-3 text-center text-xs muted">
+        <footer className="flex-shrink-0 border-t border-stone-200 dark:border-zinc-900 py-2 text-center text-xs muted">
           WAF Tuner · copy exclusion rules · never writes edge config
           {mode?.service ? ` · ${mode.service}` : ''}
         </footer>

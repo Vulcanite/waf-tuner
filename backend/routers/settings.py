@@ -4,6 +4,8 @@ from pydantic import BaseModel, Field
 
 from services.app_mode import product_info
 from services import runtime_config
+from services.agent import public_model_settings
+from services.redaction import SENSITIVE_HEADERS
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -22,7 +24,19 @@ class IngestBody(BaseModel):
 @router.get("/product")
 async def get_product_settings():
     """Product info + audit-log contract."""
-    return product_info()
+    return {
+        **product_info(),
+        "inference": {
+            **public_model_settings(),
+            "egress_notice": "Sanitized security evidence may leave this host for the configured provider.",
+            "redaction": {
+                "sensitive_headers": sorted(SENSITIVE_HEADERS),
+                "sensitive_keys": "Configured by SENSITIVE_FIELD_PATTERN",
+                "scope": "URI query, headers, body, matched data, sibling matches, and application context",
+            },
+            "retention": "Raw events and complete provider responses persist locally until the operator removes them.",
+        },
+    }
 
 
 @router.get("/ingest")

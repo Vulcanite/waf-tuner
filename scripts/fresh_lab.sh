@@ -84,7 +84,7 @@ echo "  API:    http://localhost:8000/health"
 echo "  DVWA:   http://localhost:8080  (admin / password)"
 echo ""
 echo "  Traffic:  ./scripts/run_incident_matrix.sh"
-echo "  Unit:     cd backend && PYTHONPATH=. .venv/bin/python -m pytest tests/test_core.py -q"
+echo "  Unit:     cd backend && PYTHONPATH=. .venv/bin/python -m pytest -q  # Python 3.13"
 echo "  Full E2E: bash scripts/e2e.sh"
 curl -sS http://localhost:8000/api/analytics/summary 2>/dev/null | head -c 300 || true
 echo ""

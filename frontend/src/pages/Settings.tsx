@@ -147,11 +147,35 @@ export default function Settings() {
             <div className="text-xs space-y-1 border-t border-stone-200 dark:border-zinc-800 pt-3">
               {Object.entries(appMode.env).map(([k, v]) => (
                 <p key={k} className="font-mono break-all">
-                  <span className="text-amber-500">{k}</span>={v || '—'}
+                  <span className="text-amber-700 dark:text-amber-400">{k}</span>={v || '—'}
                 </p>
               ))}
             </div>
           )}
+        </section>
+      )}
+
+      {appMode?.inference && (
+        <section className="card space-y-3">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <p className="section-label">Inference and data egress</p>
+              <p className="text-sm font-semibold">{appMode.inference.model}</p>
+              <p className="text-xs muted break-all">{appMode.inference.provider}</p>
+            </div>
+            <span className="badge-stale">
+              TLS verification {appMode.inference.verify_ssl ? 'on' : 'OFF'}
+            </span>
+          </div>
+          <div className="border-l-2 border-amber-600 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs leading-relaxed">
+            {appMode.inference.egress_notice}
+          </div>
+          <dl className="grid sm:grid-cols-2 gap-3 text-xs">
+            <div><dt className="muted">Redaction coverage</dt><dd>{appMode.inference.redaction.scope}</dd></div>
+            <div><dt className="muted">Sensitive-key policy</dt><dd>{appMode.inference.redaction.sensitive_keys}</dd></div>
+            <div><dt className="muted">Request settings</dt><dd>{appMode.inference.max_tokens} max tokens · temperature {appMode.inference.temperature}</dd></div>
+            <div><dt className="muted">Local retention</dt><dd>{appMode.inference.retention}</dd></div>
+          </dl>
         </section>
       )}
 

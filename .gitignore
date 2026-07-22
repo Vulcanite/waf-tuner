@@ -81,3 +81,5 @@ e2e-output/*
 
 
 docs/
+eval/report.json
+dogfood-output/

@@ -1,100 +1,89 @@
 # WAF Tuner
 
-**Off-path CRS tuning for open-source ModSecurity.**
+WAF Tuner is a lab-grade, human review queue for ModSecurity CRS alerts. It uses an off-path LLM to classify evidence, then system-builds parameter-scoped exception drafts that an operator may copy into their own WAF configuration.
 
-Ingest JSON audit logs, classify false positives vs attacks with an LLM, and **system-build** tightly scoped exclusion SecRules for a human to **copy into their own WAF config**.
+It is **not** a WAF, an authenticated SaaS, an edge control plane, or production-certified. It never writes edge configuration or reloads a server. Human review and an operator-managed, authenticated TLS reverse proxy are mandatory outside a loopback-only lab.
 
-This application **never** writes Nginx/Apache configuration or reloads the edge.
+Version `0.1.x` is for evaluation. Model classifications can be wrong, provider behavior varies, sanitized alert evidence may leave the host, and raw events and model responses remain in local storage until the operator removes them.
 
-[Architecture](./ARCHITECTURE.md) · [Integrations](./docs/integrations.md) · License: [Apache-2.0](./LICENSE)
+[Architecture](./ARCHITECTURE.md) · [Security](./SECURITY.md) · [Integrations](./docs/integrations.md) · [Contributing](./CONTRIBUTING.md) · License: [Apache-2.0](./LICENSE)
 
----
+## What it does
 
-## Why
+- Ingests ModSecurity JSON Serial audit logs off the request path.
+- Groups repeated alerts into reviewable cases.
+- Classifies evidence as false positive, true positive, or uncertain.
+- Builds narrowly scoped SecLang from server-owned evidence—not model-authored rules.
+- Leaves every approval and configuration change to a human operator.
 
-- Which **payload** hit which **CRS signature**?
-- Is it a **false positive** or a real probe?
-- What is a **safe**, parameter-scoped exception?
-
-Human review queue — not silent auto-disable.
-
-## Quick start (lab)
+## Quick start (loopback lab)
 
 ```bash
 cp lab-data/.env.example lab-data/.env
-# Edit LLM_API_BASE_URL / LLM_API_KEY / LLM_MODEL
-
+# Configure LLM_API_BASE_URL, LLM_API_KEY, and LLM_MODEL.
 docker compose up --build
+```
 
-# UI
-open http://localhost:3000
+Open `http://localhost:3000`. The included DVWA lab is at `http://localhost:8080` (`admin` / `password`). Generate sample CRS traffic with:
 
-# DVWA behind ModSecurity
-open http://localhost:8080 # admin / password
-
-# Generate CRS traffic
+```bash
 ./scripts/run_incident_matrix.sh
 ```
 
-| Service | Container | Port |
-|---------|-----------|------|
-| **waf-tuner-frontend** | `waf-tuner-frontend` | 3000 |
-| **waf-tuner-backend** | `waf-tuner-backend` | 8000 |
-| **nginx** (ModSecurity + CRS) | `waf-lab-nginx` | 8080 |
-| **dvwa** | `waf-lab-dvwa` | internal |
+Compose publishes the UI, API, and lab WAF only on `127.0.0.1`. For remote access, put the UI behind an authenticated TLS reverse proxy and keep the backend private. WAF Tuner has no built-in authentication in v0.1.
 
-### Shared data: `./lab-data`
+## Local data and egress
 
 | Path | Purpose |
-|------|---------|
-| `.env` | LLM keys — edit, then `docker compose up -d waf-tuner-backend` |
-| `modsec/audit.log` | ModSecurity JSON Serial audit log |
-| `waf-tuner.db` | SQLite workflow DB |
-| `events.jsonl` | Event archive |
-| `runtime_config.json` | Audit log path from the UI |
-| `crs-rules/` | CRS index for the UI |
+|---|---|
+| `lab-data/.env` | Provider credentials and runtime settings |
+| `lab-data/modsec/audit.log` | ModSecurity audit log |
+| `lab-data/waf-tuner.db` | SQLite workflow, audit, and inference data |
+| `lab-data/events.jsonl` | Local event archive |
+| `lab-data/runtime_config.json` | Selected audit-log path |
+| `lab-data/crs-rules/` | CRS index used by the UI |
 
-### Unit tests
+Sensitive fields are redacted before inference, but sanitized evidence may be sent to the configured provider. Raw audit events and complete provider responses are retained locally until you remove the data. See [SECURITY.md](./SECURITY.md) before using real traffic.
+
+## Verify a change
+
+Backend requires **Python 3.13**.
 
 ```bash
 cd backend
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt pytest
-PYTHONPATH=. .venv/bin/python -m pytest tests/test_core.py -q
+python3.13 -m venv .venv
+.venv/bin/pip install -r requirements.txt pytest
+PYTHONPATH=. .venv/bin/python -m pytest -q
+
+cd ../frontend
+npm ci
+npm run build
 ```
 
-### E2E (saves under `e2e-output/`)
+Lab checks are intentionally outside normal pull-request CI:
 
 ```bash
+# Docker Compose lab (backend + frontend + ModSecurity + DVWA)
 ./scripts/e2e.sh
+
+# Bare metal (host Python 3.13; no Docker). Synthetic audit inject by default.
+# Uses :18000 so it can run alongside Compose on :8000.
+./scripts/e2e_baremetal.sh
+# Optional UI:  BAREMETAL_WITH_FRONTEND=1 ./scripts/e2e_baremetal.sh
+# Real audit log: BAREMETAL_AUDIT_LOG=/var/log/modsec/audit.log ./scripts/e2e_baremetal.sh
 ```
 
-## Operator flow
+## Operator workflow
 
-1. Point backend at a ModSecurity **JSON Serial** audit log (lab default or Settings).
-2. Optionally add **Application Context**.
-3. Send traffic through your WAF (lab: DVWA on `:8080`).
-4. Review **Cases** / **Exceptions** — copy SecRules into your own conf, `nginx -t` / Apache configtest, reload yourself.
+1. Point the backend at a ModSecurity JSON Serial audit log.
+2. Create matching application route profiles before requesting copyable exclusions.
+3. Send traffic through the WAF and review Cases and Exceptions.
+4. Validate approved rules in your environment, copy them into your configuration, run `nginx -t` or the Apache equivalent, and reload the edge yourself.
 
-## Design rules
+## Current boundaries
 
-| Piece | Behavior |
-|-------|----------|
-| Classification | LLM (off-path) |
-| Exception SecRule | **Deterministic builder** from ground-truth zone |
-| Validation | Structure allowlist only |
-| Edge config | **Never** written by this app |
-
-## Environment
-
-See `lab-data/.env.example` and [docs/integrations.md](./docs/integrations.md).
-
-## Non-goals (current)
-
-- Edge deploy / auto-reload (future)
-- Auth, multi-tenant SaaS
-- Cloud WAF products
-- Coraza (later)
-
-## Contributing
-
-See [CONTRIBUTING.md](./CONTRIBUTING.md).
+- One backend process owns each SQLite data directory.
+- No multi-version CRS compatibility guarantee.
+- No authentication, RBAC, multi-tenancy, or automatic retention service.
+- No edge writes, automatic reloads, or deployment state.
+- LLM inference is off-path and recommendation-only.

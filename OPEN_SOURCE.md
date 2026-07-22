@@ -1,32 +1,35 @@
-# Open source notes
+# Open-source support notes
 
-WAF Tuner is an evaluation / lab-grade **observe-and-recommend** co-pilot for ModSecurity CRS tuning.
+WAF Tuner `0.1.x` is a lab-grade, observe-and-recommend copilot for ModSecurity CRS tuning. It is intended for evaluation and security research, not unattended production control.
 
-## Trust boundaries
+## Trust and deployment boundaries
 
-- LLM never runs on the request path.
-- Exclusions are system-built; operators copy them out.
-- No authentication on the lab API/UI — do not expose publicly without auth.
+- Inference is off-path and cannot block requests.
+- The server builds exclusions from ground-truth scope; operators decide whether to copy them.
+- The application does not write WAF configuration, reload the edge, or represent rules as deployed.
+- The API and UI have no built-in authentication. Compose binds to loopback. Remote operators must supply an authenticated TLS reverse proxy.
+- Sanitized evidence may leave the host for the configured LLM provider. Raw events and provider responses are retained locally until removed by the operator.
 
-## Lab vs production-adjacent
+## Runtime
 
-| | Lab compose | Production-adjacent |
-|--|-------------|---------------------|
-| Edge | Included nginx + DVWA | Your existing ModSecurity |
-| Data | `./lab-data` | Your paths / volume mounts |
-| Deploy | N/A | You apply SecRules |
+- Backend targets **Python 3.13** (CI and `backend/Dockerfile`).
+
+## Supported topology
+
+- One backend process owns each SQLite data directory.
+- Up to sixteen bounded inference workers may run inside that process; four is the default.
+- No multi-version CRS compatibility guarantee is provided for `0.1.x`.
+- No HA database, distributed queue, multi-tenancy, or automated retention service is supported.
 
 ## Repository layout
 
 | Path | Role |
-|------|------|
-| `backend/` | waf-tuner-backend |
-| `frontend/` | waf-tuner-frontend |
+|---|---|
+| `backend/` | FastAPI API, ingestion, analysis, policy, and SQLite state |
+| `frontend/` | React operator portal |
 | `nginx/` | Lab WAF image hooks |
-| `lab-data/` | Shared logs, SQLite, `.env` |
-| `scripts/` | DVWA traffic + E2E |
-| `docs/` | Integrations |
+| `lab-data/` | Local logs, SQLite database, configuration, and CRS data |
+| `scripts/` | Fixture traffic and E2E checks |
+| `docs/` | Integration guidance |
 
-## Support bar
-
-Compose lab + unit tests. No multi-version CRS LTS guarantee yet.
+Security limitations and disclosure instructions are in [SECURITY.md](./SECURITY.md).

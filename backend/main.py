@@ -13,6 +13,8 @@ import os
 
 from dotenv import load_dotenv
 
+APP_VERSION = "0.1.0"
+
 _root = os.path.join(os.path.dirname(__file__), "..")
 load_dotenv(os.path.join(_root, "lab-data", ".env"))
 load_dotenv(os.path.join(_root, ".env"))
@@ -36,17 +38,25 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="WAF Tuner Backend",
-    version="1.0.0",
+    version=APP_VERSION,
     description="Observe ModSecurity logs and recommend CRS exclusions",
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Opt-in only. Empty default keeps loopback Compose same-origin (frontend proxy).
+# Example for Vite dev: CORS_ALLOW_ORIGINS=http://localhost:5173
+_cors_origins = [
+    origin.strip()
+    for origin in os.environ.get("CORS_ALLOW_ORIGINS", "").split(",")
+    if origin.strip()
+]
+if _cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 app.include_router(events.router)
 app.include_router(exceptions.router)
@@ -63,8 +73,8 @@ async def startup():
         "Initialising database schema (%s)…",
         db_url.split("///")[-1] if "///" in db_url else db_url,
     )
-    await init_db()
-    logger.info("Database schema ready")
+    reconciliation = await init_db()
+    logger.info("Database schema ready (draft reconciliation=%s)", reconciliation or {})
 
     events_path = os.environ.get("EVENTS_JSONL_PATH", "/shared/events.jsonl")
     data_dir = os.path.dirname(events_path) or "/shared"
@@ -86,7 +96,7 @@ async def startup():
     _crs_module.CRS_INDEX = build_crs_index(crs_dir)
     logger.info("CRS index ready: %d rules from %s", len(_crs_module.CRS_INDEX), crs_dir)
 
-    worker_count = max(1, min(16, int(os.environ.get("AGENT_WORKER_CONCURRENCY", "1"))))
+    worker_count = max(1, min(16, int(os.environ.get("AGENT_WORKER_CONCURRENCY", "4"))))
     app.state.background_tasks = [
         asyncio.create_task(log_tailer()),
         *[
@@ -122,7 +132,7 @@ async def root():
 
     return {
         "service": "waf-tuner-backend",
-        "version": "1.0.0",
+        "version": APP_VERSION,
         **product_info(),
         "ingest": audit_log_status(),
     }

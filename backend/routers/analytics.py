@@ -7,14 +7,15 @@ import json
 import os
 import time
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.models import get_db, ExceptionDraft
+from db.models import AnalysisCase, AnalysisRevision, ExceptionDraft, InferenceAttempt, get_db
+from services.agent import PROMPT_SHA256, PROMPT_VERSION, public_model_settings, request_budget
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
 
@@ -22,6 +23,76 @@ EVENTS_JSONL_PATH = os.environ.get("EVENTS_JSONL_PATH", "/shared/events.jsonl")
 _cache: dict = {}
 _cache_ts: float = 0.0
 CACHE_TTL = 60.0
+
+
+def _grouped(rows) -> dict[str, int]:
+    return {str(key or "none"): int(count) for key, count in rows}
+
+
+@router.get("/analysis-health")
+async def analysis_health(db: AsyncSession = Depends(get_db)):
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(hours=1)
+    case_states = _grouped((await db.execute(
+        select(AnalysisCase.state, func.count()).group_by(AnalysisCase.state)
+    )).all())
+    revision_states = _grouped((await db.execute(
+        select(AnalysisRevision.state, func.count()).group_by(AnalysisRevision.state)
+    )).all())
+    error_codes = _grouped((await db.execute(
+        select(AnalysisRevision.error_code, func.count())
+        .where(AnalysisRevision.error_code.is_not(None))
+        .group_by(AnalysisRevision.error_code)
+    )).all())
+    active_attempts = int((await db.execute(
+        select(func.count()).select_from(InferenceAttempt).where(InferenceAttempt.status == "active")
+    )).scalar_one())
+    oldest_queued = (await db.execute(
+        select(func.min(AnalysisCase.created_at)).where(
+            AnalysisCase.state.in_(["queued", "retryable_error"])
+        )
+    )).scalar_one_or_none()
+    last_success = (await db.execute(
+        select(func.max(AnalysisRevision.completed_at)).where(AnalysisRevision.state == "complete")
+    )).scalar_one_or_none()
+    valid = int((await db.execute(
+        select(func.count()).select_from(AnalysisRevision).where(
+            AnalysisRevision.state == "complete", AnalysisRevision.error_code.is_(None)
+        )
+    )).scalar_one())
+    invalid = int((await db.execute(
+        select(func.count()).select_from(AnalysisRevision).where(AnalysisRevision.error_code == "invalid_output")
+    )).scalar_one())
+    initial = int((await db.execute(
+        select(func.count()).select_from(InferenceAttempt).where(InferenceAttempt.attempt_type == "initial")
+    )).scalar_one())
+    repairs = int((await db.execute(
+        select(func.count()).select_from(InferenceAttempt).where(InferenceAttempt.attempt_type == "repair")
+    )).scalar_one())
+    used = int((await db.execute(
+        select(func.count()).select_from(InferenceAttempt).where(InferenceAttempt.started_at >= cutoff)
+    )).scalar_one())
+    budget = request_budget()
+    settings = public_model_settings()
+    return {
+        "worker_count": max(1, min(16, int(os.environ.get("AGENT_WORKER_CONCURRENCY", "4")))),
+        "hourly_budget": budget,
+        "cases_by_state": case_states,
+        "revisions_by_state": revision_states,
+        "revisions_by_error_code": error_codes,
+        "active_attempts": active_attempts,
+        "oldest_queued_at": oldest_queued.isoformat() if oldest_queued else None,
+        "last_successful_completion": last_success.isoformat() if last_success else None,
+        "valid_output_rate": valid / (valid + invalid) if valid + invalid else None,
+        "repair_rate": repairs / initial if initial else None,
+        "hourly_requests_used": used,
+        "hourly_requests_remaining": max(0, budget - used),
+        "model": settings["model"],
+        "prompt_version": PROMPT_VERSION,
+        "prompt_sha256": PROMPT_SHA256,
+        "structured_output": settings["structured_output"],
+        "paused_by_budget": used >= budget,
+    }
 
 
 def _load_events_cached() -> list[dict]:
