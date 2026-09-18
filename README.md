@@ -6,7 +6,7 @@ It is **not** a WAF, an authenticated SaaS, an edge control plane, or production
 
 Version `0.1.x` is for evaluation. Model classifications can be wrong, provider behavior varies, sanitized alert evidence may leave the host, and raw events and model responses remain in local storage until the operator removes them.
 
-[Architecture](./ARCHITECTURE.md) · [Security](./SECURITY.md) · [Integrations](./docs/integrations.md) · [Contributing](./CONTRIBUTING.md) · License: [Apache-2.0](./LICENSE)
+[Architecture](./ARCHITECTURE.md) · [Security](./SECURITY.md) · [Integrations](./docs/integrations.md) · [Contributing](./CONTRIBUTING.md) · [Roadmap](./ROADMAP.md) · License: [Apache-2.0](./LICENSE)
 
 ## What it does
 
@@ -54,6 +54,10 @@ cd backend
 python3.13 -m venv .venv
 .venv/bin/pip install -r requirements.txt pytest
 PYTHONPATH=. .venv/bin/python -m pytest -q
+
+# Recorded eval (no API key)
+PYTHONPATH=eval python3.13 -m pytest -q eval/tests
+python3.13 eval/evaluate.py --mode recorded --model oracle --output eval/reports/oracle.json
 
 cd ../frontend
 npm ci

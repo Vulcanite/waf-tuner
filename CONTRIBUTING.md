@@ -28,7 +28,7 @@ npm ci
 npm run build
 ```
 
-Run fixture-only model evaluation without live traffic using the evaluator documented in `eval/README.md`. Live provider evaluation and lab stacks are release checks, not normal PR CI.
+Run fixture-only model evaluation without live traffic using the evaluator documented in `eval/README.md`. Live provider evaluation and lab stacks are release checks, not normal PR CI. Pull requests run the recorded eval job (`eval/recordings/oracle.jsonl`) so no API key is required.
 
 ```bash
 # Docker lab (ModSecurity + DVWA + UI)

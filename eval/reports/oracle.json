@@ -1,0 +1,4187 @@
+{
+  "generated_at": "2026-09-18T03:17:07.281291+00:00",
+  "model": "oracle",
+  "prompt_version": "offpath-v5-classify",
+  "prompt_sha256": "e87bbf2567b341ec655821fff07af16c11508d237140e864820749dd939de386",
+  "settings": {
+    "base_url": "http://127.0.0.1:8001/v1",
+    "model": "oracle",
+    "max_tokens": 1200,
+    "temperature": 0.01,
+    "timeout": 180.0
+  },
+  "summary": {
+    "fixtures": 264,
+    "schema_valid": 264,
+    "repair_rate": 0.0,
+    "attack_false_positives": 0,
+    "attack_uncertain": 0,
+    "benign_accuracy": 1.0
+  },
+  "confusion": {
+    "overall": {
+      "counts": {
+        "n": 264,
+        "schema_valid": 264,
+        "repaired": 0,
+        "attack": 161,
+        "benign": 103,
+        "attack_true_positive": 161,
+        "attack_false_positive": 0,
+        "attack_uncertain": 0,
+        "attack_invalid": 0,
+        "benign_true_positive": 0,
+        "benign_false_positive": 103,
+        "benign_uncertain": 0,
+        "benign_invalid": 0
+      },
+      "benign_accuracy": 1.0,
+      "attack_miss_rate": 0.0
+    },
+    "by_rule_id": {
+      "913100": {
+        "counts": {
+          "n": 4,
+          "schema_valid": 4,
+          "repaired": 0,
+          "attack": 3,
+          "benign": 1,
+          "attack_true_positive": 3,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 1,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": 1.0,
+        "attack_miss_rate": 0.0
+      },
+      "913120": {
+        "counts": {
+          "n": 2,
+          "schema_valid": 2,
+          "repaired": 0,
+          "attack": 2,
+          "benign": 0,
+          "attack_true_positive": 2,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "920170": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "920190": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "920220": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "920230": {
+        "counts": {
+          "n": 2,
+          "schema_valid": 2,
+          "repaired": 0,
+          "attack": 2,
+          "benign": 0,
+          "attack_true_positive": 2,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "920250": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "920270": {
+        "counts": {
+          "n": 2,
+          "schema_valid": 2,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 1,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 1,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": 1.0,
+        "attack_miss_rate": 0.0
+      },
+      "920273": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 0,
+          "benign": 1,
+          "attack_true_positive": 0,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 1,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": 1.0,
+        "attack_miss_rate": null
+      },
+      "920300": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 0,
+          "benign": 1,
+          "attack_true_positive": 0,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 1,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": 1.0,
+        "attack_miss_rate": null
+      },
+      "920320": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "920330": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "920340": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "920350": {
+        "counts": {
+          "n": 2,
+          "schema_valid": 2,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 1,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 1,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": 1.0,
+        "attack_miss_rate": 0.0
+      },
+      "920360": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "920440": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "920500": {
+        "counts": {
+          "n": 2,
+          "schema_valid": 2,
+          "repaired": 0,
+          "attack": 2,
+          "benign": 0,
+          "attack_true_positive": 2,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "930100": {
+        "counts": {
+          "n": 11,
+          "schema_valid": 11,
+          "repaired": 0,
+          "attack": 5,
+          "benign": 6,
+          "attack_true_positive": 5,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 6,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": 1.0,
+        "attack_miss_rate": 0.0
+      },
+      "930110": {
+        "counts": {
+          "n": 9,
+          "schema_valid": 9,
+          "repaired": 0,
+          "attack": 7,
+          "benign": 2,
+          "attack_true_positive": 7,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 2,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": 1.0,
+        "attack_miss_rate": 0.0
+      },
+      "930120": {
+        "counts": {
+          "n": 18,
+          "schema_valid": 18,
+          "repaired": 0,
+          "attack": 12,
+          "benign": 6,
+          "attack_true_positive": 12,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 6,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": 1.0,
+        "attack_miss_rate": 0.0
+      },
+      "930130": {
+        "counts": {
+          "n": 9,
+          "schema_valid": 9,
+          "repaired": 0,
+          "attack": 9,
+          "benign": 0,
+          "attack_true_positive": 9,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "931100": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "931110": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "931120": {
+        "counts": {
+          "n": 2,
+          "schema_valid": 2,
+          "repaired": 0,
+          "attack": 2,
+          "benign": 0,
+          "attack_true_positive": 2,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "931130": {
+        "counts": {
+          "n": 4,
+          "schema_valid": 4,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 3,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 3,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": 1.0,
+        "attack_miss_rate": 0.0
+      },
+      "932100": {
+        "counts": {
+          "n": 24,
+          "schema_valid": 24,
+          "repaired": 0,
+          "attack": 16,
+          "benign": 8,
+          "attack_true_positive": 16,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 8,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": 1.0,
+        "attack_miss_rate": 0.0
+      },
+      "932105": {
+        "counts": {
+          "n": 10,
+          "schema_valid": 10,
+          "repaired": 0,
+          "attack": 8,
+          "benign": 2,
+          "attack_true_positive": 8,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 2,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": 1.0,
+        "attack_miss_rate": 0.0
+      },
+      "932110": {
+        "counts": {
+          "n": 6,
+          "schema_valid": 6,
+          "repaired": 0,
+          "attack": 4,
+          "benign": 2,
+          "attack_true_positive": 4,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 2,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": 1.0,
+        "attack_miss_rate": 0.0
+      },
+      "932115": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "932120": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "932130": {
+        "counts": {
+          "n": 2,
+          "schema_valid": 2,
+          "repaired": 0,
+          "attack": 2,
+          "benign": 0,
+          "attack_true_positive": 2,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "932140": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "932150": {
+        "counts": {
+          "n": 7,
+          "schema_valid": 7,
+          "repaired": 0,
+          "attack": 5,
+          "benign": 2,
+          "attack_true_positive": 5,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 2,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": 1.0,
+        "attack_miss_rate": 0.0
+      },
+      "932160": {
+        "counts": {
+          "n": 4,
+          "schema_valid": 4,
+          "repaired": 0,
+          "attack": 4,
+          "benign": 0,
+          "attack_true_positive": 4,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "932170": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "932171": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "932190": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "933110": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "933130": {
+        "counts": {
+          "n": 2,
+          "schema_valid": 2,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 1,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 1,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": 1.0,
+        "attack_miss_rate": 0.0
+      },
+      "933140": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "933150": {
+        "counts": {
+          "n": 9,
+          "schema_valid": 9,
+          "repaired": 0,
+          "attack": 7,
+          "benign": 2,
+          "attack_true_positive": 7,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 2,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": 1.0,
+        "attack_miss_rate": 0.0
+      },
+      "933160": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "933170": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "933190": {
+        "counts": {
+          "n": 4,
+          "schema_valid": 4,
+          "repaired": 0,
+          "attack": 4,
+          "benign": 0,
+          "attack_true_positive": 4,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "933200": {
+        "counts": {
+          "n": 2,
+          "schema_valid": 2,
+          "repaired": 0,
+          "attack": 2,
+          "benign": 0,
+          "attack_true_positive": 2,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "941100": {
+        "counts": {
+          "n": 22,
+          "schema_valid": 22,
+          "repaired": 0,
+          "attack": 15,
+          "benign": 7,
+          "attack_true_positive": 15,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 7,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": 1.0,
+        "attack_miss_rate": 0.0
+      },
+      "941110": {
+        "counts": {
+          "n": 16,
+          "schema_valid": 16,
+          "repaired": 0,
+          "attack": 11,
+          "benign": 5,
+          "attack_true_positive": 11,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 5,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": 1.0,
+        "attack_miss_rate": 0.0
+      },
+      "941120": {
+        "counts": {
+          "n": 12,
+          "schema_valid": 12,
+          "repaired": 0,
+          "attack": 11,
+          "benign": 1,
+          "attack_true_positive": 11,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 1,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": 1.0,
+        "attack_miss_rate": 0.0
+      },
+      "941140": {
+        "counts": {
+          "n": 8,
+          "schema_valid": 8,
+          "repaired": 0,
+          "attack": 7,
+          "benign": 1,
+          "attack_true_positive": 7,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 1,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": 1.0,
+        "attack_miss_rate": 0.0
+      },
+      "941150": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "941160": {
+        "counts": {
+          "n": 10,
+          "schema_valid": 10,
+          "repaired": 0,
+          "attack": 4,
+          "benign": 6,
+          "attack_true_positive": 4,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 6,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": 1.0,
+        "attack_miss_rate": 0.0
+      },
+      "941360": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "941380": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "942100": {
+        "counts": {
+          "n": 68,
+          "schema_valid": 68,
+          "repaired": 0,
+          "attack": 34,
+          "benign": 34,
+          "attack_true_positive": 34,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 34,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": 1.0,
+        "attack_miss_rate": 0.0
+      },
+      "942130": {
+        "counts": {
+          "n": 10,
+          "schema_valid": 10,
+          "repaired": 0,
+          "attack": 8,
+          "benign": 2,
+          "attack_true_positive": 8,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 2,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": 1.0,
+        "attack_miss_rate": 0.0
+      },
+      "942140": {
+        "counts": {
+          "n": 5,
+          "schema_valid": 5,
+          "repaired": 0,
+          "attack": 3,
+          "benign": 2,
+          "attack_true_positive": 3,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 2,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": 1.0,
+        "attack_miss_rate": 0.0
+      },
+      "942160": {
+        "counts": {
+          "n": 9,
+          "schema_valid": 9,
+          "repaired": 0,
+          "attack": 7,
+          "benign": 2,
+          "attack_true_positive": 7,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 2,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": 1.0,
+        "attack_miss_rate": 0.0
+      },
+      "942170": {
+        "counts": {
+          "n": 4,
+          "schema_valid": 4,
+          "repaired": 0,
+          "attack": 3,
+          "benign": 1,
+          "attack_true_positive": 3,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 1,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": 1.0,
+        "attack_miss_rate": 0.0
+      },
+      "942180": {
+        "counts": {
+          "n": 2,
+          "schema_valid": 2,
+          "repaired": 0,
+          "attack": 2,
+          "benign": 0,
+          "attack_true_positive": 2,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "942190": {
+        "counts": {
+          "n": 12,
+          "schema_valid": 12,
+          "repaired": 0,
+          "attack": 9,
+          "benign": 3,
+          "attack_true_positive": 9,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 3,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": 1.0,
+        "attack_miss_rate": 0.0
+      },
+      "942200": {
+        "counts": {
+          "n": 2,
+          "schema_valid": 2,
+          "repaired": 0,
+          "attack": 2,
+          "benign": 0,
+          "attack_true_positive": 2,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "942210": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "942250": {
+        "counts": {
+          "n": 3,
+          "schema_valid": 3,
+          "repaired": 0,
+          "attack": 2,
+          "benign": 1,
+          "attack_true_positive": 2,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 1,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": 1.0,
+        "attack_miss_rate": 0.0
+      },
+      "942260": {
+        "counts": {
+          "n": 2,
+          "schema_valid": 2,
+          "repaired": 0,
+          "attack": 2,
+          "benign": 0,
+          "attack_true_positive": 2,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "942280": {
+        "counts": {
+          "n": 2,
+          "schema_valid": 2,
+          "repaired": 0,
+          "attack": 2,
+          "benign": 0,
+          "attack_true_positive": 2,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "942290": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "942300": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "942330": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "942350": {
+        "counts": {
+          "n": 4,
+          "schema_valid": 4,
+          "repaired": 0,
+          "attack": 3,
+          "benign": 1,
+          "attack_true_positive": 3,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 1,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": 1.0,
+        "attack_miss_rate": 0.0
+      },
+      "942360": {
+        "counts": {
+          "n": 2,
+          "schema_valid": 2,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 1,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 1,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": 1.0,
+        "attack_miss_rate": 0.0
+      },
+      "942440": {
+        "counts": {
+          "n": 2,
+          "schema_valid": 2,
+          "repaired": 0,
+          "attack": 2,
+          "benign": 0,
+          "attack_true_positive": 2,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "942450": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "942500": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "942510": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "943100": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "943110": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "944100": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "944110": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      },
+      "944120": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
+        "attack_miss_rate": 0.0
+      }
+    }
+  },
+  "results": [
+    {
+      "id": "benign-natural-language-select",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-apostrophe-name",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-html-editor",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-shell-documentation",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-windows-path",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-url-field",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-union",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-boolean",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-time",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-script",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-handler",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-svg",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-command-semicolon",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-command-subshell",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-command-pipe",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-traversal-unix",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-traversal-encoded",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-path-probe-env",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-path-probe-git",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-boolean-or",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-boolean-or-comment",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-boolean-x",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-paren-or",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-and-true",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-union-password",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-union-all-null",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-union-version",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-union-mysql-user",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-union-information-schema",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-union-load-file",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-auth-bypass-comment",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-auth-bypass-hash",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-time-waitfor",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-time-sleep",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-time-benchmark",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-time-pg-sleep",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-time-if-sleep",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-time-subselect-sleep",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-extractvalue",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-updatexml",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-drop-table",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-insert-user",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-xp-cmdshell",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-shutdown",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-having",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-group-by",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-order-by",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-exists",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-mongo-gt",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-char-concat",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-inline-comment",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-hex-union",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-tick-bypass",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-stacked-merge",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-substr-blind",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-information-columns",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-into-outfile",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-or-numeric",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-union-select-star",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-like-tautology",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-semicolon-select",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-waitfor-time",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-comment-sequence",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-sqli-mysql-udf",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-script-alert",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-script-domain",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-script-src",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-img-onerror",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-svg-onload",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-body-onload",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-iframe-js",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-a-javascript",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-svg-script",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-details-ontoggle",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-input-onfocus",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-video-onerror",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-math-alert",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-object-data",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-embed-js",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-link-js",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-meta-refresh",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-formaction",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-srcdoc",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-template",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-xss-style-expression",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-jsfuck",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-angular-constructor",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-html-event-mixed",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-stored-script",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-svg-animate",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-marquee-onstart",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-xss-fromcharcode",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-xss-eval",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-xss-xss-document-write",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-rce-semicolon-id",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-rce-semicolon-passwd",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-rce-pipe-id",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-rce-pipe-passwd",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-rce-and-whoami",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-rce-or-uname",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-rce-subshell-whoami",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-rce-backtick-id",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-rce-newline-id",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-rce-powershell",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-rce-cmd-copy",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-rce-for-windows",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-rce-shellshock",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-rce-wildcard-bypass",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-rce-python-pty",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-rce-perl-exec",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-rce-nc-reverse",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-rce-curl-pipe-sh",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-rce-bash-i",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-rce-wget-output",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-rce-php-system",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-rce-env-ifs",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-lfi-unix-passwd",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-lfi-unix-shadow",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-lfi-encoded-passwd",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-lfi-encoded-shadow",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-lfi-double-encoded",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-lfi-dotdot-win",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-lfi-proc-self",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-lfi-php-filter",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-lfi-php-input",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-lfi-expect-id",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-lfi-file-passwd",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-lfi-env-probe",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-lfi-git-config",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-lfi-htaccess",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-lfi-wp-config",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-lfi-backup-sql",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-lfi-web-config",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-lfi-slash-etc-passwd",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-rfi-remote-ip",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-rfi-remote-php",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-rfi-remote-question",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-rfi-off-domain",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-rfi-data-wrapper",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-php-eval-get",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-php-assert",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-php-preg-replace-e",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-php-create-function",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-php-serialized-object",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-php-system-call",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-php-passthru",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-php-include-var",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-protocol-null-byte",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-protocol-utf8-overlong",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-protocol-double-url",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-protocol-missing-ua",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-protocol-empty-ua",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-protocol-host-ip",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-protocol-get-with-body",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-protocol-content-type-missing",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-protocol-range-abuse",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-protocol-restricted-ext",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-protocol-header-overflow",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-scanner-nikto-ua",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-scanner-sqlmap-ua",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-scanner-nmap-ua",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-scanner-phpmyadmin",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-scanner-wp-admin",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-scanner-java-serialized",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-scanner-java-processbuilder",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-scanner-session-fixation",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "attack-scanner-cookie-html",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-select-products",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-drop-down",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-union-size",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-order-by-price",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-from-warehouse",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-and-or-connectors",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-having-trouble",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-insert-tab",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-update-profile",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-delete-draft",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-join-newsletter",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-table-of-contents",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-where-is-order",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-limit-results",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-count-inventory",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-sleep-mode",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-benchmark-guide",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-information-schema",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-apostrophe-oreilly",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-apostrophe-dario",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-apostrophe-shannon",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-apostrophe-loreal",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-xss-html-em",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-xss-html-strong",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-xss-html-p",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-xss-html-br",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-xss-markdown-bold",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-xss-xssr-emphasis",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-xss-blockquote",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-xss-href-https",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-xss-img-static",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-xss-code-span",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-rce-shell-echo",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-rce-shell-ls",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-rce-shell-cat",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-rce-shell-pipe-docs",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-rce-shell-whoami-docs",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-rce-ip-literal",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-rce-hostname",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-lfi-windows-path",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-lfi-windows-docs",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-lfi-unix-home-docs",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-rfi-relative-url",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-lfi-docs-parent-path",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-lfi-etc-passwd-docs",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-login-special-password",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-login-admin-user",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-protocol-security-low",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-lfi-fi-include-home",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-xss-guestbook-name",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-sqli-lab-numeric",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-json-select-key",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-xss-css-expression-docs",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-xss-alert-docs",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-xss-onerror-docs",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-union-station",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-select-committee",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-drop-earrings",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-rce-exec-summary",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-rce-cmd-palette",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-protocol-null-chapter",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-lfi-percent-encoding-docs",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-protocol-localhost-docs",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-scanner-user-agent-chrome",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-json-ampersand",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-email-plus",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-version-sql",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-wait-for-docs",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-lfi-passwd-phrase",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-xss-script-kiddie-docs",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-xss-svg-logo",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-xss-confirm-attendance",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-php-eval-coursework",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-php-include-header",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-php-system-design",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-lfi-file-include-readme",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-rce-ping-hostname-docs",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-or-conjunction",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-in-stock",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-like-this",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-between-sizes",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-not-null-docs",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-xss-create-account-copy",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-rce-bash-tutorial-and",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-lfi-backslash-windows-docs",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-lfi-dotdot-explanation",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-rfi-http-example-url",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-cookie-theme",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-q-select-course",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-union-made",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-rce-exec-board",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-rce-id-parameter-name",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-lfi-passwd-reset-ticket",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-xml-update-docs",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-sqli-concat-names",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-xss-html-ul",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    },
+    {
+      "id": "benign-protocol-dvwa-login-get",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop"
+    }
+  ]
+}

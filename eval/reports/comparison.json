@@ -1,0 +1,24 @@
+{
+  "models": [
+    "oracle",
+    "MiniMax-M3"
+  ],
+  "summaries": {
+    "oracle": {
+      "fixtures": 264,
+      "schema_valid": 264,
+      "repair_rate": 0.0,
+      "attack_false_positives": 0,
+      "attack_uncertain": 0,
+      "benign_accuracy": 1.0
+    },
+    "MiniMax-M3": {
+      "fixtures": 19,
+      "schema_valid": 19,
+      "repair_rate": 0.10526315789473684,
+      "attack_false_positives": 0,
+      "attack_uncertain": 0,
+      "benign_accuracy": 0.8333333333333334
+    }
+  }
+}
