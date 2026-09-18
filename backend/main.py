@@ -23,6 +23,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from db.models import init_db, get_database_url
+from services.application_context import ensure_default_application_profile
 from services.crs_index import build_crs_index
 import services.crs_index as _crs_module
 from services.log_tailer import log_tailer
@@ -75,6 +76,8 @@ async def startup():
     )
     reconciliation = await init_db()
     logger.info("Database schema ready (draft reconciliation=%s)", reconciliation or {})
+    if await ensure_default_application_profile():
+        logger.info("Created default-lab application route profile")
 
     events_path = os.environ.get("EVENTS_JSONL_PATH", "/shared/events.jsonl")
     data_dir = os.path.dirname(events_path) or "/shared"

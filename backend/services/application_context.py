@@ -1,11 +1,145 @@
 """Application profile selection and route-specific context enrichment."""
+from __future__ import annotations
+
 import fnmatch
+import logging
+import os
 import re
+from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
 from sqlalchemy import select
 
-from db.models import ApplicationProfile
+from db.models import ApplicationProfile, get_session_factory
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_LAB_PROFILE_NAME = "default-lab"
+
+# Catch-all so first-run analysis can match a route before the operator writes
+# application-specific profiles. More specific operator routes still win because
+# `_route_score` ranks exact and templated paths above `/*`.
+DEFAULT_LAB_ROUTES = [
+    {
+        "path": "/login.php",
+        "methods": ["GET", "POST"],
+        "parameters": {
+            "username": "account username",
+            "password": "account password",
+            "user_token": "csrf token",
+            "Login": "form submit",
+        },
+        "notes": "DVWA login. Credential fields are not SQL.",
+    },
+    {
+        "path": "/security.php",
+        "methods": ["GET", "POST"],
+        "parameters": {
+            "security": "DVWA security level",
+            "seclev_submit": "form submit",
+            "user_token": "csrf token",
+        },
+        "notes": "DVWA security-level form.",
+    },
+    {
+        "path": "/vulnerabilities/sqli/",
+        "methods": ["GET", "POST"],
+        "parameters": {"id": "user id lookup", "Submit": "form submit"},
+        "notes": "DVWA SQL injection lab. Natural-language id values are search terms.",
+    },
+    {
+        "path": "/vulnerabilities/sqli_blind/",
+        "methods": ["GET", "POST"],
+        "parameters": {"id": "user id lookup", "Submit": "form submit"},
+        "notes": "DVWA blind SQL injection lab.",
+    },
+    {
+        "path": "/vulnerabilities/xss_r/",
+        "methods": ["GET", "POST"],
+        "parameters": {"name": "display name shown in greeting"},
+        "notes": "DVWA reflected XSS lab. Names may include punctuation.",
+    },
+    {
+        "path": "/vulnerabilities/xss_s/",
+        "methods": ["GET", "POST"],
+        "parameters": {
+            "txtName": "guestbook author name",
+            "mtxMessage": "guestbook message, may include sanitized markup",
+            "btnSign": "form submit",
+        },
+        "notes": "DVWA stored XSS / guestbook lab.",
+    },
+    {
+        "path": "/vulnerabilities/exec/",
+        "methods": ["GET", "POST"],
+        "parameters": {"ip": "host to ping", "Submit": "form submit"},
+        "notes": "DVWA command-injection lab. ip is a hostname or address.",
+    },
+    {
+        "path": "/vulnerabilities/fi/",
+        "methods": ["GET"],
+        "parameters": {"page": "local content page name"},
+        "notes": "DVWA file-inclusion lab. page is a local include name, not a filesystem path.",
+    },
+    {
+        "path": "/*",
+        "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
+        "parameters": {},
+        "notes": "Catch-all so first-run exclusions are not blocked pending operator profiles.",
+    },
+]
+
+
+def _seed_default_profile_enabled() -> bool:
+    return os.environ.get("SEED_DEFAULT_PROFILE", "true").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
+
+
+async def ensure_default_application_profile() -> bool:
+    """Insert a catch-all lab profile when no application profiles exist.
+
+    Returns True when a profile was created. Operator-authored profiles are
+    never overwritten. Disable with SEED_DEFAULT_PROFILE=false.
+    """
+    if not _seed_default_profile_enabled():
+        return False
+    factory = get_session_factory()
+    async with factory() as session:
+        existing = (
+            await session.execute(select(ApplicationProfile.id).limit(1))
+        ).scalar_one_or_none()
+        if existing is not None:
+            return False
+        now = datetime.now(timezone.utc)
+        session.add(
+            ApplicationProfile(
+                name=DEFAULT_LAB_PROFILE_NAME,
+                version=1,
+                active=True,
+                host_patterns=["*"],
+                context={
+                    "purpose": "OWASP DVWA lab application behind ModSecurity CRS",
+                    "languages": ["php"],
+                    "frameworks": ["dvwa"],
+                    "data_stores": ["mysql"],
+                },
+                routes=list(DEFAULT_LAB_ROUTES),
+                source_metadata={
+                    "seeded": True,
+                    "seed": DEFAULT_LAB_PROFILE_NAME,
+                    "replace_with_operator_profile": True,
+                },
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        await session.commit()
+    logger.info("Seeded default application profile %s", DEFAULT_LAB_PROFILE_NAME)
+    return True
 
 
 def _header(headers: dict, name: str) -> str:

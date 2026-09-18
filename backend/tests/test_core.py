@@ -363,6 +363,99 @@ class SqliteDbTests(unittest.TestCase):
                     os.environ["DATABASE_PATH"] = old_path
 
 
+class DefaultProfileSeedTests(unittest.TestCase):
+    def _isolate_db(self, directory: str):
+        from db import models as db_models
+
+        self._db_models = db_models
+        self._old_url = os.environ.get("DATABASE_URL")
+        self._old_path = os.environ.get("DATABASE_PATH")
+        self._old_seed = os.environ.get("SEED_DEFAULT_PROFILE")
+        os.environ.pop("DATABASE_URL", None)
+        os.environ["DATABASE_PATH"] = str(Path(directory) / "seed.db")
+        db_models._async_engine = None
+        db_models._async_session_factory = None
+
+    def _restore_db(self):
+        db_models = self._db_models
+        if db_models._async_engine is not None:
+            import asyncio
+
+            asyncio.run(db_models._async_engine.dispose())
+        db_models._async_engine = None
+        db_models._async_session_factory = None
+        if self._old_url is None:
+            os.environ.pop("DATABASE_URL", None)
+        else:
+            os.environ["DATABASE_URL"] = self._old_url
+        if self._old_path is None:
+            os.environ.pop("DATABASE_PATH", None)
+        else:
+            os.environ["DATABASE_PATH"] = self._old_path
+        if self._old_seed is None:
+            os.environ.pop("SEED_DEFAULT_PROFILE", None)
+        else:
+            os.environ["SEED_DEFAULT_PROFILE"] = self._old_seed
+
+    def test_first_run_creates_catch_all_profile(self):
+        import asyncio
+        from db.models import ApplicationProfile
+        from services.application_context import (
+            DEFAULT_LAB_PROFILE_NAME,
+            ensure_default_application_profile,
+            select_application_context,
+        )
+        from sqlalchemy import func, select
+
+        with tempfile.TemporaryDirectory() as directory:
+            self._isolate_db(directory)
+            try:
+                async def _run():
+                    await self._db_models.init_db()
+                    created = await ensure_default_application_profile()
+                    again = await ensure_default_application_profile()
+                    factory = self._db_models.get_session_factory()
+                    async with factory() as session:
+                        count = (
+                            await session.execute(select(func.count()).select_from(ApplicationProfile))
+                        ).scalar_one()
+                        profile, context = await select_application_context(
+                            session,
+                            {
+                                "method": "GET",
+                                "uri": "/vulnerabilities/sqli/?id=select+all",
+                                "raw_request": {"headers": {"Host": "localhost"}},
+                            },
+                        )
+                    return created, again, count, profile, context
+
+                created, again, count, profile, context = asyncio.run(_run())
+                self.assertTrue(created)
+                self.assertFalse(again)
+                self.assertEqual(count, 1)
+                self.assertEqual(profile.name, DEFAULT_LAB_PROFILE_NAME)
+                self.assertEqual(context["route"]["path"], "/vulnerabilities/sqli/")
+            finally:
+                self._restore_db()
+
+    def test_seed_skipped_when_disabled(self):
+        import asyncio
+
+        from services.application_context import ensure_default_application_profile
+
+        with tempfile.TemporaryDirectory() as directory:
+            self._isolate_db(directory)
+            os.environ["SEED_DEFAULT_PROFILE"] = "false"
+            try:
+                async def _run():
+                    await self._db_models.init_db()
+                    return await ensure_default_application_profile()
+
+                self.assertFalse(asyncio.run(_run()))
+            finally:
+                self._restore_db()
+
+
 class ProductInfoTests(unittest.TestCase):
     def test_no_edge_writes(self):
         from services.app_mode import product_info

@@ -76,7 +76,7 @@ Lab checks are intentionally outside normal pull-request CI:
 ## Operator workflow
 
 1. Point the backend at a ModSecurity JSON Serial audit log.
-2. Create matching application route profiles before requesting copyable exclusions.
+2. First run seeds a `default-lab` catch-all route profile so exclusions are not blocked. Replace it with profiles that match your application before treating drafts as production-ready.
 3. Send traffic through the WAF and review Cases and Exceptions.
 4. Validate approved rules in your environment, copy them into your configuration, run `nginx -t` or the Apache equivalent, and reload the edge yourself.
 
