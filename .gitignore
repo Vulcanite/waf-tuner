@@ -44,6 +44,8 @@ backend/data/*.key
 
 # Generated screenshots / local lab artifacts
 docs/screenshots/
+dogfood-output/
+*.png
 
 # System and editor files
 .DS_Store
@@ -56,10 +58,12 @@ Thumbs.db
 *.sln
 *.swp
 
-# Agent folders
+# Agent folders and editor scaffolding
 .agent/
 .agents/
 .codex/
+.claude/
+.cursor/
 
 # Graphify output directory
 graphify-out/
@@ -79,7 +83,5 @@ lab-data/*
 # E2E outputs
 e2e-output/*
 
-
-docs/
+# Live eval output (committed reports live under eval/reports/)
 eval/report.json
-dogfood-output/
