@@ -1,6 +1,6 @@
 # Roadmap
 
-These items are intentionally not in the current tree. They are the growth path after the eval corpus and recorded CI job land.
+These items are intentionally not in the current tree. They are the growth path after the eval corpus and recorded CI job.
 
 ## Coraza audit-log format support
 
@@ -20,4 +20,4 @@ v0.1 is loopback-only and unauthenticated by design. A single shared token or ba
 
 ## Standing multi-model eval matrix
 
-The recorded eval job now publishes a per-CRS-rule-ID confusion matrix for whatever recordings are committed. Making that report a release artifact—re-run against oracle plus at least one live model on each tagged version—turns the 200+ fixture corpus into ongoing evidence instead of a one-off dump. Live runs stay off pull-request CI so API keys never enter GitHub Actions.
+The recorded eval job publishes a per-CRS-rule-ID confusion matrix for whatever recordings are committed. Today that is weak evidence of model quality: of the 264 cases, 245 are synthesized, the `oracle` recording is derived from the labels (so CI checks the harness, not a model), and the only real model run covers the original 19 fixtures. The next step is to record at least one live model against the full corpus on each tagged version, publish that report as a release artifact, and add more captured (not synthesized) traffic. Live runs stay off pull-request CI so API keys never enter GitHub Actions.

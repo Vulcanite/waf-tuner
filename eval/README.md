@@ -1,6 +1,6 @@
 # Model evaluation
 
-`fixtures.jsonl` is the labeled release corpus. Each record has the original classifier context plus `label` (`attack` or `false_positive`) and `crs_rule_ids`.
+`fixtures.jsonl` is the labeled corpus: 264 cases, of which the original 19 are hand-built and 245 are synthesized (`"source": "synthesized"`). Each record has the classifier context plus `label` (`attack` or `false_positive`) and `crs_rule_ids`.
 
 ## Recorded eval (CI, no API key)
 
@@ -10,7 +10,7 @@ python3 eval/report.py --models oracle,MiniMax-M3 --output-dir eval/reports
 PYTHONPATH=eval python3 -m pytest -q eval/tests
 ```
 
-Recordings live in `eval/recordings/<model>.jsonl`. The `oracle` file is derived from fixture labels so CI can exercise the harness without a provider. `MiniMax-M3.jsonl` is the historical v0.1.0 run (original 19 fixtures only). Do not point recorded mode at a live `LLM_API_KEY`.
+Recordings live in `eval/recordings/<model>.jsonl`. The `oracle` file is derived from fixture labels so CI can exercise the harness without a provider; its perfect scores say nothing about model quality. `MiniMax-M3.jsonl` is the historical v0.1.0 run (original 19 fixtures only). Do not point recorded mode at a live `LLM_API_KEY`.
 
 ## Expand the corpus
 
