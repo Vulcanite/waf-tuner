@@ -8,7 +8,8 @@ Initial lab/evaluation release of the observe-and-recommend workflow:
 
 - Ingest ModSecurity JSON audit data and group alerts into review cases.
 - Run bounded, off-path LLM classification and system-build parameter-scoped exception drafts.
-- Require application context, deterministic validation, and human approval before a rule is available to copy.
+- Require a matching application route profile (`REQUIRE_APPLICATION_CONTEXT`, on by default; set `false` to disable), deterministic validation, and human approval before a rule is available to copy.
+- Seed a `default-lab` route profile (DVWA routes plus a `/*` catch-all) when no profiles exist, so the lab produces copyable rules under the default; disable with `SEED_DEFAULT_PROFILE=false`.
 - Merge reanalysis into the active pending draft for a scope (upgrade missing context → valid rule; never rewrite approved drafts).
 - Retire approve-time rule-ID conflicts as `stale` (no half-pending rows).
 - Opt-in CORS via `CORS_ALLOW_ORIGINS` (empty default for same-origin Compose UI proxy).

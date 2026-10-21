@@ -427,14 +427,21 @@ class DefaultProfileSeedTests(unittest.TestCase):
                                 "raw_request": {"headers": {"Host": "localhost"}},
                             },
                         )
-                    return created, again, count, profile, context
+                        _, fallback = await select_application_context(
+                            session,
+                            {"method": "POST", "uri": "/some/other/app/path", "raw_request": {}},
+                        )
+                    return created, again, count, profile, context, fallback
 
-                created, again, count, profile, context = asyncio.run(_run())
+                created, again, count, profile, context, fallback = asyncio.run(_run())
                 self.assertTrue(created)
                 self.assertFalse(again)
                 self.assertEqual(count, 1)
                 self.assertEqual(profile.name, DEFAULT_LAB_PROFILE_NAME)
                 self.assertEqual(context["route"]["path"], "/vulnerabilities/sqli/")
+                # Catch-all keeps REQUIRE_APPLICATION_CONTEXT (default on) satisfied
+                # for any lab path, even without a Host header.
+                self.assertEqual(fallback["route"]["path"], "/*")
             finally:
                 self._restore_db()
 

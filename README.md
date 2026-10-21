@@ -65,6 +65,8 @@ npm ci
 npm run build
 ```
 
+The eval corpus has 264 cases: the original 19 hand-built fixtures plus 245 synthesized ones. The `oracle` recording is derived from the fixture labels, so the recorded eval in CI tests the harness and scoring, not model quality. The only real model run committed so far covers the original 19 fixtures. See [eval/README.md](./eval/README.md).
+
 Lab checks are intentionally outside normal pull-request CI:
 
 ```bash
@@ -81,7 +83,7 @@ Lab checks are intentionally outside normal pull-request CI:
 ## Operator workflow
 
 1. Point the backend at a ModSecurity JSON Serial audit log.
-2. First run seeds a `default-lab` route profile (DVWA routes plus a `/*` catch-all) so analysis has route context, and exclusions are not blocked if you set `REQUIRE_APPLICATION_CONTEXT=true` (off by default). Replace it with profiles that match your application before treating drafts as production-ready.
+2. Copyable false-positive exclusions require a matching application route profile (`REQUIRE_APPLICATION_CONTEXT`, on by default). If the database has no profiles, first run seeds a `default-lab` profile (DVWA routes plus a `/*` catch-all) so the lab demo still produces copyable rules. That catch-all satisfies the check for every path, so replace it with profiles that match your application before treating drafts as production-ready. Set `REQUIRE_APPLICATION_CONTEXT=false` in `lab-data/.env` only if you accept drafts built without route context; `SEED_DEFAULT_PROFILE=false` skips the seed.
 3. Send traffic through the WAF and review Cases and Exceptions.
 4. Validate approved rules in your environment, copy them into your configuration, run `nginx -t` or the Apache equivalent, and reload the edge yourself.
 

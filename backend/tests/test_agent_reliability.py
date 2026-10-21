@@ -70,7 +70,18 @@ class ModelResponseTests(unittest.TestCase):
         self.assertEqual(status, "missing_application_context")
         self.assertIn("reanalyze", error)
 
-    def test_missing_route_context_allowed_by_default(self):
+    def test_missing_route_context_required_by_default(self):
+        result = json.loads(VALID.replace("true_positive", "false_positive"))
+        scope = {"uri": "/search", "rule_id": "942100", "collection": "ARGS", "parameter": "q"}
+        with patch.dict(os.environ, {}):
+            os.environ.pop("REQUIRE_APPLICATION_CONTEXT", None)
+            normalized, status, _ = asyncio.run(
+                agent._apply_draft_policy(result, scope, False)
+            )
+        self.assertIsNone(normalized)
+        self.assertEqual(status, "missing_application_context")
+
+    def test_missing_route_context_allowed_when_explicitly_disabled(self):
         result = json.loads(VALID.replace("true_positive", "false_positive"))
         scope = {
             "uri": "/search",

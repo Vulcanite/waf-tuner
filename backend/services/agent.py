@@ -491,13 +491,15 @@ async def _call_model(context: dict, _scope: dict, revision_id: int) -> tuple[di
 def _require_application_context() -> bool:
     """When true, FP exclusions need a matching Application Context route first.
 
-    Default off for lab / simple installs. Enable with REQUIRE_APPLICATION_CONTEXT=true.
+    Default on. The seeded `default-lab` profile supplies a route (including a
+    `/*` catch-all) so the lab still produces copyable rules. Disable explicitly
+    with REQUIRE_APPLICATION_CONTEXT=false (also accepts 0, no, off).
     """
-    return os.environ.get("REQUIRE_APPLICATION_CONTEXT", "false").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
+    return os.environ.get("REQUIRE_APPLICATION_CONTEXT", "true").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
     }
 
 

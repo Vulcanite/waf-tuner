@@ -11,7 +11,7 @@ Use GitHub private vulnerability reporting for this repository. Do not include l
 ## Security model and known risks
 
 - **Prompt and log injection:** audit evidence is untrusted. Instructions embedded in paths, headers, bodies, matched data, rules, or application context must not override the classifier contract.
-- **Classification errors:** model scores are not calibrated probabilities. False-positive decisions require affirmative application context, a high threshold, deterministic validation, and human review.
+- **Classification errors:** model scores are not calibrated probabilities. A copyable false-positive exclusion requires a matching application route profile, a high threshold, deterministic validation, and human review. The route-profile check is on by default (`REQUIRE_APPLICATION_CONTEXT=true`) and can be turned off with `REQUIRE_APPLICATION_CONTEXT=false`. The seeded `default-lab` profile includes a `/*` catch-all that satisfies this check for every path; replace it with real route profiles before using real traffic.
 - **Unsafe exclusions:** overly broad or conflicting exclusions can weaken a WAF. WAF Tuner creates parameter-scoped drafts only and never applies them.
 - **API exposure:** the v0.1 API is unauthenticated. Compose binds to loopback; remote access requires an authenticated TLS reverse proxy with the API kept private.
 - **Sensitive audit data:** URLs, headers, bodies, matched data, application context, and raw provider responses may contain secrets or personal data. Redaction reduces risk but cannot guarantee perfect detection.
