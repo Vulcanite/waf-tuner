@@ -55,11 +55,12 @@ python3.13 -m venv .venv
 .venv/bin/pip install -r requirements.txt pytest
 PYTHONPATH=. .venv/bin/python -m pytest -q
 
-# Recorded eval (no API key)
-PYTHONPATH=eval python3.13 -m pytest -q eval/tests
+# Recorded eval (no API key), from the repo root
+cd ..
+PYTHONPATH=eval backend/.venv/bin/python -m pytest -q eval/tests
 python3.13 eval/evaluate.py --mode recorded --model oracle --output eval/reports/oracle.json
 
-cd ../frontend
+cd frontend
 npm ci
 npm run build
 ```
@@ -80,7 +81,7 @@ Lab checks are intentionally outside normal pull-request CI:
 ## Operator workflow
 
 1. Point the backend at a ModSecurity JSON Serial audit log.
-2. First run seeds a `default-lab` catch-all route profile so exclusions are not blocked. Replace it with profiles that match your application before treating drafts as production-ready.
+2. First run seeds a `default-lab` route profile (DVWA routes plus a `/*` catch-all) so analysis has route context, and exclusions are not blocked if you set `REQUIRE_APPLICATION_CONTEXT=true` (off by default). Replace it with profiles that match your application before treating drafts as production-ready.
 3. Send traffic through the WAF and review Cases and Exceptions.
 4. Validate approved rules in your environment, copy them into your configuration, run `nginx -t` or the Apache equivalent, and reload the edge yourself.
 
