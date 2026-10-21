@@ -64,6 +64,8 @@ Thumbs.db
 .codex/
 .claude/
 .cursor/
+AGENTS.md
+CLAUDE.md
 
 # Graphify output directory
 graphify-out/
