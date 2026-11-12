@@ -8,6 +8,8 @@ Version `0.1.x` is for evaluation. Model classifications can be wrong, provider 
 
 [Architecture](./ARCHITECTURE.md) · [Security](./SECURITY.md) · [Integrations](./docs/integrations.md) · [Contributing](./CONTRIBUTING.md) · [Roadmap](./ROADMAP.md) · License: [Apache-2.0](./LICENSE)
 
+Read [the story behind this project](https://amishtp.tech/blog/waf-tuner).
+
 ## What it does
 
 - Ingests ModSecurity JSON Serial audit logs off the request path.
