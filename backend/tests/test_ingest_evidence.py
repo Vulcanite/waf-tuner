@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from sqlalchemy import select
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import DatabaseError, OperationalError
 
 from db import models
 from services.audit_event import normalize_audit_event
@@ -114,6 +114,22 @@ class EvidenceTests(unittest.TestCase):
             first['uri'] = '/search?q=music&q=books'
             self.assertNotEqual(identity, incident_fingerprint(first, first['matches'][0]))
 
+    def test_request_uri_match_keeps_the_query_for_model_and_fingerprint(self):
+        def uri_match(uri):
+            raw = audit_object()
+            raw['transaction']['request']['uri'] = uri
+            raw['transaction']['messages'] = [{'message': 'SQLi', 'details': {'ruleId': '942100', 'severity': '2'}}]
+            event = normalize_audit_event(raw)
+            match = {**event['matches'][0], 'collection': 'REQUEST_URI', 'parameter': None}
+            return event, match
+
+        with patch.dict(os.environ, {'INCIDENT_FINGERPRINT_KEY': 'test-key'}):
+            benign, attack = uri_match('/catalog?q=books'), uri_match("/catalog?q=1' OR 1=1--&password=hunter2")
+            self.assertNotEqual(incident_fingerprint(*benign)[0], incident_fingerprint(*attack)[0])
+            sent = serialize_inference_context(build_inference_context(*attack))
+        self.assertIn("q=1' OR 1=1--", sent)
+        self.assertNotIn('hunter2', sent)
+
     def test_restart_reconciles_the_actual_mirror_tail(self):
         with tempfile.TemporaryDirectory() as directory:
             active = Path(directory, 'events.jsonl')
@@ -170,6 +186,9 @@ class DurableIngestTests(unittest.IsolatedAsyncioTestCase):
                     db_attempts += 1
                     if db_attempts <= 3:
                         raise OperationalError('INSERT', {}, sqlite3.OperationalError('database is locked'))
+                    if db_attempts <= 6:
+                        # SQLITE_NOTADB is a plain DatabaseError, not an OperationalError; it must not skip the record.
+                        raise DatabaseError('INSERT', {}, sqlite3.DatabaseError('file is not a database'))
                     return await register_event(session, event, line)
 
                 wake = asyncio.Event()
@@ -185,7 +204,7 @@ class DurableIngestTests(unittest.IsolatedAsyncioTestCase):
                         finally:
                             worker.cancel()
                             await asyncio.gather(worker, return_exceptions=True)
-                    self.assertEqual((archive_attempts, db_attempts), (4, 4))
+                    self.assertEqual((archive_attempts, db_attempts), (4, 7))
                     self.assertEqual(len(archive.read_text().splitlines()), 1)
                     async with models.get_session_factory()() as session:
                         events = (await session.execute(select(models.AuditEvent))).scalars().all()
@@ -330,6 +349,63 @@ class DurableIngestTests(unittest.IsolatedAsyncioTestCase):
                             await asyncio.gather(worker, return_exceptions=True)
                     self.assertEqual(calls, ['bad', 'bad', 'bad', 'good'])
                 finally:
+                    await models.get_async_engine().dispose()
+                    models._async_engine = None
+                    models._async_session_factory = None
+
+    async def test_startup_database_error_is_retried_and_health_reports_ingest(self):
+        from fastapi import Response
+
+        import main
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            audit = root / 'audit.log'
+            audit.write_text(json.dumps(audit_object('after-lock')) + '\n')
+            env = {
+                'MODSEC_AUDIT_LOG': str(audit),
+                'EVENTS_JSONL_PATH': str(root / 'events.jsonl'),
+                'AUDIT_CURSOR_PATH': str(root / 'cursor.json'),
+                'RUNTIME_CONFIG_PATH': str(root / 'runtime.json'),
+                'DATABASE_URL': f'sqlite+aiosqlite:///{root / "test.db"}',
+                'INCIDENT_FINGERPRINT_KEY': 'test-key',
+            }
+            models._async_engine = None
+            models._async_session_factory = None
+            with patch.dict(os.environ, env):
+                await models.init_db()
+                load_cursor = log_tailer.load_cursor
+                states = []
+
+                def locked_twice(path):
+                    states.append(log_tailer.INGEST_STATE['state'])
+                    if len(states) <= 2:
+                        raise OperationalError('SELECT', {}, sqlite3.OperationalError('database is locked'))
+                    return load_cursor(path)
+
+                wake = asyncio.Event()
+                try:
+                    with (
+                        patch.object(log_tailer, 'INGEST_STORAGE_RETRY_SECONDS', 0.01),
+                        patch.object(log_tailer, 'load_cursor', locked_twice),
+                    ):
+                        worker = asyncio.create_task(log_tailer.log_tailer(wake))
+                        main.app.state.tailer_task = worker
+                        try:
+                            await asyncio.wait_for(wake.wait(), 5)
+                            response = Response()
+                            self.assertEqual((await main.health(response))['ingest'], 'running')
+                            self.assertNotEqual(response.status_code, 503)
+                        finally:
+                            worker.cancel()
+                            await asyncio.gather(worker, return_exceptions=True)
+                    self.assertEqual(states, ['starting', 'retrying', 'retrying'])
+                    # A finished tailer task means ingestion has stopped: health must say so.
+                    response = Response()
+                    body = await main.health(response)
+                    self.assertEqual((body['status'], body['ingest'], response.status_code), ('degraded', 'stopped', 503))
+                finally:
+                    main.app.state.tailer_task = None
                     await models.get_async_engine().dispose()
                     models._async_engine = None
                     models._async_session_factory = None

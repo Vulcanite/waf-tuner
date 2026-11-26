@@ -205,7 +205,7 @@ async def active_application_profiles(session):
 
 async def select_application_context(session, event: dict) -> tuple[ApplicationProfile | None, dict]:
     profiles = await active_application_profiles(session)
-    method = str(event.get("method") or "GET").upper()
+    method = str(event.get("method") or "").upper()
     path = split_request_uri(str(event.get("uri") or "/")).path or "/"
     return application_context_for(profiles, application_host(event), method, path)
 

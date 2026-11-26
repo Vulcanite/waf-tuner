@@ -134,7 +134,7 @@ def prepare_request_evidence(event: dict) -> dict:
         body_items = []
     return {
         'host': application_host(event),
-        'method': str(event.get('method') or 'GET').upper(),
+        'method': str(event.get('method') or '').upper(),
         'path': uri.path or '/',
         'query_items': parse_qsl(uri.query, keep_blank_values=True),
         'body_items': body_items,
@@ -179,6 +179,10 @@ def match_evidence(request: dict, collection: str | None, parameter: str | None,
         path = request['path']
         if collection == 'REQUEST_BASENAME':
             path = path.rsplit('/', 1)[-1]
+        if collection in ('REQUEST_URI', 'REQUEST_URI_RAW') and request['query_items']:
+            # REQUEST_URI includes the query string; without it two different payloads look identical.
+            # Raw pairs here keep the local fingerprint exact; the provider copy is redacted later.
+            return {'path': [path], 'uri_query': [[name, value] for name, value in request['query_items']]}
         return {'path': [path]}
     return {}
 
@@ -322,6 +326,10 @@ def build_inference_context(event, match, *, match_index=0, crs_rule=None, appli
     field_limit = max(64, min(8192, int(os.environ.get('AI_MAX_FIELD_CHARS', '8192'))))
     safe_target = _safe_target(collection, parameter)
     evidence = match_evidence(request, collection, parameter, match) if safe_target else {}
+    if 'uri_query' in evidence:
+        evidence['query'] = [
+            f'{name}={REDACTED if is_sensitive_name(name) else value}' for name, value in evidence.pop('uri_query')
+        ]
     values = {key: _bounded_values(items, field_limit) for key, items in evidence.items() if items}
     values_truncated = any(
         len(items) > 32 or any(isinstance(item, str) and len(item) > field_limit for item in items)

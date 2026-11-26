@@ -172,3 +172,23 @@ def test_live_eval_pauses_rejected_escalation_for_remaining_fixtures(monkeypatch
         assert result["classification"] == "uncertain"
     assert sent == ["initial", "escalation", "initial"]
     assert evaluate.public_settings(settings)["escalation_error"] == evaluate.ESCALATION_EFFORT_REJECTED
+
+
+def test_live_eval_does_not_escalate_a_repaired_verdict(monkeypatch):
+    # The backend returns a repaired verdict without escalating; the eval must report the same verdict.
+    monkeypatch.setenv("LLM_THINKING", "enabled")
+    monkeypatch.setenv("LLM_ESCALATION_REASONING_EFFORT", "high")
+    settings = evaluate.request_settings(model="mock")
+    uncertain = json.dumps({**oracle_response("false_positive"), "classification": "uncertain"})
+    replies = {"initial": '{"classification": "uncertain", "confidence": 0.5}', "repair": uncertain,
+               "escalation": json.dumps(oracle_response("attack"))}
+    sent = []
+
+    def fake_request(messages, settings, attempt_type="initial"):
+        sent.append(attempt_type)
+        return {"finish_reason": "stop", "message": {"content": replies[attempt_type]}}, 1, {}
+
+    monkeypatch.setattr(evaluate, "request", fake_request)
+    fixture = {"id": "repaired", "expected": "attack", "context": {"incident": {"rule_id": "10001"}}}
+    result, _ = evaluate.classify_live(fixture, settings)
+    assert (result["classification"], sent) == ("uncertain", ["initial", "repair"])

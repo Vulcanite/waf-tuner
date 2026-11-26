@@ -103,7 +103,8 @@ def normalize_audit_event(raw: str | dict) -> dict | None:
         'timestamp': (timestamp or datetime.now(timezone.utc)).isoformat(),
         'timestamp_source': 'audit_log' if timestamp else 'ingestion',
         'client_ip': txn.get('client_ip') or txn.get('remote_address') or '',
-        'method': str(request.get('method') or 'GET'),
+        # No default: a guessed method would let an exclusion pass the captured-scope check.
+        'method': str(request.get('method') or ''),
         'uri': str(request.get('uri') or '/'),
         'anomaly_score': score,
         'anomaly_score_source': score_source,

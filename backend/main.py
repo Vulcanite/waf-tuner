@@ -19,13 +19,13 @@ _root = os.path.join(os.path.dirname(__file__), "..")
 load_dotenv(os.path.join(_root, "lab-data", ".env"))
 load_dotenv(os.path.join(_root, ".env"))
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from db.models import init_db, get_database_url
 from services.application_context import ensure_default_application_profile
 from services.crs_index import initialize_crs_index
-from services.log_tailer import log_tailer
+from services.log_tailer import INGEST_STATE, log_tailer
 from services.agent import (
     agent_worker, analysis_lease_reaper, initialize_analysis_queue, start_analysis_provider,
     stop_analysis_provider,
@@ -105,7 +105,8 @@ async def startup():
 
     worker_count = max(1, min(16, int(os.environ.get("AGENT_WORKER_CONCURRENCY", "4"))))
     queue_changed = initialize_analysis_queue()
-    app.state.background_tasks = [asyncio.create_task(log_tailer(queue_changed))]
+    app.state.tailer_task = asyncio.create_task(log_tailer(queue_changed))
+    app.state.background_tasks = [app.state.tailer_task]
     if await start_analysis_provider(worker_count):
         app.state.background_tasks.extend([
             asyncio.create_task(analysis_lease_reaper()),
@@ -131,10 +132,17 @@ async def shutdown():
 
 
 @app.get("/health")
-async def health():
+async def health(response: Response):
     info = product_info()
+    tailer = getattr(app.state, "tailer_task", None)
+    # Healthy only while audit ingestion is actually running.
+    ingest = "stopped" if tailer is None or tailer.done() else INGEST_STATE["state"]
+    if ingest != "running":
+        response.status_code = 503
     return {
-        "status": "ok",
+        "status": "ok" if ingest == "running" else "degraded",
+        "ingest": ingest,
+        "ingest_error": INGEST_STATE["error"],
         "deploy_enabled": info["deploy_enabled"],
         "service": info["service"],
     }

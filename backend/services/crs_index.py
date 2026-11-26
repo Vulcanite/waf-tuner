@@ -224,3 +224,31 @@ def get_rule(rule_id: str) -> CRSRule | None:
     """Look up a rule by ID from the module-level singleton."""
     _refresh_index()
     return CRS_INDEX.get(str(rule_id))
+
+
+_snapshot_indexes: dict[str, dict[str, CRSRule]] = {}
+
+
+def get_rule_at(rule_id: str, digest: str | None) -> CRSRule | None:
+    """Rule from the ruleset that was active when the alert fired; None when that snapshot is gone.
+
+    Events ingested before digests were recorded have no digest and use the current ruleset.
+    """
+    if not digest or digest == index_status().get("digest"):
+        return get_rule(rule_id)
+    with _index_lock:
+        index = _snapshot_indexes.get(digest)
+        if index is None:
+            directory = _index_dir / ".snapshots" / digest if _index_dir else None
+            try:
+                if not (directory and re.fullmatch(r"[a-f0-9]{64}", digest) and directory.is_dir()
+                        and ruleset_digest(directory) == digest):
+                    return None
+                index = build_crs_index(directory, digest=digest)
+            except (OSError, ValueError) as exc:
+                logger.warning("Unable to load CRS snapshot %s: %s", digest[:12], exc)
+                return None
+            if len(_snapshot_indexes) >= 8:
+                _snapshot_indexes.clear()
+            _snapshot_indexes[digest] = index
+    return index.get(str(rule_id))

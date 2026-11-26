@@ -5,7 +5,7 @@ from services import crs_index
 
 
 def test_switches_to_published_ruleset_and_checks_its_digest(tmp_path, monkeypatch):
-    for name in ("_index_dir", "_marker_key", "_status", "CRS_INDEX"):
+    for name in ("_index_dir", "_marker_key", "_status", "CRS_INDEX", "_snapshot_indexes"):
         monkeypatch.setattr(crs_index, name, getattr(crs_index, name))
     source = tmp_path / "source"
     source.mkdir()
@@ -28,6 +28,11 @@ def test_switches_to_published_ruleset_and_checks_its_digest(tmp_path, monkeypat
     second = crs_index.get_rule("10001")
     assert second.operator == "@streq second"
     assert second.ruleset_digest != first.ruleset_digest
+    # An alert that fired under the first snapshot is still analysed against the first rule.
+    assert crs_index.get_rule_at("10001", first.ruleset_digest).operator == "@streq first"
+    assert crs_index.get_rule_at("10001", second.ruleset_digest).operator == "@streq second"
+    assert crs_index.get_rule_at("10001", None).operator == "@streq second"
+    assert crs_index.get_rule_at("10001", "b" * 64) is None
 
     marker = root / ".active-snapshot"
     fake_digest = "a" * 64

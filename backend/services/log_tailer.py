@@ -11,11 +11,12 @@ from typing import BinaryIO
 from zoneinfo import ZoneInfoNotFoundError
 
 from sqlalchemy import func, select
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import DataError, DBAPIError, IntegrityError
 
 from db.models import AuditEvent, get_session_factory
 from services.audit_cursor import count_lines, load_cursor, save_cursor
 from services.audit_event import normalize_audit_event as _parse_modsec_json
+from services.crs_index import index_status
 from services.incidents import register_event, transaction_exists
 
 logger = logging.getLogger(__name__)
@@ -24,10 +25,20 @@ EVENTS_JSONL_PATH = os.environ.get('EVENTS_JSONL_PATH', '/shared/events.jsonl')
 READ_CHUNK_BYTES = 8 * 1024 * 1024
 # Storage errors are retried until they clear; any other failure skips the record after this many tries.
 MAX_INGEST_ATTEMPTS = 3
-STORAGE_ERRORS = (OperationalError, OSError)
+
 INGEST_STORAGE_RETRY_SECONDS = 2
 MAX_AUDIT_RECORD_BYTES = 96 * 1024 * 1024
+# Read by /health: 'starting', 'retrying' (startup failed, will retry) or 'running'.
+INGEST_STATE = {'state': 'starting', 'error': None}
 _AUDIT_RECORD_START = re.compile(r'(?m)^[ \t]*\{[ \t]*"transaction"\s*:')
+
+
+def is_storage_error(exc: Exception) -> bool:
+    """Disk, lock or damaged-database faults: the record is fine and must wait, not be skipped."""
+    if isinstance(exc, OSError):
+        return True
+    # Constraint and data errors are about this record; every other database error is about storage.
+    return isinstance(exc, DBAPIError) and not isinstance(exc, (IntegrityError, DataError))
 
 
 def _decode_complete_objects(pending: bytes) -> tuple[list[dict], bytes]:
@@ -182,14 +193,25 @@ async def log_tailer(queue_changed: asyncio.Event | None = None):
     from services.runtime_config import get_audit_log_path
 
     events_path = os.environ.get('EVENTS_JSONL_PATH', EVENTS_JSONL_PATH)
-    cursor = await asyncio.to_thread(load_cursor, events_path)
-    archive_size, next_event_line, last_transaction, last_event_line = await asyncio.to_thread(_mirror_state, events_path, cursor)
     max_mirror_bytes = max(0, int(os.environ.get('EVENTS_JSONL_MAX_BYTES', '0')))
     factory = get_session_factory()
-    async with factory() as session:
-        last_registered_line = await session.scalar(select(func.max(AuditEvent.event_line)))
-        if last_registered_line is not None:
-            next_event_line = max(next_event_line, last_registered_line + 1)
+    INGEST_STATE.update(state='starting', error=None)
+    while True:
+        # A locked or missing database at startup must not end ingestion for good.
+        try:
+            cursor = await asyncio.to_thread(load_cursor, events_path)
+            archive_size, next_event_line, last_transaction, last_event_line = await asyncio.to_thread(
+                _mirror_state, events_path, cursor)
+            async with factory() as session:
+                last_registered_line = await session.scalar(select(func.max(AuditEvent.event_line)))
+            if last_registered_line is not None:
+                next_event_line = max(next_event_line, last_registered_line + 1)
+            break
+        except Exception as exc:
+            INGEST_STATE.update(state='retrying', error=f'startup failed ({type(exc).__name__})')
+            logger.error('Audit tailer startup failed (%s); retrying', type(exc).__name__)
+            await asyncio.sleep(INGEST_STORAGE_RETRY_SECONDS)
+    INGEST_STATE.update(state='running', error=None)
     fsync = os.environ.get('EVENTS_FSYNC', 'false').lower() in ('1', 'true', 'yes')
     reader = None
     drain_rotated = True
@@ -245,6 +267,8 @@ async def log_tailer(queue_changed: asyncio.Event | None = None):
                         if event is None:
                             continue
                         transaction_id = event['transaction_id']
+                        # Pin the ruleset that was live when the alert arrived, for analysis later.
+                        event['crs_ruleset_digest'] = index_status().get('digest')
                         try:
                             transaction_id.encode('utf-8')
                         except UnicodeEncodeError:
@@ -269,7 +293,7 @@ async def log_tailer(queue_changed: asyncio.Event | None = None):
                                 queue_changed.set()
                         except Exception as exc:
                             await session.rollback()
-                            if isinstance(exc, STORAGE_ERRORS):
+                            if is_storage_error(exc):
                                 # Disk full or database locked: keep the record and wait longer each time.
                                 invalid_attempts = 0
                                 storage_failures = min(storage_failures + 1, 6)

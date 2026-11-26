@@ -29,7 +29,7 @@ from db.models import (
     get_session_factory,
 )
 from services.application_context import profile_is_current, route_supports_exception, select_application_context
-from services.crs_index import get_rule, index_status
+from services.crs_index import get_rule, get_rule_at, index_status
 from services.draft_scope import canonical_scope_key, case_exception_scope, rule_numeric_id
 from services.exception_builder import build_exception_rule, can_build_exception
 from services.json_extract import extract_json as _extract_json
@@ -621,7 +621,8 @@ async def _analyze_claimed_case(case_id: int) -> None:
     async with factory() as session:
         case, occurrence, audit_event, event, match = await _load_case_evidence(session, case_id)
         profile, application_context = await select_application_context(session, event)
-        crs_rule = get_rule(case.rule_id)
+        # Analyse against the rule that fired, from the ruleset active when the alert was ingested.
+        crs_rule = get_rule_at(case.rule_id, event.get('crs_ruleset_digest'))
         crs_raw = crs_rule.raw if crs_rule else ""
         scope = case_exception_scope(case)
         context = build_inference_context(
@@ -706,7 +707,13 @@ async def _analyze_claimed_case(case_id: int) -> None:
     if result["classification"] == "false_positive":
         if not crs_rule or not context.get("crs_rule"):
             normalized_rule, validation_status, validation_error = (
-                None, "missing_crs_rule", "Load the ruleset used by ModSecurity and reanalyze.",
+                None, "missing_crs_rule", "Load the ruleset ModSecurity used for this alert and reanalyze.",
+            )
+        elif validation_status == "valid" and (get_rule(case.rule_id) or crs_rule).raw != crs_rule.raw:
+            # The exclusion would be deployed against today's rule, which no longer matches the one that fired.
+            normalized_rule, validation_status, validation_error = (
+                None, "rule_changed_since_alert",
+                "This rule changed after the alert fired. Review a new alert under the current ruleset.",
             )
         elif validation_status == "valid" and crs_rule.chain:
             normalized_rule, validation_status, validation_error = (
@@ -734,12 +741,8 @@ async def _analyze_claimed_case(case_id: int) -> None:
         await _fence_case(session, case_id)
         revision = await session.get(AnalysisRevision, revision_id)
         case = await session.get(AnalysisCase, case_id)
-        current_rule = get_rule(case.rule_id)
-        ruleset_changed = (
-            (current_rule.raw if current_rule else "") != crs_raw
-            or getattr(current_rule, "ruleset_digest", None) != getattr(crs_rule, "ruleset_digest", None)
-            or _analysis_generation(index_status()) != generation
-        )
+        # The pinned rule cannot change; a ruleset published mid-analysis changes the generation.
+        ruleset_changed = _analysis_generation(index_status()) != generation
         if ruleset_changed or not await profile_is_current(session, event, profile_id, profile_version):
             revision.state = "stale"
             revision.validation_status = "stale_context"

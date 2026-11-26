@@ -82,6 +82,15 @@ class ModelResponseTests(unittest.TestCase):
         result = json.loads(VALID.replace("true_positive", "false_positive"))
         self.assertEqual(asyncio.run(agent._apply_draft_policy(result, scope, True))[1], "valid")
 
+    def test_repaired_verdict_is_not_escalated(self):
+        # Mirrors eval/tests: initial invalid, repair "uncertain"; the worker must stop after two calls.
+        uncertain = VALID.replace("true_positive", "uncertain")
+        provider = AsyncMock(side_effect=['{"classification":"uncertain","confidence":0.5}', uncertain, VALID])
+        settings = {**request_settings(), "escalation_effort": "high"}
+        with patch.object(agent, "_provider_request", provider), patch.object(agent, "_provider_settings", settings):
+            result, _, repaired = asyncio.run(agent._call_model({}, {}, 1))
+        self.assertEqual((result["classification"], repaired, provider.await_count), ("uncertain", True, 2))
+
     def test_missing_route_context_prevents_copyable_rule_when_required(self):
         result = json.loads(VALID.replace("true_positive", "false_positive"))
         scope = {"uri": "/search", "rule_id": "942100", "collection": "ARGS", "parameter": "q"}

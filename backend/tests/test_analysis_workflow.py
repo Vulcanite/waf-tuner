@@ -4,6 +4,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 from openai import AsyncOpenAI
 from sqlalchemy import select
@@ -13,7 +14,8 @@ from services import agent, crs_index
 from services.inference_retention import prune_audit_evidence, prune_inference_artifacts
 
 
-def test_audited_match_becomes_a_reviewable_exception(tmp_path, monkeypatch):
+@pytest.mark.parametrize("missing_method", [False, True])
+def test_audited_match_becomes_a_reviewable_exception(tmp_path, monkeypatch, missing_method):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     paths = {
         "DATABASE_PATH": tmp_path / "cases.db",
@@ -79,14 +81,17 @@ def test_audited_match_becomes_a_reviewable_exception(tmp_path, monkeypatch):
                 }],
             })
             assert profile.status_code == 200, profile.text
+            audited_request = {
+                "uri": "/catalog?q=catalog-sample&token=private-value",
+                "method": "GET",
+                "headers": {"Host": "catalog.test", "Cookie": "session=private-cookie"},
+            }
+            if missing_method:
+                del audited_request["method"]
             paths["MODSEC_AUDIT_LOG"].write_text(json.dumps({"transaction": {
                 "id": "fixture-transaction",
                 "time_stamp": "Mon Jan 01 12:00:00 2024",
-                "request": {
-                    "uri": "/catalog?q=catalog-sample&token=private-value",
-                    "method": "GET",
-                    "headers": {"Host": "catalog.test", "Cookie": "session=private-cookie"},
-                },
+                "request": audited_request,
                 "messages": [{"details": {
                     "ruleId": "10001", "data": "Matched Data: catalog-sample found within ARGS:q: catalog-sample",
                 }}],
@@ -104,6 +109,10 @@ def test_audited_match_becomes_a_reviewable_exception(tmp_path, monkeypatch):
             assert all(value not in evidence for value in ("private-value", "private-cookie", "fixture-transaction"))
 
             drafts = client.get("/api/exceptions?classification=false_positive").json()["items"]
+            if missing_method:
+                # The audit record has no method, so nothing may be approved with a guessed one.
+                assert all(client.post(f"/api/exceptions/{draft['id']}/approve").status_code != 200 for draft in drafts)
+                return
             assert len(drafts) == 1
             approved = client.post(f"/api/exceptions/{drafts[0]['id']}/approve")
             assert approved.status_code == 200, approved.text

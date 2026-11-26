@@ -246,8 +246,9 @@ def classify_live(fixture: dict, settings: dict) -> tuple[dict, dict]:
                     finish = "length" if exc.code == "truncated_output" else exc.code
                 except ValueError:
                     pass
+    # Same rule as the backend worker: a repaired verdict is final, so only a first-pass "uncertain" escalates.
     if (
-        parsed and parsed["classification"] == "uncertain"
+        parsed and not repaired and parsed["classification"] == "uncertain"
         and settings.get("escalation_effort") and not settings.get("escalation_error")
     ):
         escalated = True
