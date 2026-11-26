@@ -9,14 +9,11 @@ from __future__ import annotations
 import json
 import logging
 import os
-import threading
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_lock = threading.RLock()
-_cache: dict[str, Any] | None = None
 
 
 def _data_dir() -> Path:
@@ -38,62 +35,53 @@ def default_audit_log_path() -> str:
     )
 
 
-def _load_unlocked() -> dict[str, Any]:
-    global _cache
+def _read() -> dict[str, Any]:
     path = config_path()
     if path.exists():
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             if isinstance(data, dict):
-                _cache = data
                 return data
         except (OSError, json.JSONDecodeError) as exc:
             logger.warning("Could not read runtime config %s: %s", path, exc)
-    _cache = {}
-    return _cache
+    return {}
 
 
 def load() -> dict[str, Any]:
-    with _lock:
-        return dict(_load_unlocked())
+    return dict(_read())
 
 
 def save(updates: dict[str, Any]) -> dict[str, Any]:
     """Merge updates into runtime config and persist. Returns full config."""
-    with _lock:
-        current = _load_unlocked()
-        for key, value in updates.items():
-            if value is None:
-                current.pop(key, None)
-            else:
-                current[key] = value
-        path = config_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        tmp.replace(path)
-        global _cache
-        _cache = current
-        logger.info("Runtime config updated at %s", path)
-        return dict(current)
+    current = _read()
+    for key, value in updates.items():
+        if value is None:
+            current.pop(key, None)
+        else:
+            current[key] = value
+    path = config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(current, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    tmp.replace(path)
+    logger.info("Runtime config updated at %s", path)
+    return dict(current)
 
 
 def get_audit_log_path() -> str:
     """Active audit log path: runtime override, then env, then default."""
-    with _lock:
-        data = _load_unlocked()
-        configured = (data.get("modsec_audit_log") or "").strip()
-        if configured:
-            return configured
+    data = _read()
+    configured = (data.get("modsec_audit_log") or "").strip()
+    if configured:
+        return configured
     return default_audit_log_path()
 
 
 def is_audit_log_configured() -> bool:
     """True if operator explicitly set a path or the default/env file exists."""
-    with _lock:
-        data = _load_unlocked()
-        if (data.get("modsec_audit_log") or "").strip():
-            return True
+    data = _read()
+    if (data.get("modsec_audit_log") or "").strip():
+        return True
     path = default_audit_log_path()
     return bool(path) and os.path.exists(path)
 
@@ -102,9 +90,8 @@ def audit_log_status() -> dict[str, Any]:
     path = get_audit_log_path()
     exists = os.path.exists(path) if path else False
     size = os.path.getsize(path) if exists else 0
-    with _lock:
-        data = _load_unlocked()
-        explicit = bool((data.get("modsec_audit_log") or "").strip())
+    data = _read()
+    explicit = bool((data.get("modsec_audit_log") or "").strip())
     return {
         "modsec_audit_log": path,
         "explicitly_configured": explicit,

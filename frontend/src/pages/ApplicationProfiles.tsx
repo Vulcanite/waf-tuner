@@ -29,6 +29,7 @@ const EMPTY_ROUTES = JSON.stringify([
     path: '/search',
     methods: ['GET'],
     content_types: ['text/plain'],
+    parameters: { q: 'Product search accepts natural-language keywords' },
     dependencies: [],
     notes: 'Facts are advisory and should be verified by an operator.',
   },

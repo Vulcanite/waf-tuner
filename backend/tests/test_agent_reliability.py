@@ -13,7 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from db import models
 from db.models import AnalysisCase, AnalysisRevision, ExceptionDraft, InferenceAttempt
 from services import agent
-from services.redaction import REDACTED, sanitize_inference_context, split_and_redact_uri
+from services.llm_options import request_settings
 
 
 VALID = json.dumps({
@@ -28,9 +28,11 @@ VALID = json.dumps({
 class ModelResponseTests(unittest.TestCase):
     def test_tls_verification_defaults_on_and_can_be_disabled(self):
         with patch.dict(os.environ, {}, clear=True):
-            self.assertTrue(agent._verify_ssl())
+            self.assertTrue(request_settings()["verify_ssl"])
+        with patch.dict(os.environ, {"LLM_VERIFY_SSL": "typo"}, clear=True):
+            self.assertTrue(request_settings()["verify_ssl"])
         with patch.dict(os.environ, {"LLM_VERIFY_SSL": "false"}, clear=True):
-            self.assertFalse(agent._verify_ssl())
+            self.assertFalse(request_settings()["verify_ssl"])
 
     def test_parser_accepts_complete_fenced_and_reasoning_prefixed_objects(self):
         self.assertEqual(agent._extract_json(VALID)["classification"], "true_positive")
@@ -45,6 +47,18 @@ class ModelResponseTests(unittest.TestCase):
             "true_positive",
         )
 
+    def test_false_positive_below_threshold_becomes_uncertain(self):
+        from services.model_contract import classify_response
+
+        def verdict(classification, confidence):
+            raw = json.dumps({**json.loads(VALID), "classification": classification, "confidence": confidence})
+            return classify_response(raw, threshold=0.90)["classification"]
+
+        self.assertEqual(verdict("false_positive", 0.89), "uncertain")
+        self.assertEqual(verdict("false_positive", 0.90), "false_positive")
+        # The threshold only gates clearing an alert; a low-confidence detection stays a detection.
+        self.assertEqual(verdict("true_positive", 0.10), "true_positive")
+
     def test_parser_rejects_truncated_or_invalid_output(self):
         with self.assertRaises(ValueError):
             agent._extract_json('{"classification":"true_positive"')
@@ -52,12 +66,37 @@ class ModelResponseTests(unittest.TestCase):
             agent._extract_json("no object")
 
     def test_exactly_one_repair_is_attempted(self):
-        provider = AsyncMock(side_effect=["not json", VALID])
+        provider = AsyncMock(side_effect=['{"classification":"true_positive","confidence":0.95}', VALID])
         with patch.object(agent, "_provider_request", provider):
             result, _, repaired = asyncio.run(agent._call_model({}, {}, 1))
         self.assertTrue(repaired)
         self.assertEqual(result["classification"], "true_positive")
         self.assertEqual(provider.await_count, 2)
+
+    def test_only_a_false_positive_gets_an_exclusion_draft(self):
+        scope = {"host": "shop.example", "method": "GET", "uri": "/search",
+                 "rule_id": "942100", "collection": "ARGS", "parameter": "q"}
+        for classification in ("true_positive", "uncertain"):
+            result = json.loads(VALID.replace("true_positive", classification))
+            self.assertEqual(asyncio.run(agent._apply_draft_policy(result, scope, True)), (None, "not_applicable", None))
+        result = json.loads(VALID.replace("true_positive", "false_positive"))
+        self.assertEqual(asyncio.run(agent._apply_draft_policy(result, scope, True))[1], "valid")
+
+    def test_repaired_verdict_is_not_escalated(self):
+        # Mirrors eval/tests: initial invalid, repair "uncertain"; the worker must stop after two calls.
+        uncertain = VALID.replace("true_positive", "uncertain")
+        provider = AsyncMock(side_effect=['{"classification":"uncertain","confidence":0.5}', uncertain, VALID])
+        settings = {**request_settings(), "escalation_effort": "high"}
+        with patch.object(agent, "_provider_request", provider), patch.object(agent, "_provider_settings", settings):
+            result, _, repaired = asyncio.run(agent._call_model({}, {}, 1))
+        self.assertEqual((result["classification"], repaired, provider.await_count), ("uncertain", True, 2))
+
+    def test_evidence_policy_change_makes_older_verdicts_stale(self):
+        # Drafts built under an older evidence policy (e.g. a guessed GET) must not stay approvable.
+        with patch.dict(os.environ, {"LLM_API_KEY": "test"}):
+            current = agent._analysis_generation({})
+            with patch.object(agent, "EVIDENCE_POLICY_VERSION", agent.EVIDENCE_POLICY_VERSION - 1):
+                self.assertNotEqual(agent._analysis_generation({}), current)
 
     def test_missing_route_context_prevents_copyable_rule_when_required(self):
         result = json.loads(VALID.replace("true_positive", "false_positive"))
@@ -73,13 +112,13 @@ class ModelResponseTests(unittest.TestCase):
     def test_missing_route_context_required_by_default(self):
         result = json.loads(VALID.replace("true_positive", "false_positive"))
         scope = {"uri": "/search", "rule_id": "942100", "collection": "ARGS", "parameter": "q"}
-        with patch.dict(os.environ, {}):
-            os.environ.pop("REQUIRE_APPLICATION_CONTEXT", None)
-            normalized, status, _ = asyncio.run(
-                agent._apply_draft_policy(result, scope, False)
-            )
-        self.assertIsNone(normalized)
-        self.assertEqual(status, "missing_application_context")
+        for settings in ({}, {"REQUIRE_APPLICATION_CONTEXT": "typo"}):
+            with self.subTest(settings=settings), patch.dict(os.environ, settings, clear=True):
+                normalized, status, _ = asyncio.run(
+                    agent._apply_draft_policy(result, scope, False)
+                )
+                self.assertIsNone(normalized)
+                self.assertEqual(status, "missing_application_context")
 
     def test_missing_route_context_allowed_when_explicitly_disabled(self):
         result = json.loads(VALID.replace("true_positive", "false_positive"))
@@ -99,33 +138,11 @@ class ModelResponseTests(unittest.TestCase):
         self.assertIsNone(error)
 
     def test_failed_repair_is_terminal_invalid_output(self):
-        provider = AsyncMock(side_effect=["not json", "still not json"])
+        provider = AsyncMock(side_effect=['{"classification":"true_positive","confidence":0.95}', "still not json"])
         with patch.object(agent, "_provider_request", provider):
             with self.assertRaises(agent.InvalidOutputError):
                 asyncio.run(agent._call_model({}, {}, 1))
         self.assertEqual(provider.await_count, 2)
-
-
-class InferenceRedactionTests(unittest.TestCase):
-    def test_uri_and_every_context_location_are_sanitized(self):
-        uri = split_and_redact_uri("/search?q=shoes&token=secret")
-        self.assertEqual(uri["path"], "/search")
-        self.assertEqual(uri["query"]["token"], REDACTED)
-        context, fields = sanitize_inference_context({
-            "incident": {
-                "parameter": "password",
-                "matched_data": "secret payload",
-                "other_matches": [{"parameter": "api_key", "matched_data": "key value"}],
-            },
-            "request": {"headers": {"Authorization": "Bearer secret"}},
-            "application_context": {"client_secret": "value", "purpose": "search"},
-        })
-        self.assertEqual(context["incident"]["matched_data"], REDACTED)
-        self.assertEqual(context["incident"]["other_matches"][0]["matched_data"], REDACTED)
-        self.assertEqual(context["request"]["headers"]["Authorization"], REDACTED)
-        self.assertEqual(context["application_context"]["client_secret"], REDACTED)
-        self.assertEqual(context["application_context"]["purpose"], "search")
-        self.assertGreaterEqual(len(fields), 4)
 
 
 class SqliteAgentTests(unittest.TestCase):
@@ -493,7 +510,6 @@ class SqliteAgentTests(unittest.TestCase):
                     status="approved",
                     validation_status="valid",
                     proposed_rule=original,
-                    raw_proposed_rule=original,
                     rule_placement="before_crs",
                     analysis_revision_id=revision.id,
                     scope_key=scope_key,

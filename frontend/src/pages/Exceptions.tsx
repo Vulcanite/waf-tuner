@@ -1,16 +1,18 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import {
+  getException,
   getExceptions,
   approveException,
   rejectException,
-  downloadFalsePositivesExcel,
+  downloadFalsePositivesCsv,
 } from '../api'
 
 const TABS = [
   { key: 'pending', label: 'Pending Review' },
   { key: 'approved', label: 'Reviewed / ready to copy' },
   { key: 'rejected', label: 'Rejected' },
+  { key: 'stale', label: 'Stale' },
 ]
 
 function confidenceBorder(confidence: number) {
@@ -19,27 +21,12 @@ function confidenceBorder(confidence: number) {
   return 'border-l-4 border-l-zinc-500'
 }
 
-function ExpandableBlock({
-  label,
-  children,
-  defaultOpen = false,
-}: {
-  label: string
-  children: ReactNode
-  defaultOpen?: boolean
-}) {
-  const [open, setOpen] = useState(defaultOpen)
+function ExpandableBlock({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="text-xs muted hover:opacity-80 flex items-center gap-1 mb-1"
-      >
-        {open ? '▼' : '▶'} {label}
-      </button>
-      {open && children}
-    </div>
+    <details>
+      <summary className="text-xs muted cursor-pointer hover:opacity-80 mb-1">{label}</summary>
+      {children}
+    </details>
   )
 }
 
@@ -57,7 +44,7 @@ function operatorKind(name: string | undefined): string {
 }
 
 function ExceptionCard({
-  draft,
+  draft: draftSummary,
   onAction,
 }: {
   draft: any
@@ -68,11 +55,39 @@ function ExceptionCard({
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [open, setOpen] = useState(false)
+  const [detail, setDetail] = useState<any>(null)
+  const [detailError, setDetailError] = useState<string | null>(null)
+  const draft = detail || draftSummary
+
+  useEffect(() => {
+    if (!open) return
+    const controller = new AbortController()
+    setDetail(null)
+    setDetailError(null)
+    getException(draftSummary.id, controller.signal)
+      .then((data) => { if (!controller.signal.aborted) setDetail(data) })
+      .catch((err) => { if (!controller.signal.aborted) setDetailError(err.message) })
+    return () => controller.abort()
+  }, [open, draftSummary.id, draftSummary.status, draftSummary.analysis_revision_id])
 
   const copyRule = async () => {
-    if (!draft.proposed_rule) return
+    setActionError(null)
+    let currentRule: string
     try {
-      await navigator.clipboard.writeText(draft.proposed_rule)
+      const current = await getException(draft.id)
+      if (current.status !== 'approved' || current.validation_status !== 'valid' || !current.proposed_rule) {
+        setActionError('This draft requires a current approval before it can be copied.')
+        onAction()
+        return
+      }
+      currentRule = current.proposed_rule
+    } catch (err: any) {
+      setActionError(err.message)
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(currentRule)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
@@ -123,7 +138,7 @@ function ExceptionCard({
     !!draft.proposed_rule
 
   return (
-    <details className={`card ${confidenceBorder(draft.confidence)}`}>
+    <details className={`card ${confidenceBorder(draft.confidence)}`} onToggle={(e) => setOpen(e.currentTarget.open)}>
       <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -145,33 +160,19 @@ function ExceptionCard({
           <span className="text-xs muted">Open details ▾</span>
         </div>
       </summary>
-      <div className="space-y-4 mt-4 border-t border-stone-200 dark:border-zinc-800 pt-4">
+      {open && !detail && (
+        <p className="text-xs muted mt-4" aria-live="polite">{detailError || 'Loading evidence…'}</p>
+      )}
+      {open && detail && <div className="space-y-4 mt-4 border-t border-stone-200 dark:border-zinc-800 pt-4">
       {/* 1. Decision summary */}
       <section>
         <p className="section-label">Decision</p>
         <p className="text-sm leading-relaxed font-medium">{draft.verdict}</p>
-        <div className="flex flex-wrap gap-2 mt-2 text-xs items-center">
-          <span
-            className={`badge badge-${
-              draft.classification === 'false_positive'
-                ? 'valid'
-                : draft.classification === 'true_positive'
-                  ? 'rejected'
-                  : 'pending'
-            }`}
-          >
-            {draft.classification}
-          </span>
-          <span className="text-amber-700 dark:text-amber-400 font-semibold">
-            model score {Math.round((draft.confidence || 0) * 100)}%
-          </span>
-          <span className="muted">{draft.status}</span>
-          {event.anomaly_score != null && (
-            <span className="muted" title="Computed anomaly score for this transaction (other rules may still fire)">
-              txn anomaly {event.anomaly_score}
-            </span>
-          )}
-        </div>
+        {event.anomaly_score != null && (
+          <p className="mt-2 text-xs muted" title="Computed anomaly score for this transaction (other rules may still fire)">
+            txn anomaly {event.anomaly_score}
+          </p>
+        )}
         {(draft.context_factors || []).length > 0 && (
           <ul className="mt-2 text-xs muted list-disc pl-4">
             {draft.context_factors.slice(0, 5).map((f: string, i: number) => (
@@ -273,6 +274,7 @@ function ExceptionCard({
             <p className="font-semibold text-amber-700 dark:text-amber-400">{parameter}</p>
           </div>
         </div>
+        {zone.host && <p className="text-xs muted mt-1">Host {zone.host}</p>}
         {event.uri && event.uri !== zone.uri && (
           <p className="text-xs muted mt-1">Full request URI: {event.uri}</p>
         )}
@@ -310,7 +312,7 @@ function ExceptionCard({
             )}
           </div>
         ) : (
-          <div className="mono-block text-xs muted">—</div>
+          <div className="mono-block text-xs muted">{event.evidence_expired ? 'Audit evidence expired' : '—'}</div>
         )}
         {event.raw_request?.body != null && event.raw_request.body !== '' && (
           <div className="mt-2">
@@ -356,11 +358,13 @@ function ExceptionCard({
             <div className="mono-block rule-ok text-xs break-all whitespace-pre-wrap">
               {draft.proposed_rule}
             </div>
-            <div className="flex flex-wrap gap-2 mt-2">
-              <button type="button" className="btn-ghost text-xs" onClick={copyRule}>
-                {copied ? '✓ Copied' : '⎘ Copy SecRule'}
-              </button>
-            </div>
+            {draft.status === 'approved' && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                <button type="button" className="btn-ghost text-xs" onClick={copyRule}>
+                  {copied ? '✓ Copied' : '⎘ Copy SecRule'}
+                </button>
+              </div>
+            )}
             <p className="text-xs muted mt-2 leading-relaxed border-l-2 border-amber-600/60 pl-2">
               Copy this rule into your ModSecurity exceptions include (Nginx or Apache). It disables{' '}
               <span className="text-amber-700 dark:text-amber-400 font-mono">rule {ruleId}</span> only for{' '}
@@ -436,7 +440,7 @@ function ExceptionCard({
             )}
           </>
         )}
-        {draft.status === 'approved' && (
+        {draft.status === 'approved' && draft.proposed_rule && (
           <span className="badge-approved badge">Ready to copy into your config</span>
         )}
         {draft.status === 'rejected' && draft.rejection_reason && (
@@ -448,7 +452,7 @@ function ExceptionCard({
           {actionError}
         </div>
       )}
-      </div>
+      </div>}
     </details>
   )
 }
@@ -512,9 +516,9 @@ export default function Exceptions() {
         <button
           type="button"
           className="btn-ghost text-xs"
-          onClick={() => downloadFalsePositivesExcel(tab === 'pending' ? undefined : tab)}
+          onClick={() => downloadFalsePositivesCsv(tab === 'pending' ? undefined : tab)}
         >
-          Export FPs (Excel)
+          Export FPs (CSV)
         </button>
       </div>
 
@@ -577,8 +581,7 @@ export default function Exceptions() {
           {classification === 'true_positive' && (
             <>
               {' '}
-              True positives appear after analysis completes. Older runs only stored FP drafts —
-              reanalyze cases or re-run the matrix after upgrading the backend.
+              See Cases for new true-positive verdicts.
             </>
           )}
         </p>

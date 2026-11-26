@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from services.app_mode import product_info
 from services import runtime_config
 from services.agent import public_model_settings
+from services.inference_retention import retention_days
 from services.redaction import SENSITIVE_HEADERS
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -24,6 +25,8 @@ class IngestBody(BaseModel):
 @router.get("/product")
 async def get_product_settings():
     """Product info + audit-log contract."""
+    audit_days = retention_days("AUDIT_EVIDENCE_RETENTION_DAYS")
+    provider_days = retention_days("INFERENCE_ARTIFACT_RETENTION_DAYS")
     return {
         **product_info(),
         "inference": {
@@ -34,7 +37,12 @@ async def get_product_settings():
                 "sensitive_keys": "Configured by SENSITIVE_FIELD_PATTERN",
                 "scope": "URI query, headers, body, matched data, sibling matches, and application context",
             },
-            "retention": "Raw events and complete provider responses persist locally until the operator removes them.",
+            "retention": (
+                f"SQLite audit evidence: {f'{audit_days} days' if audit_days else 'kept'}. "
+                f"Provider response excerpts: {f'{provider_days} days' if provider_days else 'kept'}."
+            ),
+            "audit_evidence_retention_days": audit_days or None,
+            "provider_response_retention_days": provider_days or None,
         },
     }
 

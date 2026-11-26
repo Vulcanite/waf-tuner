@@ -45,7 +45,7 @@ Compose publishes the UI, API, and lab WAF only on `127.0.0.1`. For remote acces
 | `lab-data/runtime_config.json` | Selected audit-log path |
 | `lab-data/crs-rules/` | CRS index used by the UI |
 
-Sensitive fields are redacted before inference, but sanitized evidence may be sent to the configured provider. Raw audit events and complete provider responses are retained locally until you remove the data. See [SECURITY.md](./SECURITY.md) before using real traffic.
+The backend sends bounded, match-specific evidence to the configured provider. Raw events stay in the local workspace. Optional age limits use `AUDIT_EVIDENCE_RETENTION_DAYS` and `INFERENCE_ARTIFACT_RETENTION_DAYS`. To bound the JSONL mirror, set `EVENTS_JSONL_MAX_BYTES`. See [SECURITY.md](./SECURITY.md) before using real traffic.
 
 ## Verify a change
 
@@ -67,7 +67,7 @@ npm ci
 npm run build
 ```
 
-The eval corpus has 264 cases: the original 19 hand-built fixtures plus 245 synthesized ones. The `oracle` recording is derived from the fixture labels, so the recorded eval in CI tests the harness and scoring, not model quality. The only real model run committed so far covers the original 19 fixtures. See [eval/README.md](./eval/README.md).
+The eval corpus has 280 cases: the original 19 hand-built fixtures plus 261 synthesized ones. Application profiles follow the route, not the label, and include attacks on profiled routes. The `oracle` recording is derived from the fixture labels, so the recorded eval in CI tests the harness and scoring, not model quality. The only real model run committed so far covers the original 19 fixtures. See [eval/README.md](./eval/README.md).
 
 Lab checks are intentionally outside normal pull-request CI:
 
@@ -85,9 +85,15 @@ Lab checks are intentionally outside normal pull-request CI:
 ## Operator workflow
 
 1. Point the backend at a ModSecurity JSON Serial audit log.
-2. Copyable false-positive exclusions require a matching application route profile (`REQUIRE_APPLICATION_CONTEXT`, on by default). If the database has no profiles, first run seeds a `default-lab` profile (DVWA routes plus a `/*` catch-all) so the lab demo still produces copyable rules. That catch-all satisfies the check for every path, so replace it with profiles that match your application before treating drafts as production-ready. Set `REQUIRE_APPLICATION_CONTEXT=false` in `lab-data/.env` only if you accept drafts built without route context; `SEED_DEFAULT_PROFILE=false` skips the seed.
+2. Create an application profile for the host, route, and parameters you want to tune. Copyable false-positive exclusions require parameter semantics on the matching route by default. The seeded `default-lab` profile describes DVWA routes. Set `SEED_DEFAULT_PROFILE=false` when starting with your own profile.
 3. Send traffic through the WAF and review Cases and Exceptions.
 4. Validate approved rules in your environment, copy them into your configuration, run `nginx -t` or the Apache equivalent, and reload the edge yourself.
+
+The lab publishes a versioned copy of the CRS rules for the analyzer. For a bare-metal setup, point `CRS_RULES_DIR` at the rules used by your WAF and restart the backend after updating them. The analysis health endpoint reports the loaded ruleset digest and availability.
+
+Chained detections receive a verdict and stay in manual review for rule tuning. ModSecurity applies target exclusions to the first rule in a chain.
+
+Run `bash scripts/e2e_fp_suppression.sh` to verify the generated host, method, path, and parameter scope in an isolated ModSecurity container. See [Model evaluation](./eval/README.md) for testing classification against labeled audit events and comparing reasoning settings.
 
 ## Current boundaries
 

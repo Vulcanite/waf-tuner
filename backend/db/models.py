@@ -7,9 +7,6 @@ lives in a local SQLite database (lightweight default for lab / bare metal).
 from __future__ import annotations
 
 import os
-import hashlib
-import json
-import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -25,6 +22,7 @@ from sqlalchemy import (
     TIMESTAMP,
     UniqueConstraint,
     event,
+    inspect,
     text,
 )
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -37,33 +35,13 @@ def _default_sqlite_path() -> Path:
 
 
 def get_database_url() -> str:
-    """Return the async SQLAlchemy URL (SQLite by default)."""
-    explicit = (
-        os.environ.get("DATABASE_URL")
-        or os.environ.get("SQLITE_URL")
-        or ""
-    ).strip()
+    """Return the async SQLite URL. DATABASE_URL (a sqlite URL) overrides DATABASE_PATH."""
+    explicit = os.environ.get("DATABASE_URL", "").strip()
     if explicit:
-        # Allow either sqlite+aiosqlite:///... or a bare filesystem path.
-        if explicit.startswith("sqlite"):
-            return explicit
-        if "://" in explicit:
-            return explicit
-        path = Path(explicit).expanduser().resolve()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        return f"sqlite+aiosqlite:///{path}"
-
-    path = Path(
-        os.environ.get("DATABASE_PATH")
-        or os.environ.get("SQLITE_PATH")
-        or _default_sqlite_path()
-    ).expanduser().resolve()
+        return explicit
+    path = Path(os.environ.get("DATABASE_PATH") or _default_sqlite_path()).expanduser().resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
     return f"sqlite+aiosqlite:///{path}"
-
-
-def is_sqlite() -> bool:
-    return get_database_url().startswith("sqlite")
 
 
 class Base(DeclarativeBase):
@@ -106,7 +84,15 @@ class AuditEvent(Base):
     event_line = Column(Integer, nullable=False)
     timestamp = Column(TIMESTAMP(timezone=True), nullable=True)
     raw_event = Column(JSON, nullable=False)
+    path = Column(Text, nullable=True)
+    anomaly_score = Column(Integer, nullable=True)
     created_at = Column(TIMESTAMP(timezone=True), nullable=False, default=_utcnow)
+
+    __table_args__ = (
+        Index("audit_events_event_line_idx", "event_line"),
+        Index("audit_events_timestamp_idx", "timestamp"),
+        Index("audit_events_created_at_idx", "created_at"),
+    )
 
 
 class AnalysisCase(Base):
@@ -117,6 +103,7 @@ class AnalysisCase(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     fingerprint = Column(Text, nullable=False, unique=True)
     method = Column(Text, nullable=False)
+    application_host = Column(Text, nullable=True)
     path = Column(Text, nullable=False)
     rule_id = Column(Text, nullable=False)
     collection = Column(Text, nullable=True)
@@ -130,6 +117,9 @@ class AnalysisCase(Base):
     retry_count = Column(Integer, nullable=False, default=0)
     next_retry_at = Column(TIMESTAMP(timezone=True), nullable=True)
     lease_expires_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    lease_token = Column(Text, nullable=True)
+    enqueued_at = Column(TIMESTAMP(timezone=True), nullable=True, default=_utcnow)
+    completed_generation = Column(Text, nullable=True)
     last_error = Column(Text, nullable=True)
     created_at = Column(TIMESTAMP(timezone=True), nullable=False, default=_utcnow)
     updated_at = Column(TIMESTAMP(timezone=True), nullable=False, default=_utcnow)
@@ -137,6 +127,8 @@ class AnalysisCase(Base):
     __table_args__ = (
         Index("analysis_cases_state_retry_idx", "state", "next_retry_at"),
         Index("analysis_cases_rule_id_idx", "rule_id"),
+        Index("analysis_cases_last_seen_idx", "last_seen_at", "id"),
+        Index("analysis_cases_lease_idx", "state", "lease_expires_at"),
     )
 
 
@@ -166,6 +158,8 @@ class IncidentOccurrence(Base):
             name="incident_occurrences_transaction_match_uq",
         ),
         Index("incident_occurrences_case_idx", "analysis_case_id"),
+        Index("incident_occurrences_latest_idx", "analysis_case_id", "observed_at", "id"),
+        Index("incident_occurrences_event_rule_idx", "audit_event_id", "rule_id"),
         Index("incident_occurrences_fingerprint_idx", "fingerprint"),
     )
 
@@ -191,13 +185,15 @@ class AnalysisRevision(Base):
     error_code = Column(Text, nullable=True)
     state = Column(Text, nullable=False, default="analyzing")
     context = Column(JSON, nullable=False, default=dict)
+    stage_metrics = Column(JSON, nullable=True)
+    pending_repair_input = Column(Text, nullable=True)
+    evidence_digest = Column(Text, nullable=True)
     classification = Column(Text, nullable=True)
     confidence = Column(Float, nullable=True)
     verdict = Column(Text, nullable=True)
     context_factors = Column(JSON, nullable=False, default=list)
     uncertainty_factors = Column(JSON, nullable=False, default=list)
     raw_response = Column(Text, nullable=True)
-    raw_proposed_rule = Column(Text, nullable=True)
     proposed_rule_scope = Column(JSON, nullable=True)
     normalized_rule = Column(Text, nullable=True)
     validation_status = Column(Text, nullable=False, default="pending")
@@ -208,6 +204,7 @@ class AnalysisRevision(Base):
     __table_args__ = (
         Index("analysis_revisions_case_idx", "analysis_case_id"),
         Index("analysis_revisions_state_idx", "state"),
+        Index("analysis_revisions_evidence_idx", "analysis_case_id", "evidence_digest"),
     )
 
 
@@ -231,7 +228,6 @@ class ExceptionDraft(Base):
         nullable=True,
         unique=True,
     )
-    raw_proposed_rule = Column(Text, nullable=True)
     validation_status = Column(Text, nullable=False, default="pending")
     validation_error = Column(Text, nullable=True)
     rule_placement = Column(Text, nullable=True)
@@ -245,6 +241,16 @@ class ExceptionDraft(Base):
     __table_args__ = (
         Index("exception_drafts_status_idx", "status"),
         Index("exception_drafts_transaction_id_idx", "transaction_id"),
+        # One active draft per scope and per numeric rule ID. The agent's
+        # INSERT OR IGNORE relies on these to resolve concurrent workers.
+        Index(
+            "exception_drafts_active_scope_uq", "scope_key", unique=True,
+            sqlite_where=text("status IN ('pending','approved') AND classification = 'false_positive'"),
+        ),
+        Index(
+            "exception_drafts_active_rule_id_uq", "rule_numeric_id", unique=True,
+            sqlite_where=text("status IN ('pending','approved') AND classification = 'false_positive' AND rule_numeric_id IS NOT NULL"),
+        ),
     )
 
 
@@ -267,6 +273,8 @@ class InferenceAttempt(Base):
     prompt_tokens = Column(Integer, nullable=True)
     completion_tokens = Column(Integer, nullable=True)
     total_tokens = Column(Integer, nullable=True)
+    reasoning_tokens = Column(Integer, nullable=True)
+    provider_ms = Column(Integer, nullable=True)
     raw_response = Column(Text, nullable=True)
 
     __table_args__ = (
@@ -293,13 +301,8 @@ def get_async_engine():
     global _async_engine
     if _async_engine is None:
         url = get_database_url()
-        kwargs = {"echo": False}
-        if url.startswith("sqlite"):
-            # check_same_thread is for the sync sqlite3 driver; aiosqlite is fine without it.
-            kwargs["connect_args"] = {"timeout": 30}
-        _async_engine = create_async_engine(url, **kwargs)
-        if url.startswith("sqlite"):
-            event.listen(_async_engine.sync_engine, "connect", _configure_sqlite)
+        _async_engine = create_async_engine(url, echo=False, hide_parameters=True, connect_args={"timeout": 30})
+        event.listen(_async_engine.sync_engine, "connect", _configure_sqlite)
     return _async_engine
 
 
@@ -318,210 +321,41 @@ async def get_db() -> AsyncSession:
         yield session
 
 
-def _table_columns(conn, table: str) -> set[str]:
-    rows = conn.execute(text(f"PRAGMA table_info({table})")).fetchall()
-    # PRAGMA table_info: cid, name, type, notnull, dflt_value, pk
-    return {row[1] for row in rows}
+def _migrate_schema(connection) -> None:
+    Base.metadata.create_all(connection)
+    added_columns = {
+        AuditEvent: ("path", "anomaly_score"),
+        AnalysisCase: ("application_host", "lease_token", "enqueued_at", "completed_generation"),
+        IncidentOccurrence: (),
+        AnalysisRevision: ("stage_metrics", "pending_repair_input", "evidence_digest"),
+        InferenceAttempt: ("reasoning_tokens", "provider_ms"),
+    }
+    inspector = inspect(connection)
+    for model, names in added_columns.items():
+        table = model.__table__
+        existing = {column["name"] for column in inspector.get_columns(table.name)}
+        for name in names:
+            if name not in existing:
+                sql_type = table.c[name].type.compile(dialect=connection.dialect)
+                connection.exec_driver_sql(f'ALTER TABLE "{table.name}" ADD COLUMN "{name}" {sql_type}')
+        for index in table.indexes:
+            index.create(connection, checkfirst=True)
+
+    for index in ExceptionDraft.__table__.indexes:
+        if not index.unique:
+            continue
+        existing_sql = connection.execute(
+            text("SELECT sql FROM sqlite_master WHERE type='index' AND name=:name"),
+            {"name": index.name},
+        ).scalar_one_or_none()
+        if existing_sql and "classification = 'false_positive'" not in existing_sql:
+            # Index names and predicates come from model metadata, never from runtime input.
+            index.drop(connection)
+        index.create(connection, checkfirst=True)
 
 
-async def init_db():
-    """Create all tables and indexes idempotently using SQLAlchemy metadata."""
+async def init_db() -> None:
+    """Create tables and apply additive changes to prior SQLite databases."""
     engine = get_async_engine()
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-        # Lightweight compatibility: add columns if an older SQLite file exists.
-        def _migrate(sync_conn):
-            if not str(engine.url).startswith("sqlite"):
-                return {}
-            try:
-                cols = _table_columns(sync_conn, "exception_drafts")
-            except Exception:
-                return {}
-            reconciliation = {"non_false_positive": 0, "duplicate_scope": 0, "id_conflict": 0}
-            alters = []
-            if "analysis_revision_id" not in cols:
-                alters.append(
-                    "ALTER TABLE exception_drafts ADD COLUMN analysis_revision_id INTEGER"
-                )
-            if "raw_proposed_rule" not in cols:
-                alters.append("ALTER TABLE exception_drafts ADD COLUMN raw_proposed_rule TEXT")
-            if "validation_status" not in cols:
-                alters.append(
-                    "ALTER TABLE exception_drafts ADD COLUMN validation_status TEXT "
-                    "NOT NULL DEFAULT 'pending'"
-                )
-            if "validation_error" not in cols:
-                alters.append("ALTER TABLE exception_drafts ADD COLUMN validation_error TEXT")
-            if "rule_placement" not in cols:
-                alters.append("ALTER TABLE exception_drafts ADD COLUMN rule_placement TEXT")
-            if "scope_key" not in cols:
-                alters.append("ALTER TABLE exception_drafts ADD COLUMN scope_key TEXT")
-            if "rule_numeric_id" not in cols:
-                alters.append("ALTER TABLE exception_drafts ADD COLUMN rule_numeric_id INTEGER")
-            if "supporting_case_count" not in cols:
-                alters.append(
-                    "ALTER TABLE exception_drafts ADD COLUMN supporting_case_count INTEGER "
-                    "NOT NULL DEFAULT 1"
-                )
-            for statement in alters:
-                sync_conn.execute(text(statement))
-
-            revision_cols = _table_columns(sync_conn, "analysis_revisions")
-            revision_alters = []
-            if "prompt_sha256" not in revision_cols:
-                revision_alters.append(
-                    "ALTER TABLE analysis_revisions ADD COLUMN prompt_sha256 TEXT"
-                )
-            if "model_settings" not in revision_cols:
-                revision_alters.append(
-                    "ALTER TABLE analysis_revisions ADD COLUMN model_settings JSON "
-                    "NOT NULL DEFAULT '{}'"
-                )
-            if "error_code" not in revision_cols:
-                revision_alters.append(
-                    "ALTER TABLE analysis_revisions ADD COLUMN error_code TEXT"
-                )
-            for statement in revision_alters:
-                sync_conn.execute(text(statement))
-
-            rows = sync_conn.execute(
-                text(
-                    "SELECT id, proposed_rule_scope, proposed_rule FROM exception_drafts "
-                    "WHERE scope_key IS NULL OR rule_numeric_id IS NULL"
-                )
-            ).fetchall()
-            for draft_id, raw_scope, proposed_rule in rows:
-                try:
-                    scope = json.loads(raw_scope) if isinstance(raw_scope, str) else (raw_scope or {})
-                except (TypeError, json.JSONDecodeError):
-                    scope = {}
-                parts = [
-                    str(scope.get("uri") or "").split("?", 1)[0].rstrip("/") or "/",
-                    str(scope.get("rule_id") or ""),
-                    str(scope.get("collection") or "").upper(),
-                    str(scope.get("parameter") or ""),
-                ]
-                scope_key = hashlib.sha256("\x1f".join(parts).encode()).hexdigest()
-                match = re.search(r"(?:^|[,\s])id:(\d+)", proposed_rule or "")
-                rule_numeric_id = int(match.group(1)) if match else None
-                sync_conn.execute(
-                    text(
-                        "UPDATE exception_drafts SET scope_key=:scope_key, "
-                        "rule_numeric_id=:rule_numeric_id WHERE id=:id"
-                    ),
-                    {"scope_key": scope_key, "rule_numeric_id": rule_numeric_id, "id": draft_id},
-                )
-
-            retired = sync_conn.execute(
-                text(
-                    "UPDATE exception_drafts SET status='stale', proposed_rule=NULL, "
-                    "rule_placement=NULL WHERE classification!='false_positive' "
-                    "AND status IN ('pending','approved')"
-                )
-            )
-            reconciliation["non_false_positive"] = retired.rowcount
-
-            # Reconcile old active duplicates before adding uniqueness constraints.
-            duplicate_scopes = sync_conn.execute(
-                text(
-                    "SELECT scope_key FROM exception_drafts "
-                    "WHERE status IN ('pending','approved') AND scope_key IS NOT NULL "
-                    "GROUP BY scope_key HAVING COUNT(*) > 1"
-                )
-            ).fetchall()
-            for (scope_key,) in duplicate_scopes:
-                duplicates = sync_conn.execute(
-                    text(
-                        "SELECT id FROM exception_drafts WHERE scope_key=:scope_key "
-                        "AND status IN ('pending','approved') "
-                        "ORDER BY CASE status WHEN 'approved' THEN 0 ELSE 1 END, "
-                        "created_at DESC, id DESC"
-                    ),
-                    {"scope_key": scope_key},
-                ).fetchall()
-                keep = duplicates[0][0]
-                stale_ids = [row[0] for row in duplicates[1:]]
-                reconciliation["duplicate_scope"] += len(stale_ids)
-                for stale_id in stale_ids:
-                    sync_conn.execute(
-                        text(
-                            "UPDATE exception_drafts SET status='stale', proposed_rule=NULL, "
-                            "rule_placement=NULL, validation_status='duplicate_scope', "
-                            "validation_error='Superseded by canonical active scope draft' "
-                            "WHERE id=:id"
-                        ),
-                        {"id": stale_id},
-                    )
-                sync_conn.execute(
-                    text(
-                        "UPDATE exception_drafts SET supporting_case_count=:count WHERE id=:id"
-                    ),
-                    {"count": len(duplicates), "id": keep},
-                )
-
-            duplicate_rule_ids = sync_conn.execute(
-                text(
-                    "SELECT rule_numeric_id FROM exception_drafts "
-                    "WHERE status IN ('pending','approved') AND rule_numeric_id IS NOT NULL "
-                    "GROUP BY rule_numeric_id HAVING COUNT(*) > 1"
-                )
-            ).fetchall()
-            for (numeric_id,) in duplicate_rule_ids:
-                duplicates = sync_conn.execute(
-                    text(
-                        "SELECT id FROM exception_drafts WHERE rule_numeric_id=:numeric_id "
-                        "AND status IN ('pending','approved') "
-                        "ORDER BY CASE status WHEN 'approved' THEN 0 ELSE 1 END, "
-                        "created_at DESC, id DESC"
-                    ),
-                    {"numeric_id": numeric_id},
-                ).fetchall()
-                for (stale_id,) in duplicates[1:]:
-                    reconciliation["id_conflict"] += 1
-                    sync_conn.execute(
-                        text(
-                            "UPDATE exception_drafts SET status='stale', proposed_rule=NULL, "
-                            "rule_placement=NULL, validation_status='id_conflict', "
-                            "validation_error='Numeric rule ID conflicts with another active scope' "
-                            "WHERE id=:id"
-                        ),
-                        {"id": stale_id},
-                    )
-            sync_conn.execute(
-                text(
-                    "CREATE UNIQUE INDEX IF NOT EXISTS exception_drafts_analysis_revision_uq "
-                    "ON exception_drafts(analysis_revision_id) "
-                    "WHERE analysis_revision_id IS NOT NULL"
-                )
-            )
-            sync_conn.execute(
-                text(
-                    "CREATE UNIQUE INDEX IF NOT EXISTS exception_drafts_active_scope_uq "
-                    "ON exception_drafts(scope_key) WHERE status IN ('pending','approved')"
-                )
-            )
-            sync_conn.execute(
-                text(
-                    "CREATE UNIQUE INDEX IF NOT EXISTS exception_drafts_active_rule_id_uq "
-                    "ON exception_drafts(rule_numeric_id) "
-                    "WHERE status IN ('pending','approved') AND rule_numeric_id IS NOT NULL"
-                )
-            )
-            sync_conn.execute(
-                text(
-                    "UPDATE analysis_revisions SET error_code='invalid_output' "
-                    "WHERE error_code IS NULL AND state='complete' "
-                    "AND verdict LIKE 'Model response could not be validated:%'"
-                )
-            )
-            sync_conn.execute(
-                text(
-                    "UPDATE exception_drafts SET status='stale' "
-                    "WHERE validation_status='scope_conflict' "
-                    "AND status IN ('pending', 'approved')"
-                )
-            )
-            return reconciliation
-
-        return await conn.run_sync(_migrate)
+        await conn.run_sync(_migrate_schema)

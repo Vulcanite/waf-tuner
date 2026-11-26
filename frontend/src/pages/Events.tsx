@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { getEvents } from '../api'
+import { Fragment, useEffect, useState } from 'react'
+import { getEvent, getEvents } from '../api'
 
 const STATUS_BADGE: Record<string, string> = {
   pending: 'badge-pending',
@@ -14,7 +14,20 @@ function ScoreBadge({ score }: { score: number }) {
   return <span className={`font-bold ${color}`}>{score}</span>
 }
 
-function ExpandedRow({ event }: { event: any }) {
+function ExpandedRow({ line }: { line: number }) {
+  const [event, setEvent] = useState<any>(null)
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    const controller = new AbortController()
+    getEvent(line, controller.signal)
+      .then((data) => setEvent(data.event))
+      .catch((err) => { if (!controller.signal.aborted) setError(err.message) })
+    return () => controller.abort()
+  }, [line])
+  if (!event || event.evidence_expired) {
+    const message = event?.evidence_expired ? 'Audit evidence expired' : error || 'Loading evidence…'
+    return <tr><td colSpan={7} className="px-6 py-4 muted">{message}</td></tr>
+  }
   return (
     <tr className="surface-subtle border-b">
       <td colSpan={7} className="px-6 py-4 space-y-3">
@@ -76,7 +89,10 @@ export default function Events() {
     }
   }
 
-  useEffect(() => { load() }, [page, ruleId, uri, minScore])
+  useEffect(() => {
+    setExpanded(new Set())
+    void load()
+  }, [page, ruleId, uri, minScore])
 
   const toggleExpand = (txnId: string) => {
     setExpanded((prev) => {
@@ -157,9 +173,8 @@ export default function Events() {
               </tr>
             ) : (
               events.map((e, i) => (
-                <>
+                <Fragment key={e.transaction_id || i}>
                   <tr
-                    key={e.transaction_id || i}
                     className="row-hover transition-colors"
                     onClick={() => toggleExpand(e.transaction_id)}
                   >
@@ -172,8 +187,8 @@ export default function Events() {
                     <td className="px-3 py-2.5 max-w-xs truncate" title={e.uri}>{e.uri}</td>
                     <td className="px-3 py-2.5">
                       <div className="flex flex-wrap gap-1">
-                        {e.matches?.slice(0, 3).map((m: any) => (
-                          <span key={m.rule_id} className="badge-stale">
+                        {e.matches?.slice(0, 3).map((m: any, idx: number) => (
+                          <span key={`${m.rule_id}-${idx}`} className="badge-stale">
                             {m.rule_id}
                           </span>
                         ))}
@@ -197,9 +212,9 @@ export default function Events() {
                     </td>
                   </tr>
                   {expanded.has(e.transaction_id) && (
-                    <ExpandedRow key={`exp-${e.transaction_id}`} event={e} />
+                    <ExpandedRow line={e.event_line} />
                   )}
-                </>
+                </Fragment>
               ))
             )}
           </tbody>

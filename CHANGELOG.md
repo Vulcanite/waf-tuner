@@ -14,6 +14,23 @@ Initial lab/evaluation release of the observe-and-recommend workflow:
 - Retire approve-time rule-ID conflicts as `stale` (no half-pending rows).
 - Opt-in CORS via `CORS_ALLOW_ORIGINS` (empty default for same-origin Compose UI proxy).
 - Backend runtime: **Python 3.13** (CI + container image).
+- Redaction: `matched_data` from cookie and auth-header matches is removed before inference (it previously carried session IDs such as `PHPSESSID`), and more secret field names (`pass`, `otp`, `pin`, `cvv`, card numbers) are redacted.
+- Exclusions are built only for plain parameter names; names such as `/.*/` that ModSecurity would read as a regex target are refused.
+- Audit-log ingest reads in 8 MB steps and skips entries that cannot be parsed (database errors are retried 3 times) instead of stalling on them.
+- False-positive export is CSV, with formula-like cells neutralized.
+- Model output cut off at the token cap is refused (no parse, no repair) and the case fails with a clear error. The cap is now `LLM_MAX_OUTPUT_TOKEN` (default 20000; it limits only what the model writes, reasoning included). The eval applies the same rules as the backend, including the 0.90 false-positive threshold.
+- Thinking controls are sent as the `thinking` and `reasoning_effort` request fields, for any OpenAI-compatible model that supports them: `LLM_THINKING` (`enabled` by default, `disabled`, or `off` to send nothing) and `LLM_REASONING_EFFORT` (default `high`, sent only when thinking is enabled). They replace the OpenRouter-style `LLM_REASONING_ENABLED`.
+- Audit ingest keeps a record waiting on any storage fault (locked, full or damaged database) and skips it only for invalid data. Startup errors are retried, and `/health` returns 503 with `ingest: stopped` or `retrying` when ingestion is not running.
+- `REQUEST_URI` matches send the redacted query string to the model and include it in the case fingerprint, so different URI payloads no longer share one case.
+- A missing HTTP method is no longer recorded as `GET`; such alerts cannot produce an approvable exclusion.
+- Each alert records the CRS ruleset active when it arrived and is analysed against that rule. If the rule has changed since, the exclusion is withheld.
+- Eval no longer escalates a repaired verdict, matching the backend.
+- A detection whose HTTP method was not logged now counts as overlapping any method when approving or invalidating exclusions.
+- Each CRS rule has a signature covering its text and the `.data` files it reads. A draft is withheld when the current rule is missing or its signature differs from the rule that fired, and a changed rule opens a new case.
+- The ruleset pin is taken once per record and survives retries. Alerts whose timestamp is not later than the current snapshot's publish time are marked as having an uncertain ruleset, and their drafts are withheld. Older verdicts are marked stale by an evidence-policy version in the analysis generation.
+- `/health` also reports `retrying` during runtime storage faults. `REQUEST_URI_RAW` keeps the query's original encoding.
+- Eval uses the same pinned rule lookup as the worker, and fails when fewer than `--min-attack-detection` (default 0.5, `EVAL_MIN_ATTACK_DETECTION`) of attacks are classified `true_positive`.
+- Removed: the model-SecLang parser and no-op engine check (`RULE_VALIDATION_MODE`), the SQLite migration block and Postgres URL handling, `raw_proposed_rule`, the `AI_*`/`API_*` setting aliases (use `LLM_*`), the unused nginx include hook, and the `openpyxl` dependency.
 - v0.1 surface cleanup: SQLite checks in `verify_installation.sh`; remove no-op ingest helper, unused `mode_public_info` alias, unwired OpenAPI/SBOM import routes, unused `deployed_at` model field, and dead imports.
 - Bare-metal lab E2E: `scripts/e2e_baremetal.sh` runs unit tests + host uvicorn + synthetic (or external) audit ingest without Docker.
 - Never authenticate users, write edge configuration, or reload a WAF; loopback Compose is the supported default.

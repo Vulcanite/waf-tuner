@@ -6,10 +6,9 @@ from pathlib import Path
 from services.application_context import _route_score
 from services.crs_index import build_crs_index
 from services.exception_builder import build_exception_rule, can_build_exception
-from services.incidents import extract_match_target, incident_fingerprint, normalized_path
-from services.log_tailer import _decode_complete_objects, _last_archived_transaction
-from services.redaction import REDACTED, redact_request
-from services.rule_validator import validate_structure
+from services.incidents import incident_fingerprint, normalized_path
+from services.inference_context import extract_match_target
+from services.log_tailer import _archive_tail, _decode_complete_objects
 
 
 class AuditFramingTests(unittest.TestCase):
@@ -28,7 +27,7 @@ class AuditFramingTests(unittest.TestCase):
         self.assertEqual(objects[0]["transaction"]["id"], "two")
         self.assertEqual(pending, b"")
 
-    def test_last_archived_transaction_supports_large_records(self):
+    def test_archive_tail_supports_large_records(self):
         with tempfile.TemporaryDirectory() as directory:
             archive = Path(directory, "events.jsonl")
             archive.write_text(
@@ -37,7 +36,66 @@ class AuditFramingTests(unittest.TestCase):
                 + ("x" * 70000)
                 + '"}\n'
             )
-            self.assertEqual(_last_archived_transaction(str(archive)), "two")
+            self.assertEqual(_archive_tail(str(archive))[0], "two")
+
+
+    def test_many_objects_with_noise_decode_in_order(self):
+        records = "".join(f'{{"n": {i}, "s": "}}"}}\n' for i in range(20000))
+        objects, rest = _decode_complete_objects(("noise " + records + '{"n": "partial').encode())
+        self.assertEqual(len(objects), 20000)
+        self.assertEqual(objects[-1]["n"], 19999)
+        self.assertEqual(rest, b'{"n": "partial')
+
+    def test_malformed_entry_does_not_block_later_entries(self):
+        import asyncio
+        import json
+        from unittest import mock
+        from db import models as db_models
+        from services import log_tailer as tailer
+
+        def entry(txn, request):
+            return json.dumps({"transaction": {
+                "id": txn, "request": request, "response": {"status": 200},
+                "messages": [{"ruleId": "942100", "message": "SQLi", "data": "within ARGS:q"}],
+            }})
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            audit = root / "audit.log"
+            audit.write_text(entry("bad", "not-an-object") + "\n" + entry("good", {"method": "GET", "uri": "/s?q=1"}) + "\n")
+            env = {
+                "DATABASE_PATH": str(root / "t.db"), "EVENTS_JSONL_PATH": str(root / "events.jsonl"),
+                "AUDIT_CURSOR_PATH": str(root / "cursor.json"), "RUNTIME_CONFIG_PATH": str(root / "rc.json"),
+                "MODSEC_AUDIT_LOG": str(audit), "INCIDENT_FINGERPRINT_KEY": "test",
+            }
+            (root / "events.jsonl").touch()
+            db_models._async_engine = None
+            db_models._async_session_factory = None
+            try:
+                with mock.patch.dict(os.environ, env):
+                    os.environ.pop("DATABASE_URL", None)
+
+                    async def run():
+                        from sqlalchemy import select
+                        await db_models.init_db()
+                        task = asyncio.create_task(tailer.log_tailer())
+                        try:
+                            for _ in range(50):
+                                await asyncio.sleep(0.1)
+                                async with db_models.get_session_factory()() as session:
+                                    ids = set((await session.execute(
+                                        select(db_models.AuditEvent.transaction_id))).scalars())
+                                if "good" in ids:
+                                    return ids
+                            return ids
+                        finally:
+                            task.cancel()
+                            await asyncio.gather(task, return_exceptions=True)
+
+                    self.assertEqual(asyncio.run(run()), {"good"})
+            finally:
+                db_models._async_engine = None
+                db_models._async_session_factory = None
 
 
 class IncidentIdentityTests(unittest.TestCase):
@@ -76,30 +134,6 @@ class IncidentIdentityTests(unittest.TestCase):
 
     def test_normalized_path_strips_query(self):
         self.assertEqual(normalized_path("/search?q=select+all"), "/search")
-
-
-class RedactionTests(unittest.TestCase):
-    def test_headers_and_nested_body_secrets_are_removed(self):
-        result = redact_request({
-            "headers": {"Authorization": "Bearer secret", "Content-Type": "application/json"},
-            "body": '{"user":"alice","password":"secret","nested":{"api_key":"value"}}',
-        })
-        self.assertEqual(result["headers"]["Authorization"], REDACTED)
-        self.assertEqual(result["body"]["password"], REDACTED)
-        self.assertEqual(result["body"]["nested"]["api_key"], REDACTED)
-        self.assertEqual(result["body"]["user"], "alice")
-
-    def test_form_password_and_multipart_body_are_removed(self):
-        form = redact_request({
-            "headers": {"Content-Type": "application/x-www-form-urlencoded"},
-            "body": "username=alice&password=secret",
-        })
-        self.assertEqual(form["body"]["password"], REDACTED)
-        upload = redact_request({
-            "headers": {"Content-Type": "multipart/form-data; boundary=abc"},
-            "body": "--abc\r\nsecret file bytes\r\n--abc--",
-        })
-        self.assertEqual(upload["body"]["multipart"], "[MULTIPART BODY OMITTED]")
 
 
 class ApplicationContextTests(unittest.TestCase):
@@ -141,114 +175,35 @@ class ExceptionBuilderTests(unittest.TestCase):
 
 
 class RulePolicyTests(unittest.TestCase):
+    """The server builds the only rule shape; these are the scopes it must refuse."""
+
     def setUp(self):
         self.scope = {"uri": "/search", "collection": "ARGS", "parameter": "q", "rule_id": "942100"}
 
-    def test_builder_output_validates(self):
-        raw = build_exception_rule(self.scope)
-        normalized, error = validate_structure(raw, self.scope)
-        self.assertIsNone(error)
-        self.assertIn("REQUEST_FILENAME", normalized)
-        self.assertIn('@streq /search', normalized)
+    def test_rule_removes_only_the_observed_target(self):
+        rule = build_exception_rule(self.scope)
+        self.assertIn("ctl:ruleRemoveTargetById=942100;ARGS:q\"", rule)
+        self.assertNotIn("ruleRemoveById", rule)
+        self.assertIn("pass,nolog", rule)
 
-    def test_legacy_request_uri_sketch_is_canonicalized(self):
-        raw = (
-            'SecRule REQUEST_URI "@beginsWith /search" '
-            '"id:42,phase:2,pass,nolog,t:none,ctl:ruleRemoveTargetById=942100;ARGS:q"'
-        )
-        normalized, error = validate_structure(raw, self.scope)
-        self.assertIsNone(error)
-        self.assertIn("REQUEST_FILENAME", normalized)
-        self.assertIn("phase:1", normalized)
-        self.assertNotIn("id:42", normalized)
+    def test_regex_like_parameter_name_is_rejected(self):
+        for name in ("/.*/", "a|b", "q:x", "a%2fb", "x y"):
+            ok, err = can_build_exception({**self.scope, "parameter": name})
+            self.assertFalse(ok, name)
+            self.assertIn("unsafe", err)
 
-    def test_empty_raw_synthesizes_from_scope(self):
-        normalized, error = validate_structure("", self.scope)
-        self.assertIsNone(error)
-        self.assertIn("REQUEST_FILENAME", normalized)
+    def test_plain_parameter_names_are_allowed(self):
+        for name in ("q", "user.name", "items[0]", "csrf-token", "a_b"):
+            self.assertTrue(can_build_exception({**self.scope, "parameter": name})[0], name)
 
-    def test_global_removal_is_rejected(self):
-        raw = (
-            'SecRule REQUEST_FILENAME "@streq /search" '
-            '"id:42,phase:1,pass,nolog,ctl:ruleRemoveById=942100"'
-        )
-        normalized, error = validate_structure(raw, self.scope)
-        self.assertIsNone(normalized)
-        self.assertIn("forbidden", error)
-
-    def test_unobserved_target_is_rejected(self):
-        raw = (
-            'SecRule REQUEST_FILENAME "@streq /search" '
-            '"id:42,phase:1,pass,nolog,ctl:ruleRemoveTargetById=942100;ARGS:other"'
-        )
-        normalized, error = validate_structure(raw, self.scope)
-        self.assertIsNone(normalized)
-        self.assertIn("not observed", error)
-
-    def test_additional_ctl_action_is_rejected(self):
-        raw = (
-            'SecRule REQUEST_FILENAME "@streq /search" '
-            '"id:42,phase:1,pass,nolog,ctl:ruleRemoveTargetById=942100;ARGS:q,'
-            'ctl:ruleEngine=Off"'
-        )
-        normalized, error = validate_structure(raw, self.scope)
-        self.assertIsNone(normalized)
-        self.assertIn("Only ctl:ruleRemoveTargetById", error)
-
-    def test_unknown_side_effect_action_is_rejected(self):
-        raw = (
-            'SecRule REQUEST_FILENAME "@streq /search" '
-            '"id:42,phase:1,pass,nolog,pause:5000,'
-            'ctl:ruleRemoveTargetById=942100;ARGS:q"'
-        )
-        normalized, error = validate_structure(raw, self.scope)
-        self.assertIsNone(normalized)
-        self.assertIn("not permitted", error)
-
-    def test_second_rule_is_rejected(self):
-        raw = (
-            'SecRule REQUEST_FILENAME "@streq /search" '
-            '"id:42,phase:1,pass,nolog,ctl:ruleRemoveTargetById=942100;ARGS:q"\n'
-            'SecRule REQUEST_FILENAME "@streq /admin" "id:43,phase:1,pass,nolog"'
-        )
-        normalized, error = validate_structure(raw, self.scope)
-        self.assertIsNone(normalized)
-        self.assertIn("one non-chained", error)
-
-    def test_broader_uri_operand_is_rejected(self):
-        raw = (
-            'SecRule REQUEST_FILENAME "@beginsWith /sear" '
-            '"id:42,phase:1,pass,nolog,ctl:ruleRemoveTargetById=942100;ARGS:q"'
-        )
-        normalized, error = validate_structure(raw, self.scope)
-        self.assertIsNone(normalized)
-        self.assertIn("exact incident path", error)
-
-    def test_regex_uri_scope_is_rejected(self):
-        raw = (
-            'SecRule REQUEST_FILENAME "@rx ^/search(?:/.*)?$" '
-            '"id:42,phase:1,pass,nolog,ctl:ruleRemoveTargetById=942100;ARGS:q"'
-        )
-        normalized, error = validate_structure(raw, self.scope)
-        self.assertIsNone(normalized)
-        self.assertIn("unsupported operator", error)
+    def test_non_numeric_rule_id_is_rejected(self):
+        self.assertFalse(can_build_exception({**self.scope, "rule_id": "942100,ctl:ruleEngine=Off"})[0])
 
     def test_transaction_collection_is_rejected(self):
-        scope = {
-            "uri": "/search", "collection": "TX",
-            "parameter": "inbound_anomaly_score", "rule_id": "949110",
-        }
-        raw = (
-            'SecRule REQUEST_FILENAME "@streq /search" '
-            '"id:42,phase:1,pass,nolog,ctl:ruleRemoveTargetById=949110;TX:inbound_anomaly_score"'
-        )
-        normalized, error = validate_structure(raw, scope)
-        self.assertIsNone(normalized)
-        self.assertTrue(
-            "auto-excluded" in (error or "").lower()
-            or "parameter" in (error or "").lower()
-            or "collection" in (error or "").lower()
-        )
+        scope = {"uri": "/search", "collection": "TX", "parameter": "inbound_anomaly_score", "rule_id": "949110"}
+        ok, err = can_build_exception(scope)
+        self.assertFalse(ok)
+        self.assertIn("cannot be auto-excluded", err)
 
 
 class CRSIndexTests(unittest.TestCase):
@@ -476,3 +431,70 @@ class ProductInfoTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TruncatedOutputTests(unittest.TestCase):
+    def test_cut_off_output_is_refused_without_repair(self):
+        import asyncio
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from services import agent
+
+        draft = '{"classification": "false_positive", "confidence": 0.99, "verdict": "a draft written mid-reasoning", "context_factors": [], "uncertainty_factors": []}'
+        calls = []
+
+        class FakeClient:
+            def __init__(self, **_kwargs):
+                self.chat = SimpleNamespace(completions=SimpleNamespace(create=self.create))
+
+            async def create(self, **options):
+                calls.append(options)
+                message = SimpleNamespace(content="Thinking... " + draft + " but wait", model_extra={})
+                return SimpleNamespace(choices=[SimpleNamespace(message=message, finish_reason="length")], usage=None)
+
+            async def close(self):
+                pass
+
+        async def noop(*_args, **_kwargs):
+            return 1
+
+        env = {"LLM_API_KEY": "test-key", "LLM_MAX_OUTPUT_TOKEN": "100"}
+        with mock.patch.dict(os.environ, env, clear=True), \
+                mock.patch.object(agent, "AsyncOpenAI", FakeClient), \
+                mock.patch.object(agent, "_reserve_attempt", noop), \
+                mock.patch.object(agent, "_finish_attempt", noop):
+            with self.assertRaises(agent.InvalidOutputError) as caught:
+                asyncio.run(agent._call_model({}, {}, revision_id=1))
+        self.assertIn("cut off", str(caught.exception))
+        self.assertEqual(len(calls), 1)  # no repair request
+        self.assertEqual(calls[0]["extra_body"], {"thinking": {"type": "enabled"}, "reasoning_effort": "high"})
+
+
+class ThinkingOptionsTests(unittest.TestCase):
+    def test_defaults_enable_thinking_at_high_effort(self):
+        from unittest import mock
+
+        from services.llm_options import thinking_options
+
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(thinking_options(), {"thinking": {"type": "enabled"}, "reasoning_effort": "high"})
+        with mock.patch.dict(os.environ, {"LLM_THINKING": "disabled", "LLM_REASONING_EFFORT": "max"}):
+            self.assertEqual(thinking_options(), {"thinking": {"type": "disabled"}})
+        with mock.patch.dict(os.environ, {"LLM_THINKING": "off"}):
+            self.assertEqual(thinking_options(), {})
+        with mock.patch.dict(os.environ, {"LLM_THINKING": "yes"}), self.assertRaises(ValueError):
+            thinking_options()
+
+    def test_escalation_needs_thinking_and_passes_effort_through(self):
+        from unittest import mock
+
+        from services.llm_options import request_payload, request_settings
+
+        env = {"LLM_API_KEY": "test", "LLM_ESCALATION_REASONING_EFFORT": "xhigh"}
+        with mock.patch.dict(os.environ, env, clear=True):
+            escalation = request_payload(request_settings(), [], "escalation")
+            self.assertEqual((escalation["thinking"], escalation["reasoning_effort"]), ({"type": "enabled"}, "xhigh"))
+        for thinking in ("off", "disabled"):
+            with mock.patch.dict(os.environ, {**env, "LLM_THINKING": thinking}, clear=True):
+                self.assertEqual(request_settings()["escalation_effort"], "")

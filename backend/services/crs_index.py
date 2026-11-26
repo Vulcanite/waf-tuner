@@ -4,15 +4,22 @@ CRS Rule Index — Phase 1.5
 Parses all OWASP CRS .conf files from CRS_RULES_DIR and builds an
 in-memory dict keyed by rule ID. Called once at backend startup.
 """
+import hashlib
+import logging
 import os
 import re
-import logging
 from dataclasses import dataclass, field
+from pathlib import Path
+from threading import Lock
 
 logger = logging.getLogger(__name__)
 
 # Module-level singleton — imported by other services
 CRS_INDEX: dict[str, "CRSRule"] = {}
+_index_dir: Path | None = None
+_marker_key: tuple[int, int, int, int] | None = None
+_status = {"state": "uninitialized", "digest": None, "rules": 0}
+_index_lock = Lock()
 
 
 @dataclass
@@ -28,9 +35,29 @@ class CRSRule:
     severity: str               # severity: value
     chain: bool                 # True if rule uses 'chain' action
     chain_rules: list[str] = field(default_factory=list)
+    source_file: str = ""
+    ruleset_digest: str | None = None
+    # Digest of the directive text plus every data file it reads; equal signatures detect the same traffic.
+    signature: str = ""
 
 
-def build_crs_index(rules_dir: str) -> dict[str, CRSRule]:
+_FILE_OPERATOR = re.compile(r'"@(?:pmFromFile|pmf|ipMatchFromFile|ipMatchF)\s+((?:[^"\\]|\\.)*)"')
+
+
+def rule_signature(raw: str, rules_dir: str | Path) -> str:
+    """Hash a directive and the contents of the data files its operators load."""
+    digest = hashlib.sha256(raw.encode())
+    for names in _FILE_OPERATOR.findall(raw):
+        for name in names.split():
+            try:
+                content = (Path(rules_dir) / Path(name).name).read_bytes()
+            except OSError:
+                content = b"missing"
+            digest.update(b"\0" + name.encode() + b"\0" + hashlib.sha256(content).digest())
+    return digest.hexdigest()
+
+
+def build_crs_index(rules_dir: str | Path, *, digest: str | None = None) -> dict[str, CRSRule]:
     """
     Parse all .conf files in rules_dir and return a dict of CRSRule objects
     keyed by rule ID string. Continuation lines (ending with \\) are joined.
@@ -133,12 +160,118 @@ def build_crs_index(rules_dir: str) -> dict[str, CRSRule]:
                 severity=severity,
                 chain=chain,
                 chain_rules=chain_rules,
+                source_file=filename,
+                ruleset_digest=digest,
+                signature=rule_signature(raw, rules_dir),
             )
 
     logger.info("CRS index built: %d rules from %d files", len(index), files_parsed)
     return index
 
 
+def ruleset_digest(directory: str | Path) -> str:
+    """Hash the same manifest that the WAF publishes with its CRS snapshot."""
+    root = Path(directory)
+    files = sorted(p for p in root.iterdir() if p.is_file() and p.suffix in {".conf", ".data"})
+    if not any(p.suffix == ".conf" for p in files):
+        raise ValueError("ruleset has no .conf files")
+    manifest = hashlib.sha256()
+    for path in files:
+        with path.open("rb") as handle:
+            digest = hashlib.file_digest(handle, "sha256").hexdigest()
+        manifest.update(f"{digest}  {path.name}\n".encode())
+    return manifest.hexdigest()
+
+
+def _refresh_index(*, force: bool = False) -> None:
+    global CRS_INDEX, _marker_key, _status
+    if _index_dir is None:
+        return
+    marker = _index_dir / ".active-snapshot"
+    with _index_lock:
+        try:
+            stat = marker.stat()
+        except FileNotFoundError:
+            key = None
+        except OSError as exc:
+            CRS_INDEX = {}
+            _status = {"state": "mismatched", "digest": None, "rules": 0}
+            logger.warning("Unable to read CRS snapshot marker: %s", exc)
+            return
+        else:
+            key = (stat.st_dev, stat.st_ino, stat.st_mtime_ns, stat.st_size)
+        if not force and key == _marker_key:
+            return
+        digest = None
+        try:
+            if key is not None:
+                digest = marker.read_text(encoding="ascii").strip()
+                if not re.fullmatch(r"[a-f0-9]{64}", digest) or digest != ruleset_digest(
+                    _index_dir / ".snapshots" / digest
+                ):
+                    raise ValueError("published CRS snapshot digest does not match its files")
+                directory = _index_dir / ".snapshots" / digest
+                state = "verified"
+            else:
+                directory = _index_dir
+                digest = ruleset_digest(directory)
+                state = "local"
+            index = build_crs_index(directory, digest=digest)
+            state = state if index else "missing"
+        except (OSError, ValueError) as exc:
+            logger.warning("Unable to load CRS rules from %s: %s", _index_dir, exc)
+            index = {}
+            state = "mismatched" if key is not None else "missing"
+        CRS_INDEX = index
+        _marker_key = key
+        # When the published snapshot went live; alerts written before then may have fired under the previous one.
+        active_since = stat.st_mtime if key is not None else None
+        _status = {"state": state, "digest": digest if index else None, "rules": len(index), "active_since": active_since}
+
+
+def initialize_crs_index(rules_dir: str | Path) -> dict:
+    global _index_dir
+    _index_dir = Path(rules_dir)
+    _refresh_index(force=True)
+    return dict(_status)
+
+
+def index_status() -> dict:
+    _refresh_index()
+    return dict(_status)
+
+
 def get_rule(rule_id: str) -> CRSRule | None:
     """Look up a rule by ID from the module-level singleton."""
+    _refresh_index()
     return CRS_INDEX.get(str(rule_id))
+
+
+_snapshot_indexes: dict[str, dict[str, CRSRule]] = {}
+
+
+def get_rule_at(rule_id: str, digest: str | None) -> CRSRule | None:
+    """Rule from the ruleset that was active when the alert fired; None when that snapshot is gone.
+
+    Events ingested before digests were recorded have no digest and use the current ruleset.
+    """
+    if not digest or digest == index_status().get("digest"):
+        rule = get_rule(rule_id)
+        # The active snapshot can change between the two calls; never return a rule from another one.
+        return rule if rule is None or not digest or rule.ruleset_digest == digest else None
+    with _index_lock:
+        index = _snapshot_indexes.get(digest)
+        if index is None:
+            directory = _index_dir / ".snapshots" / digest if _index_dir else None
+            try:
+                if not (directory and re.fullmatch(r"[a-f0-9]{64}", digest) and directory.is_dir()
+                        and ruleset_digest(directory) == digest):
+                    return None
+                index = build_crs_index(directory, digest=digest)
+            except (OSError, ValueError) as exc:
+                logger.warning("Unable to load CRS snapshot %s: %s", digest[:12], exc)
+                return None
+            if len(_snapshot_indexes) >= 8:
+                _snapshot_indexes.clear()
+            _snapshot_indexes[digest] = index
+    return index.get(str(rule_id))

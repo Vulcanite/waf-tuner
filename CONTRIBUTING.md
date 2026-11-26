@@ -4,7 +4,7 @@ WAF Tuner v0.1 is an observe-and-recommend lab. Contributions must preserve thes
 
 - Never put inference on the HTTP request path.
 - Never write, reload, or claim to deploy edge configuration.
-- Never treat model-authored SecLang as trusted output. Use `exception_builder` and structural `rule_validator` with case-owned scope.
+- Never treat model-authored SecLang as trusted output. Rules come only from `exception_builder`, built from case-owned scope.
 - Never expose the unauthenticated API as a public-network default.
 
 ## Local verification

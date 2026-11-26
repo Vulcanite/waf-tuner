@@ -167,13 +167,14 @@ export default function Settings() {
               TLS verification {appMode.inference.verify_ssl ? 'on' : 'OFF'}
             </span>
           </div>
+          {appMode.inference.escalation_error && <p className="alert-error">{appMode.inference.escalation_error}</p>}
           <div className="border-l-2 border-amber-600 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs leading-relaxed">
             {appMode.inference.egress_notice}
           </div>
           <dl className="grid sm:grid-cols-2 gap-3 text-xs">
             <div><dt className="muted">Redaction coverage</dt><dd>{appMode.inference.redaction.scope}</dd></div>
             <div><dt className="muted">Sensitive-key policy</dt><dd>{appMode.inference.redaction.sensitive_keys}</dd></div>
-            <div><dt className="muted">Request settings</dt><dd>{appMode.inference.max_tokens} max tokens · temperature {appMode.inference.temperature}</dd></div>
+            <div><dt className="muted">Request settings</dt><dd>{appMode.inference.max_tokens} max output tokens · temperature {appMode.inference.temperature} · thinking {appMode.inference.thinking?.type ?? 'not sent'}{appMode.inference.reasoning_effort ? ` (${appMode.inference.reasoning_effort})` : ''}</dd></div>
             <div><dt className="muted">Local retention</dt><dd>{appMode.inference.retention}</dd></div>
           </dl>
         </section>

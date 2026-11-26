@@ -3,11 +3,14 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
-from sqlalchemy import select, update
+from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
 
-from db.models import AnalysisCase, ApplicationProfile, ExceptionDraft, get_db
+from db.models import AnalysisCase, AnalysisRevision, ApplicationProfile, AuditEvent, ExceptionDraft, get_db
+from services.application_context import active_application_profiles, application_context_for
+from services.inference_context import application_host
 
 
 router = APIRouter(prefix="/api/application-profiles", tags=["application-profiles"])
@@ -19,6 +22,21 @@ class ProfileBody(BaseModel):
     context: dict[str, Any] = Field(default_factory=dict)
     routes: list[dict[str, Any]] = Field(default_factory=list)
     source_metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("routes")
+    @classmethod
+    def check_routes(cls, routes):
+        for route in routes:
+            if not isinstance(route.get("path"), str) or not route["path"].startswith("/"):
+                raise ValueError("Each route needs an absolute path")
+            if "methods" in route and (
+                not isinstance(route["methods"], list)
+                or any(not isinstance(method, str) for method in route["methods"])
+            ):
+                raise ValueError("Route methods must be a list of HTTP method names")
+            if "parameters" in route and not isinstance(route["parameters"], dict):
+                raise ValueError("Route parameters must map names to application semantics")
+        return routes
 
 
 def _serialize(profile: ApplicationProfile) -> dict:
@@ -39,6 +57,11 @@ def _serialize(profile: ApplicationProfile) -> dict:
 async def _create_version(db: AsyncSession, body: ProfileBody, version: int) -> ApplicationProfile:
     now = datetime.now(timezone.utc)
     await db.execute(
+        update(ApplicationProfile).where(ApplicationProfile.name == body.name)
+        .values(active=ApplicationProfile.active)
+    )
+    previous_profiles = await active_application_profiles(db)
+    await db.execute(
         update(ApplicationProfile)
         .where(ApplicationProfile.name == body.name, ApplicationProfile.active.is_(True))
         .values(active=False, updated_at=now)
@@ -55,17 +78,53 @@ async def _create_version(db: AsyncSession, body: ProfileBody, version: int) -> 
         updated_at=now,
     )
     db.add(profile)
-    # Profile changes invalidate conclusions, but reanalysis remains explicit.
-    await db.execute(
-        update(AnalysisCase)
-        .where(AnalysisCase.state == "complete")
-        .values(state="stale", updated_at=now)
-    )
-    await db.execute(
-        update(ExceptionDraft)
-        .where(ExceptionDraft.status.in_(["pending", "approved"]))
-        .values(status="stale")
-    )
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Application profile version already exists") from exc
+    current_profiles = [item for item in previous_profiles if item.name != profile.name] + [profile]
+    last_id = 0
+    while True:
+        rows = (await db.execute(
+            select(
+                AnalysisCase.id, AnalysisCase.method, AnalysisCase.path, AnalysisCase.application_host,
+                AuditEvent.raw_event["uri"].as_string(), AuditEvent.raw_event["raw_request"]["headers"],
+            )
+            .outerjoin(AuditEvent, and_(
+                AuditEvent.event_line == AnalysisCase.latest_event_line,
+                or_(AnalysisCase.application_host.is_(None), AnalysisCase.application_host == ""),
+            ))
+            .where(AnalysisCase.state == "complete", AnalysisCase.id > last_id)
+            .order_by(AnalysisCase.id)
+            .limit(256)
+        )).all()
+        if not rows:
+            break
+        last_id = rows[-1][0]
+        affected = []
+        for case_id, method, path, host, uri, headers in rows:
+            host = host or application_host({"uri": uri, "raw_request": {"headers": headers}})
+            previous, _ = application_context_for(previous_profiles, host, method, path)
+            current, _ = application_context_for(current_profiles, host, method, path)
+            if previous != current:
+                affected.append(case_id)
+        if not affected:
+            continue
+        revision_ids = select(AnalysisRevision.id).where(AnalysisRevision.analysis_case_id.in_(affected))
+        await db.execute(
+            update(AnalysisCase).where(AnalysisCase.id.in_(affected))
+            .values(state="stale", updated_at=now)
+        )
+        await db.execute(
+            update(ExceptionDraft)
+            .where(
+                ExceptionDraft.analysis_revision_id.in_(revision_ids),
+                ExceptionDraft.status.in_(["pending", "approved"]),
+            )
+            .values(status="stale", validation_status="stale_context", rule_placement=None,
+                    validation_error="Application profile changed. Reanalyze the case to refresh this draft.")
+        )
     await db.commit()
     await db.refresh(profile)
     return profile

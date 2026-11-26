@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Iterable
 from urllib.parse import parse_qs, urlsplit
 
-from corpus import CorpusCase, all_cases, to_request_record
+from corpus import CorpusCase, all_cases, route_profile, to_request_record
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -71,7 +71,7 @@ def case_to_fixture(case: CorpusCase, *, source: str = "synthesized") -> dict[st
                 ],
             },
             "request": request,
-            "application_context": case.application_context or {},
+            "application_context": route_profile(case.path),
             "redaction": {"fields": []},
         },
         "notes": case.notes,
@@ -146,6 +146,11 @@ def merge_fixtures(
             current.setdefault("source", "legacy")
         else:
             by_id[record["id"]] = record
+    for record in by_id.values():
+        # Hand-built cases follow the same rule: the route decides the profile, not the label.
+        context = record.get("context") or {}
+        if "incident" in context:
+            context["application_context"] = route_profile(context["incident"].get("path") or "")
     return list(by_id.values())
 
 

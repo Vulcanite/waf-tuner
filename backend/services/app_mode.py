@@ -24,7 +24,7 @@ def product_info() -> dict:
                 "transaction.id (or unique_id)",
                 "transaction.request.method",
                 "transaction.request.uri",
-                "transaction.messages[] with ruleId/rule_id (or details.id)",
+                "transaction.messages[] with ruleId/rule_id (or details.ruleId/details.id)",
             ],
             "recommended_directives": [
                 "SecAuditEngine On",
@@ -37,7 +37,7 @@ def product_info() -> dict:
                 "Works with ModSecurity on Nginx or Apache when the audit log is JSON Serial.",
                 "Transactions with no rule messages are skipped.",
                 "For DetectionOnly FP tuning on HTTP 200, consider SecAuditLogRelevantStatus \".*\".",
-                "CRS_RULES_DIR is optional but improves rule messages and operators in the UI.",
+                "Set CRS_RULES_DIR to the WAF's rules for signature evidence and copyable exclusions.",
             ],
             "example_snippet": (
                 "SecAuditEngine On\n"
@@ -54,12 +54,10 @@ def product_info() -> dict:
             "CRS_RULES_DIR": os.environ.get("CRS_RULES_DIR", ""),
             "EVENTS_JSONL_PATH": os.environ.get("EVENTS_JSONL_PATH", ""),
             "DATABASE_PATH": os.environ.get(
-                "DATABASE_PATH", os.environ.get("SQLITE_PATH", "")
+                "DATABASE_PATH", ""
             ),
-            "LLM_MODEL": os.environ.get("LLM_MODEL", os.environ.get("AI_MODEL", "")),
-            "LLM_API_BASE_URL": os.environ.get(
-                "LLM_API_BASE_URL", os.environ.get("AI_BASE_URL", "")
-            ),
+            "LLM_MODEL": os.environ.get("LLM_MODEL", ""),
+            "LLM_API_BASE_URL": os.environ.get("LLM_API_BASE_URL", ""),
         },
         "ingest": audit_log_status(),
     }

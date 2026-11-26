@@ -26,7 +26,7 @@ def matrix_markdown(model: str, report: dict[str, Any]) -> str:
         f"# Eval report — {model}",
         "",
         f"Generated: {report.get('generated_at', '')}",
-        f"Prompt: `{report.get('prompt_version', '')}` (`{report.get('prompt_sha256', '')[:12]}`)",
+        f"Prompt: `{report.get('prompt_version') or 'unrecorded'}` (`{(report.get('prompt_sha256') or '')[:12]}`)",
         "",
         "## Overall",
         "",
@@ -35,6 +35,9 @@ def matrix_markdown(model: str, report: dict[str, Any]) -> str:
         f"- Repair rate: {_pct(overall['repaired'], overall['n'])}",
         f"- Attack cases classified false_positive (miss): {overall['attack_false_positive']}/{overall['attack']}",
         f"- Benign accuracy (classified false_positive): {_pct(overall['benign_false_positive'], overall['benign'])}",
+        f"- Median / p95 provider latency in ms: "
+        f"{report['summary'].get('latency_ms', {}).get('p50')} / "
+        f"{report['summary'].get('latency_ms', {}).get('p95')}",
         "",
         "| expected \\ predicted | true_positive | false_positive | uncertain | invalid |",
         "|---|---:|---:|---:|---:|",
