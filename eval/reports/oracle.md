@@ -1,6 +1,6 @@
 # Eval report — oracle
 
-Generated: 2026-11-26T09:36:41.930148+00:00
+Generated: 2026-11-26T09:56:18.441748+00:00
 Prompt: `unrecorded` (``)
 
 ## Overall
@@ -8,14 +8,14 @@ Prompt: `unrecorded` (``)
 - Fixtures: 280
 - Schema valid: 280/280
 - Repair rate: 0.0%
-- Attack cases classified false_positive (miss): 0/174
+- Attack cases classified false_positive (miss): 0/173
 - Benign accuracy (classified false_positive): 100.0%
 - Median / p95 provider latency in ms: None / None
 
 | expected \ predicted | true_positive | false_positive | uncertain | invalid |
 |---|---:|---:|---:|---:|
-| attack | 174 | 0 | 0 | 0 |
-| benign | 0 | 106 | 0 | 0 |
+| attack | 173 | 0 | 0 | 0 |
+| benign | 0 | 107 | 0 | 0 |
 
 ## Per CRS rule ID
 
@@ -34,7 +34,7 @@ Prompt: `unrecorded` (``)
 | 920320 | 1 | 1 | 0 | 0 | n/a | 0 |
 | 920330 | 1 | 1 | 0 | 0 | n/a | 0 |
 | 920340 | 1 | 1 | 0 | 0 | n/a | 0 |
-| 920350 | 2 | 1 | 1 | 0 | 100.0% | 0 |
+| 920350 | 2 | 0 | 2 | 0 | 100.0% | 0 |
 | 920360 | 1 | 1 | 0 | 0 | n/a | 0 |
 | 920440 | 1 | 1 | 0 | 0 | n/a | 0 |
 | 920500 | 2 | 2 | 0 | 0 | n/a | 0 |

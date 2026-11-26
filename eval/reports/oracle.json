@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-26T09:36:41.930148+00:00",
+  "generated_at": "2026-11-26T09:56:18.441748+00:00",
   "model": "oracle",
   "prompt_version": null,
   "prompt_sha256": null,
@@ -7,7 +7,7 @@
     "model": "oracle",
     "mode": "recorded"
   },
-  "fixtures_sha256": "9b4ed71ca38196693758db40adf1f7230eb264ee3fd08abfe2da7d1da9c8d9a9",
+  "fixtures_sha256": "f9882979685129d4d7c3ce4dab5cfb461e7c850dd893d787c58a886a492bd57b",
   "summary": {
     "fixtures": 280,
     "schema_valid": 280,
@@ -28,14 +28,14 @@
         "n": 280,
         "schema_valid": 280,
         "repaired": 0,
-        "attack": 174,
-        "benign": 106,
-        "attack_true_positive": 174,
+        "attack": 173,
+        "benign": 107,
+        "attack_true_positive": 173,
         "attack_false_positive": 0,
         "attack_uncertain": 0,
         "attack_invalid": 0,
         "benign_true_positive": 0,
-        "benign_false_positive": 106,
+        "benign_false_positive": 107,
         "benign_uncertain": 0,
         "benign_invalid": 0
       },
@@ -295,19 +295,19 @@
           "n": 2,
           "schema_valid": 2,
           "repaired": 0,
-          "attack": 1,
-          "benign": 1,
-          "attack_true_positive": 1,
+          "attack": 0,
+          "benign": 2,
+          "attack_true_positive": 0,
           "attack_false_positive": 0,
           "attack_uncertain": 0,
           "attack_invalid": 0,
           "benign_true_positive": 0,
-          "benign_false_positive": 1,
+          "benign_false_positive": 2,
           "benign_uncertain": 0,
           "benign_invalid": 0
         },
         "benign_accuracy": 1.0,
-        "attack_miss_rate": 0.0
+        "attack_miss_rate": null
       },
       "920360": {
         "counts": {
@@ -3695,20 +3695,6 @@
       "recording_provenance": {}
     },
     {
-      "id": "attack-protocol-host-ip",
-      "expected": "attack",
-      "valid": true,
-      "repaired": false,
-      "classification": "true_positive",
-      "latency_ms": 0,
-      "token_usage": {},
-      "finish_reason": "stop",
-      "escalated": false,
-      "crs_rule_ids": [],
-      "crs_rule_available": null,
-      "recording_provenance": {}
-    },
-    {
       "id": "attack-protocol-get-with-body",
       "expected": "attack",
       "valid": true,
@@ -5478,6 +5464,20 @@
       "valid": true,
       "repaired": false,
       "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
+    },
+    {
+      "id": "benign-protocol-host-ip",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
       "finish_reason": "stop",

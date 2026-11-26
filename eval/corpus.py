@@ -12,7 +12,7 @@ require it.
 from __future__ import annotations
 
 import copy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 
@@ -359,6 +359,12 @@ def rfi_php_protocol_misc() -> list[CorpusCase]:
         elif slug == "header-overflow":
             headers = {"X-Overflow": "A" * 800}
             collection, parameter, matched = "REQUEST_HEADERS", "X-Overflow", "A" * 40
+        if slug == "host-ip":
+            # A numeric Host alone is a policy warning (health checks, browsing a lab by IP), not an exploit.
+            benign = _benign(slug, method, path, collection, parameter, payload, matched, rules, "protocol",
+                             notes="numeric Host header with no other signal")
+            cases.append(replace(benign, headers=headers))
+            continue
         cases.append(
             _attack(slug, method, path, collection, parameter, payload, matched, rules, "protocol", headers=headers)
         )
