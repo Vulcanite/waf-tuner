@@ -47,6 +47,18 @@ class ModelResponseTests(unittest.TestCase):
             "true_positive",
         )
 
+    def test_false_positive_below_threshold_becomes_uncertain(self):
+        from services.model_contract import classify_response
+
+        def verdict(classification, confidence):
+            raw = json.dumps({**json.loads(VALID), "classification": classification, "confidence": confidence})
+            return classify_response(raw, threshold=0.90)["classification"]
+
+        self.assertEqual(verdict("false_positive", 0.89), "uncertain")
+        self.assertEqual(verdict("false_positive", 0.90), "false_positive")
+        # The threshold only gates clearing an alert; a low-confidence detection stays a detection.
+        self.assertEqual(verdict("true_positive", 0.10), "true_positive")
+
     def test_parser_rejects_truncated_or_invalid_output(self):
         with self.assertRaises(ValueError):
             agent._extract_json('{"classification":"true_positive"')
@@ -60,6 +72,15 @@ class ModelResponseTests(unittest.TestCase):
         self.assertTrue(repaired)
         self.assertEqual(result["classification"], "true_positive")
         self.assertEqual(provider.await_count, 2)
+
+    def test_only_a_false_positive_gets_an_exclusion_draft(self):
+        scope = {"host": "shop.example", "method": "GET", "uri": "/search",
+                 "rule_id": "942100", "collection": "ARGS", "parameter": "q"}
+        for classification in ("true_positive", "uncertain"):
+            result = json.loads(VALID.replace("true_positive", classification))
+            self.assertEqual(asyncio.run(agent._apply_draft_policy(result, scope, True)), (None, "not_applicable", None))
+        result = json.loads(VALID.replace("true_positive", "false_positive"))
+        self.assertEqual(asyncio.run(agent._apply_draft_policy(result, scope, True))[1], "valid")
 
     def test_missing_route_context_prevents_copyable_rule_when_required(self):
         result = json.loads(VALID.replace("true_positive", "false_positive"))
