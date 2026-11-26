@@ -38,9 +38,12 @@ def request_settings(*, model: str | None = None) -> dict:
     timeout = float(os.getenv("LLM_TIMEOUT_SECONDS", "180"))
     if max_tokens <= 0 or not 0 <= temperature <= 2 or not math.isfinite(timeout) or timeout <= 0:
         raise ValueError("LLM max tokens and timeout must be positive and temperature must be 0..2")
+    thinking = thinking_options()
+    # The stronger second request raises the reasoning effort, so it needs thinking enabled.
+    # Effort values pass through unchecked, like LLM_REASONING_EFFORT; the provider rejects unknown ones.
     escalation_effort = os.getenv("LLM_ESCALATION_REASONING_EFFORT", "").strip()
-    if escalation_effort and escalation_effort not in {"low", "medium", "high", "max"}:
-        raise ValueError("LLM_ESCALATION_REASONING_EFFORT must be low, medium, high, max, or empty")
+    if thinking.get("thinking", {}).get("type") != "enabled":
+        escalation_effort = ""
     raw_headers = os.getenv("LLM_EXTRA_HEADERS", "").strip()
     headers = json.loads(raw_headers) if raw_headers else {}
     if not isinstance(headers, dict) or any(not isinstance(v, str) for v in headers.values()):
@@ -59,7 +62,7 @@ def request_settings(*, model: str | None = None) -> dict:
         "verify_ssl": env_bool("LLM_VERIFY_SSL", True),
         "headers": headers,
         "escalation_effort": escalation_effort,
-        **thinking_options(),
+        **thinking,
     }
 
 

@@ -21,6 +21,8 @@ logger = logging.getLogger(__name__)
 
 EVENTS_JSONL_PATH = os.environ.get('EVENTS_JSONL_PATH', '/shared/events.jsonl')
 READ_CHUNK_BYTES = 8 * 1024 * 1024
+# A record that fails to save this many times in a row is skipped.
+MAX_INGEST_ATTEMPTS = 3
 MAX_AUDIT_RECORD_BYTES = 96 * 1024 * 1024
 _AUDIT_RECORD_START = re.compile(r'(?m)^[ \t]*\{[ \t]*"transaction"\s*:')
 
@@ -189,6 +191,7 @@ async def log_tailer(queue_changed: asyncio.Event | None = None):
     reader = None
     drain_rotated = True
     last_logged_path = None
+    failures: dict[str, int] = {}
     try:
         while True:
             try:
@@ -254,6 +257,14 @@ async def log_tailer(queue_changed: asyncio.Event | None = None):
                             if registered and queue_changed is not None:
                                 queue_changed.set()
                         except Exception as exc:
+                            await session.rollback()
+                            failures[transaction_id] = failures.get(transaction_id, 0) + 1
+                            if failures[transaction_id] >= MAX_INGEST_ATTEMPTS:
+                                # A record that fails the same way every time must not block the ones after it.
+                                failures.pop(transaction_id)
+                                logger.error('Skipped audit transaction %s after %d failed attempts (%s)',
+                                             transaction_id, MAX_INGEST_ATTEMPTS, type(exc).__name__)
+                                continue
                             logger.warning('Audit ingest will retry transaction %s (%s)', transaction_id, type(exc).__name__)
                             retry = b''.join(
                                 json.dumps(item, ensure_ascii=True, separators=(',', ':')).encode('ascii') + b'\n'

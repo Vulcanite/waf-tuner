@@ -472,7 +472,7 @@ class TruncatedOutputTests(unittest.TestCase):
 
 
 class ThinkingOptionsTests(unittest.TestCase):
-    def test_defaults_enable_thinking_at_max_effort(self):
+    def test_defaults_enable_thinking_at_high_effort(self):
         from unittest import mock
 
         from services.llm_options import thinking_options
@@ -485,3 +485,16 @@ class ThinkingOptionsTests(unittest.TestCase):
             self.assertEqual(thinking_options(), {})
         with mock.patch.dict(os.environ, {"LLM_THINKING": "yes"}), self.assertRaises(ValueError):
             thinking_options()
+
+    def test_escalation_needs_thinking_and_passes_effort_through(self):
+        from unittest import mock
+
+        from services.llm_options import request_payload, request_settings
+
+        env = {"LLM_API_KEY": "test", "LLM_ESCALATION_REASONING_EFFORT": "xhigh"}
+        with mock.patch.dict(os.environ, env, clear=True):
+            escalation = request_payload(request_settings(), [], "escalation")
+            self.assertEqual((escalation["thinking"], escalation["reasoning_effort"]), ({"type": "enabled"}, "xhigh"))
+        for thinking in ("off", "disabled"):
+            with mock.patch.dict(os.environ, {**env, "LLM_THINKING": thinking}, clear=True):
+                self.assertEqual(request_settings()["escalation_effort"], "")
