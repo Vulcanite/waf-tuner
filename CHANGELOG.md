@@ -19,7 +19,7 @@ Initial lab/evaluation release of the observe-and-recommend workflow:
 - Audit-log ingest reads in 8 MB steps and skips entries that cannot be parsed (database errors are retried 3 times) instead of stalling on them.
 - False-positive export is CSV, with formula-like cells neutralized.
 - Model output cut off at the token cap is refused (no parse, no repair) and the case fails with a clear error. The cap is now `LLM_MAX_OUTPUT_TOKEN` (default 20000; it limits only what the model writes, reasoning included). The eval applies the same rules as the backend, including the 0.90 false-positive threshold.
-- Thinking controls use the DeepSeek/OpenAI format: `LLM_THINKING` (`enabled` by default, `disabled`, or `off` to send nothing) and `LLM_REASONING_EFFORT` (default `high`, sent only when thinking is enabled). They replace the OpenRouter-style `LLM_REASONING_ENABLED`.
+- Thinking controls are sent as the `thinking` and `reasoning_effort` request fields, for any OpenAI-compatible model that supports them: `LLM_THINKING` (`enabled` by default, `disabled`, or `off` to send nothing) and `LLM_REASONING_EFFORT` (default `high`, sent only when thinking is enabled). They replace the OpenRouter-style `LLM_REASONING_ENABLED`.
 - Audit ingest keeps a record waiting on any storage fault (locked, full or damaged database) and skips it only for invalid data. Startup errors are retried, and `/health` returns 503 with `ingest: stopped` or `retrying` when ingestion is not running.
 - `REQUEST_URI` matches send the redacted query string to the model and include it in the case fingerprint, so different URI payloads no longer share one case.
 - A missing HTTP method is no longer recorded as `GET`; such alerts cannot produce an approvable exclusion.

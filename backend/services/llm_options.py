@@ -23,7 +23,7 @@ def env_bool(name: str, default: bool = False) -> bool:
 
 
 def thinking_options() -> dict:
-    """Thinking controls in DeepSeek/OpenAI format. LLM_THINKING=off sends neither field."""
+    """Thinking controls as the `thinking` and `reasoning_effort` request fields. LLM_THINKING=off sends neither."""
     thinking = (os.environ.get("LLM_THINKING", "").strip() or "enabled").lower()
     if thinking == "off":
         return {}
