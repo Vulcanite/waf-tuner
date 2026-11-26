@@ -8,7 +8,7 @@ ROOT = EVAL.parent
 sys.path.insert(0, str(EVAL))
 
 from capture_lab import parse_audit_log  # noqa: E402
-from corpus import all_cases  # noqa: E402
+from corpus import all_cases, route_profile  # noqa: E402
 from evaluate import classify_recorded, load_recordings, oracle_response, recording_path  # noqa: E402
 from fixtures import case_to_fixture, load_fixtures, merge_fixtures  # noqa: E402
 from report import evaluate_recordings, matrix_markdown, write_reports  # noqa: E402
@@ -23,7 +23,17 @@ def test_corpus_has_unique_ids_and_rule_citations():
     assert len(cases) >= 180
     assert all(case.crs_rule_ids and case.label in {"attack", "false_positive"} for case in cases)
     assert any(case.label == "attack" and case.category == "sqli" for case in cases)
-    assert any(case.label == "false_positive" and "DVWA" in json.dumps(case.application_context) for case in cases)
+
+
+def test_route_profile_does_not_reveal_the_label():
+    # The profile comes from the route alone, so both labels appear with and without one.
+    pairs = {(case.label, bool(route_profile(case.path))) for case in all_cases()}
+    assert pairs == {("attack", True), ("attack", False), ("false_positive", True), ("false_positive", False)}
+    fixtures = load_fixtures()
+    assert all(
+        record["context"]["application_context"] == route_profile(record["context"]["incident"]["path"])
+        for record in fixtures
+    )
 
 
 def test_committed_fixtures_match_schema_and_volume():

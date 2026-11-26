@@ -1,37 +1,41 @@
 {
-  "generated_at": "2026-09-18T03:17:07.281291+00:00",
+  "generated_at": "2026-11-26T09:36:41.930148+00:00",
   "model": "oracle",
-  "prompt_version": "offpath-v5-classify",
-  "prompt_sha256": "e87bbf2567b341ec655821fff07af16c11508d237140e864820749dd939de386",
+  "prompt_version": null,
+  "prompt_sha256": null,
   "settings": {
-    "base_url": "http://127.0.0.1:8001/v1",
     "model": "oracle",
-    "max_tokens": 1200,
-    "temperature": 0.01,
-    "timeout": 180.0
+    "mode": "recorded"
   },
+  "fixtures_sha256": "9b4ed71ca38196693758db40adf1f7230eb264ee3fd08abfe2da7d1da9c8d9a9",
   "summary": {
-    "fixtures": 264,
-    "schema_valid": 264,
+    "fixtures": 280,
+    "schema_valid": 280,
     "repair_rate": 0.0,
     "attack_false_positives": 0,
     "attack_uncertain": 0,
-    "benign_accuracy": 1.0
+    "benign_accuracy": 1.0,
+    "latency_ms": {
+      "p50": null,
+      "p95": null,
+      "p100": null
+    },
+    "crs_evidence": null
   },
   "confusion": {
     "overall": {
       "counts": {
-        "n": 264,
-        "schema_valid": 264,
+        "n": 280,
+        "schema_valid": 280,
         "repaired": 0,
-        "attack": 161,
-        "benign": 103,
-        "attack_true_positive": 161,
+        "attack": 174,
+        "benign": 106,
+        "attack_true_positive": 174,
         "attack_false_positive": 0,
         "attack_uncertain": 0,
         "attack_invalid": 0,
         "benign_true_positive": 0,
-        "benign_false_positive": 103,
+        "benign_false_positive": 106,
         "benign_uncertain": 0,
         "benign_invalid": 0
       },
@@ -364,17 +368,17 @@
       },
       "930100": {
         "counts": {
-          "n": 11,
-          "schema_valid": 11,
+          "n": 13,
+          "schema_valid": 13,
           "repaired": 0,
-          "attack": 5,
-          "benign": 6,
-          "attack_true_positive": 5,
+          "attack": 6,
+          "benign": 7,
+          "attack_true_positive": 6,
           "attack_false_positive": 0,
           "attack_uncertain": 0,
           "attack_invalid": 0,
           "benign_true_positive": 0,
-          "benign_false_positive": 6,
+          "benign_false_positive": 7,
           "benign_uncertain": 0,
           "benign_invalid": 0
         },
@@ -402,12 +406,12 @@
       },
       "930120": {
         "counts": {
-          "n": 18,
-          "schema_valid": 18,
+          "n": 19,
+          "schema_valid": 19,
           "repaired": 0,
-          "attack": 12,
+          "attack": 13,
           "benign": 6,
-          "attack_true_positive": 12,
+          "attack_true_positive": 13,
           "attack_false_positive": 0,
           "attack_uncertain": 0,
           "attack_invalid": 0,
@@ -516,17 +520,17 @@
       },
       "932100": {
         "counts": {
-          "n": 24,
-          "schema_valid": 24,
+          "n": 26,
+          "schema_valid": 26,
           "repaired": 0,
-          "attack": 16,
-          "benign": 8,
-          "attack_true_positive": 16,
+          "attack": 19,
+          "benign": 7,
+          "attack_true_positive": 19,
           "attack_false_positive": 0,
           "attack_uncertain": 0,
           "attack_invalid": 0,
           "benign_true_positive": 0,
-          "benign_false_positive": 8,
+          "benign_false_positive": 7,
           "benign_uncertain": 0,
           "benign_invalid": 0
         },
@@ -611,12 +615,12 @@
       },
       "932130": {
         "counts": {
-          "n": 2,
-          "schema_valid": 2,
+          "n": 3,
+          "schema_valid": 3,
           "repaired": 0,
-          "attack": 2,
+          "attack": 3,
           "benign": 0,
-          "attack_true_positive": 2,
+          "attack_true_positive": 3,
           "attack_false_positive": 0,
           "attack_uncertain": 0,
           "attack_invalid": 0,
@@ -896,17 +900,17 @@
       },
       "941100": {
         "counts": {
-          "n": 22,
-          "schema_valid": 22,
+          "n": 26,
+          "schema_valid": 26,
           "repaired": 0,
-          "attack": 15,
-          "benign": 7,
-          "attack_true_positive": 15,
+          "attack": 18,
+          "benign": 8,
+          "attack_true_positive": 18,
           "attack_false_positive": 0,
           "attack_uncertain": 0,
           "attack_invalid": 0,
           "benign_true_positive": 0,
-          "benign_false_positive": 7,
+          "benign_false_positive": 8,
           "benign_uncertain": 0,
           "benign_invalid": 0
         },
@@ -915,12 +919,12 @@
       },
       "941110": {
         "counts": {
-          "n": 16,
-          "schema_valid": 16,
+          "n": 17,
+          "schema_valid": 17,
           "repaired": 0,
-          "attack": 11,
+          "attack": 12,
           "benign": 5,
-          "attack_true_positive": 11,
+          "attack_true_positive": 12,
           "attack_false_positive": 0,
           "attack_uncertain": 0,
           "attack_invalid": 0,
@@ -934,12 +938,12 @@
       },
       "941120": {
         "counts": {
-          "n": 12,
-          "schema_valid": 12,
+          "n": 13,
+          "schema_valid": 13,
           "repaired": 0,
-          "attack": 11,
+          "attack": 12,
           "benign": 1,
-          "attack_true_positive": 11,
+          "attack_true_positive": 12,
           "attack_false_positive": 0,
           "attack_uncertain": 0,
           "attack_invalid": 0,
@@ -991,21 +995,40 @@
       },
       "941160": {
         "counts": {
-          "n": 10,
-          "schema_valid": 10,
+          "n": 11,
+          "schema_valid": 11,
           "repaired": 0,
           "attack": 4,
-          "benign": 6,
+          "benign": 7,
           "attack_true_positive": 4,
           "attack_false_positive": 0,
           "attack_uncertain": 0,
           "attack_invalid": 0,
           "benign_true_positive": 0,
-          "benign_false_positive": 6,
+          "benign_false_positive": 7,
           "benign_uncertain": 0,
           "benign_invalid": 0
         },
         "benign_accuracy": 1.0,
+        "attack_miss_rate": 0.0
+      },
+      "941170": {
+        "counts": {
+          "n": 1,
+          "schema_valid": 1,
+          "repaired": 0,
+          "attack": 1,
+          "benign": 0,
+          "attack_true_positive": 1,
+          "attack_false_positive": 0,
+          "attack_uncertain": 0,
+          "attack_invalid": 0,
+          "benign_true_positive": 0,
+          "benign_false_positive": 0,
+          "benign_uncertain": 0,
+          "benign_invalid": 0
+        },
+        "benign_accuracy": null,
         "attack_miss_rate": 0.0
       },
       "941360": {
@@ -1048,17 +1071,17 @@
       },
       "942100": {
         "counts": {
-          "n": 68,
-          "schema_valid": 68,
+          "n": 75,
+          "schema_valid": 75,
           "repaired": 0,
-          "attack": 34,
-          "benign": 34,
-          "attack_true_positive": 34,
+          "attack": 38,
+          "benign": 37,
+          "attack_true_positive": 38,
           "attack_false_positive": 0,
           "attack_uncertain": 0,
           "attack_invalid": 0,
           "benign_true_positive": 0,
-          "benign_false_positive": 34,
+          "benign_false_positive": 37,
           "benign_uncertain": 0,
           "benign_invalid": 0
         },
@@ -1086,17 +1109,17 @@
       },
       "942140": {
         "counts": {
-          "n": 5,
-          "schema_valid": 5,
+          "n": 6,
+          "schema_valid": 6,
           "repaired": 0,
           "attack": 3,
-          "benign": 2,
+          "benign": 3,
           "attack_true_positive": 3,
           "attack_false_positive": 0,
           "attack_uncertain": 0,
           "attack_invalid": 0,
           "benign_true_positive": 0,
-          "benign_false_positive": 2,
+          "benign_false_positive": 3,
           "benign_uncertain": 0,
           "benign_invalid": 0
         },
@@ -1162,17 +1185,17 @@
       },
       "942190": {
         "counts": {
-          "n": 12,
-          "schema_valid": 12,
+          "n": 15,
+          "schema_valid": 15,
           "repaired": 0,
-          "attack": 9,
-          "benign": 3,
-          "attack_true_positive": 9,
+          "attack": 10,
+          "benign": 5,
+          "attack_true_positive": 10,
           "attack_false_positive": 0,
           "attack_uncertain": 0,
           "attack_invalid": 0,
           "benign_true_positive": 0,
-          "benign_false_positive": 3,
+          "benign_false_positive": 5,
           "benign_uncertain": 0,
           "benign_invalid": 0
         },
@@ -1352,17 +1375,17 @@
       },
       "942360": {
         "counts": {
-          "n": 2,
-          "schema_valid": 2,
+          "n": 3,
+          "schema_valid": 3,
           "repaired": 0,
           "attack": 1,
-          "benign": 1,
+          "benign": 2,
           "attack_true_positive": 1,
           "attack_false_positive": 0,
           "attack_uncertain": 0,
           "attack_invalid": 0,
           "benign_true_positive": 0,
-          "benign_false_positive": 1,
+          "benign_false_positive": 2,
           "benign_uncertain": 0,
           "benign_invalid": 0
         },
@@ -1551,7 +1574,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-apostrophe-name",
@@ -1561,7 +1588,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-html-editor",
@@ -1571,7 +1602,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-shell-documentation",
@@ -1581,7 +1616,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-windows-path",
@@ -1591,7 +1630,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-url-field",
@@ -1601,7 +1644,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-union",
@@ -1611,7 +1658,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-boolean",
@@ -1621,7 +1672,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-time",
@@ -1631,7 +1686,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-xss-script",
@@ -1641,7 +1700,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-xss-handler",
@@ -1651,7 +1714,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-xss-svg",
@@ -1661,7 +1728,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-command-semicolon",
@@ -1671,7 +1742,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-command-subshell",
@@ -1681,7 +1756,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-command-pipe",
@@ -1691,7 +1770,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-traversal-unix",
@@ -1701,7 +1784,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-traversal-encoded",
@@ -1711,7 +1798,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-path-probe-env",
@@ -1721,7 +1812,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-path-probe-git",
@@ -1731,7 +1826,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-boolean-or",
@@ -1741,7 +1840,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-boolean-or-comment",
@@ -1751,7 +1854,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-boolean-x",
@@ -1761,7 +1868,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-paren-or",
@@ -1771,7 +1882,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-and-true",
@@ -1781,7 +1896,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-union-password",
@@ -1791,7 +1910,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-union-all-null",
@@ -1801,7 +1924,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-union-version",
@@ -1811,7 +1938,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-union-mysql-user",
@@ -1821,7 +1952,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-union-information-schema",
@@ -1831,7 +1966,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-union-load-file",
@@ -1841,7 +1980,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-auth-bypass-comment",
@@ -1851,7 +1994,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-auth-bypass-hash",
@@ -1861,7 +2008,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-time-waitfor",
@@ -1871,7 +2022,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-time-sleep",
@@ -1881,7 +2036,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-time-benchmark",
@@ -1891,7 +2050,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-time-pg-sleep",
@@ -1901,7 +2064,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-time-if-sleep",
@@ -1911,7 +2078,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-time-subselect-sleep",
@@ -1921,7 +2092,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-extractvalue",
@@ -1931,7 +2106,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-updatexml",
@@ -1941,7 +2120,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-drop-table",
@@ -1951,7 +2134,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-insert-user",
@@ -1961,7 +2148,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-xp-cmdshell",
@@ -1971,7 +2162,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-shutdown",
@@ -1981,7 +2176,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-having",
@@ -1991,7 +2190,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-group-by",
@@ -2001,7 +2204,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-order-by",
@@ -2011,7 +2218,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-exists",
@@ -2021,7 +2232,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-mongo-gt",
@@ -2031,7 +2246,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-char-concat",
@@ -2041,7 +2260,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-inline-comment",
@@ -2051,7 +2274,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-hex-union",
@@ -2061,7 +2288,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-tick-bypass",
@@ -2071,7 +2302,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-stacked-merge",
@@ -2081,7 +2316,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-substr-blind",
@@ -2091,7 +2330,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-information-columns",
@@ -2101,7 +2344,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-into-outfile",
@@ -2111,7 +2358,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-or-numeric",
@@ -2121,7 +2372,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-union-select-star",
@@ -2131,7 +2386,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-like-tautology",
@@ -2141,7 +2400,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-semicolon-select",
@@ -2151,7 +2414,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-waitfor-time",
@@ -2161,7 +2428,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-comment-sequence",
@@ -2171,7 +2442,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-sqli-mysql-udf",
@@ -2181,7 +2456,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-xss-script-alert",
@@ -2191,7 +2470,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-xss-script-domain",
@@ -2201,7 +2484,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-xss-script-src",
@@ -2211,7 +2498,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-xss-img-onerror",
@@ -2221,7 +2512,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-xss-svg-onload",
@@ -2231,7 +2526,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-xss-body-onload",
@@ -2241,7 +2540,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-xss-iframe-js",
@@ -2251,7 +2554,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-xss-a-javascript",
@@ -2261,7 +2568,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-xss-svg-script",
@@ -2271,7 +2582,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-xss-details-ontoggle",
@@ -2281,7 +2596,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-xss-input-onfocus",
@@ -2291,7 +2610,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-xss-video-onerror",
@@ -2301,7 +2624,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-xss-math-alert",
@@ -2311,7 +2638,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-xss-object-data",
@@ -2321,7 +2652,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-xss-embed-js",
@@ -2331,7 +2666,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-xss-link-js",
@@ -2341,7 +2680,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-xss-meta-refresh",
@@ -2351,7 +2694,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-xss-formaction",
@@ -2361,7 +2708,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-xss-srcdoc",
@@ -2371,7 +2722,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-xss-template",
@@ -2381,7 +2736,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-xss-xss-style-expression",
@@ -2391,7 +2750,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-xss-jsfuck",
@@ -2401,7 +2764,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-xss-angular-constructor",
@@ -2411,7 +2778,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-xss-html-event-mixed",
@@ -2421,7 +2792,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-xss-stored-script",
@@ -2431,7 +2806,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-xss-svg-animate",
@@ -2441,7 +2820,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-xss-marquee-onstart",
@@ -2451,7 +2834,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-xss-xss-fromcharcode",
@@ -2461,7 +2848,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-xss-xss-eval",
@@ -2471,7 +2862,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-xss-xss-document-write",
@@ -2481,7 +2876,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-rce-semicolon-id",
@@ -2491,7 +2890,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-rce-semicolon-passwd",
@@ -2501,7 +2904,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-rce-pipe-id",
@@ -2511,7 +2918,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-rce-pipe-passwd",
@@ -2521,7 +2932,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-rce-and-whoami",
@@ -2531,7 +2946,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-rce-or-uname",
@@ -2541,7 +2960,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-rce-subshell-whoami",
@@ -2551,7 +2974,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-rce-backtick-id",
@@ -2561,7 +2988,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-rce-newline-id",
@@ -2571,7 +3002,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-rce-powershell",
@@ -2581,7 +3016,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-rce-cmd-copy",
@@ -2591,7 +3030,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-rce-for-windows",
@@ -2601,7 +3044,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-rce-shellshock",
@@ -2611,7 +3058,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-rce-wildcard-bypass",
@@ -2621,7 +3072,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-rce-python-pty",
@@ -2631,7 +3086,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-rce-perl-exec",
@@ -2641,7 +3100,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-rce-nc-reverse",
@@ -2651,7 +3114,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-rce-curl-pipe-sh",
@@ -2661,7 +3128,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-rce-bash-i",
@@ -2671,7 +3142,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-rce-wget-output",
@@ -2681,7 +3156,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-rce-php-system",
@@ -2691,7 +3170,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-rce-env-ifs",
@@ -2701,7 +3184,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-lfi-unix-passwd",
@@ -2711,7 +3198,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-lfi-unix-shadow",
@@ -2721,7 +3212,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-lfi-encoded-passwd",
@@ -2731,7 +3226,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-lfi-encoded-shadow",
@@ -2741,7 +3240,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-lfi-double-encoded",
@@ -2751,7 +3254,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-lfi-dotdot-win",
@@ -2761,7 +3268,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-lfi-proc-self",
@@ -2771,7 +3282,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-lfi-php-filter",
@@ -2781,7 +3296,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-lfi-php-input",
@@ -2791,7 +3310,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-lfi-expect-id",
@@ -2801,7 +3324,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-lfi-file-passwd",
@@ -2811,7 +3338,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-lfi-env-probe",
@@ -2821,7 +3352,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-lfi-git-config",
@@ -2831,7 +3366,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-lfi-htaccess",
@@ -2841,7 +3380,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-lfi-wp-config",
@@ -2851,7 +3394,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-lfi-backup-sql",
@@ -2861,7 +3408,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-lfi-web-config",
@@ -2871,7 +3422,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-lfi-slash-etc-passwd",
@@ -2881,7 +3436,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-rfi-remote-ip",
@@ -2891,7 +3450,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-rfi-remote-php",
@@ -2901,7 +3464,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-rfi-remote-question",
@@ -2911,7 +3478,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-rfi-off-domain",
@@ -2921,7 +3492,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-rfi-data-wrapper",
@@ -2931,7 +3506,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-php-eval-get",
@@ -2941,7 +3520,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-php-assert",
@@ -2951,7 +3534,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-php-preg-replace-e",
@@ -2961,7 +3548,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-php-create-function",
@@ -2971,7 +3562,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-php-serialized-object",
@@ -2981,7 +3576,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-php-system-call",
@@ -2991,7 +3590,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-php-passthru",
@@ -3001,7 +3604,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-php-include-var",
@@ -3011,7 +3618,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-protocol-null-byte",
@@ -3021,7 +3632,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-protocol-utf8-overlong",
@@ -3031,7 +3646,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-protocol-double-url",
@@ -3041,7 +3660,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-protocol-missing-ua",
@@ -3051,7 +3674,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-protocol-empty-ua",
@@ -3061,7 +3688,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-protocol-host-ip",
@@ -3071,7 +3702,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-protocol-get-with-body",
@@ -3081,7 +3716,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-protocol-content-type-missing",
@@ -3091,7 +3730,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-protocol-range-abuse",
@@ -3101,7 +3744,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-protocol-restricted-ext",
@@ -3111,7 +3758,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-protocol-header-overflow",
@@ -3121,7 +3772,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-scanner-nikto-ua",
@@ -3131,7 +3786,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-scanner-sqlmap-ua",
@@ -3141,7 +3800,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-scanner-nmap-ua",
@@ -3151,7 +3814,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-scanner-phpmyadmin",
@@ -3161,7 +3828,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-scanner-wp-admin",
@@ -3171,7 +3842,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-scanner-java-serialized",
@@ -3181,7 +3856,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-scanner-java-processbuilder",
@@ -3191,7 +3870,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-scanner-session-fixation",
@@ -3201,7 +3884,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "attack-scanner-cookie-html",
@@ -3211,7 +3898,11 @@
       "classification": "true_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-select-products",
@@ -3221,7 +3912,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-drop-down",
@@ -3231,7 +3926,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-union-size",
@@ -3241,7 +3940,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-order-by-price",
@@ -3251,7 +3954,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-from-warehouse",
@@ -3261,7 +3968,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-and-or-connectors",
@@ -3271,7 +3982,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-having-trouble",
@@ -3281,7 +3996,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-insert-tab",
@@ -3291,7 +4010,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-update-profile",
@@ -3301,7 +4024,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-delete-draft",
@@ -3311,7 +4038,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-join-newsletter",
@@ -3321,7 +4052,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-table-of-contents",
@@ -3331,7 +4066,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-where-is-order",
@@ -3341,7 +4080,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-limit-results",
@@ -3351,7 +4094,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-count-inventory",
@@ -3361,7 +4108,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-sleep-mode",
@@ -3371,7 +4122,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-benchmark-guide",
@@ -3381,7 +4136,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-information-schema",
@@ -3391,7 +4150,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-apostrophe-oreilly",
@@ -3401,7 +4164,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-apostrophe-dario",
@@ -3411,7 +4178,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-apostrophe-shannon",
@@ -3421,7 +4192,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-apostrophe-loreal",
@@ -3431,7 +4206,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-xss-html-em",
@@ -3441,7 +4220,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-xss-html-strong",
@@ -3451,7 +4234,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-xss-html-p",
@@ -3461,7 +4248,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-xss-html-br",
@@ -3471,7 +4262,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-xss-markdown-bold",
@@ -3481,7 +4276,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-xss-xssr-emphasis",
@@ -3491,7 +4290,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-xss-blockquote",
@@ -3501,7 +4304,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-xss-href-https",
@@ -3511,7 +4318,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-xss-img-static",
@@ -3521,7 +4332,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-xss-code-span",
@@ -3531,7 +4346,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-rce-shell-echo",
@@ -3541,17 +4360,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
-    },
-    {
-      "id": "benign-rce-shell-ls",
-      "expected": "false_positive",
-      "valid": true,
-      "repaired": false,
-      "classification": "false_positive",
-      "latency_ms": 0,
-      "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-rce-shell-cat",
@@ -3561,7 +4374,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-rce-shell-pipe-docs",
@@ -3571,7 +4388,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-rce-shell-whoami-docs",
@@ -3581,7 +4402,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-rce-ip-literal",
@@ -3591,7 +4416,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-rce-hostname",
@@ -3601,7 +4430,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-lfi-windows-path",
@@ -3611,7 +4444,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-lfi-windows-docs",
@@ -3621,7 +4458,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-lfi-unix-home-docs",
@@ -3631,7 +4472,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-rfi-relative-url",
@@ -3641,7 +4486,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-lfi-docs-parent-path",
@@ -3651,7 +4500,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-lfi-etc-passwd-docs",
@@ -3661,7 +4514,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-login-special-password",
@@ -3671,7 +4528,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-login-admin-user",
@@ -3681,7 +4542,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-protocol-security-low",
@@ -3691,7 +4556,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-lfi-fi-include-home",
@@ -3701,7 +4570,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-xss-guestbook-name",
@@ -3711,7 +4584,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-sqli-lab-numeric",
@@ -3721,7 +4598,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-json-select-key",
@@ -3731,7 +4612,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-xss-css-expression-docs",
@@ -3741,7 +4626,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-xss-alert-docs",
@@ -3751,7 +4640,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-xss-onerror-docs",
@@ -3761,7 +4654,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-union-station",
@@ -3771,7 +4668,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-select-committee",
@@ -3781,7 +4682,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-drop-earrings",
@@ -3791,7 +4696,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-rce-exec-summary",
@@ -3801,7 +4710,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-rce-cmd-palette",
@@ -3811,7 +4724,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-protocol-null-chapter",
@@ -3821,7 +4738,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-lfi-percent-encoding-docs",
@@ -3831,7 +4752,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-protocol-localhost-docs",
@@ -3841,7 +4766,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-scanner-user-agent-chrome",
@@ -3851,7 +4780,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-json-ampersand",
@@ -3861,7 +4794,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-email-plus",
@@ -3871,7 +4808,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-version-sql",
@@ -3881,7 +4822,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-wait-for-docs",
@@ -3891,7 +4836,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-lfi-passwd-phrase",
@@ -3901,7 +4850,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-xss-script-kiddie-docs",
@@ -3911,7 +4864,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-xss-svg-logo",
@@ -3921,7 +4878,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-xss-confirm-attendance",
@@ -3931,7 +4892,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-php-eval-coursework",
@@ -3941,7 +4906,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-php-include-header",
@@ -3951,7 +4920,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-php-system-design",
@@ -3961,7 +4934,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-lfi-file-include-readme",
@@ -3971,7 +4948,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-rce-ping-hostname-docs",
@@ -3981,7 +4962,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-or-conjunction",
@@ -3991,7 +4976,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-in-stock",
@@ -4001,7 +4990,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-like-this",
@@ -4011,7 +5004,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-between-sizes",
@@ -4021,7 +5018,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-not-null-docs",
@@ -4031,7 +5032,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-xss-create-account-copy",
@@ -4041,7 +5046,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-rce-bash-tutorial-and",
@@ -4051,7 +5060,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-lfi-backslash-windows-docs",
@@ -4061,7 +5074,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-lfi-dotdot-explanation",
@@ -4071,7 +5088,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-rfi-http-example-url",
@@ -4081,7 +5102,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-cookie-theme",
@@ -4091,7 +5116,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-q-select-course",
@@ -4101,7 +5130,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-union-made",
@@ -4111,7 +5144,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-rce-exec-board",
@@ -4121,7 +5158,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-rce-id-parameter-name",
@@ -4131,7 +5172,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-lfi-passwd-reset-ticket",
@@ -4141,7 +5186,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-xml-update-docs",
@@ -4151,7 +5200,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-sqli-concat-names",
@@ -4161,7 +5214,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-xss-html-ul",
@@ -4171,7 +5228,11 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     },
     {
       "id": "benign-protocol-dvwa-login-get",
@@ -4181,7 +5242,249 @@
       "classification": "false_positive",
       "latency_ms": 0,
       "token_usage": {},
-      "finish_reason": "stop"
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
+    },
+    {
+      "id": "attack-sqli-catalog-union",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
+    },
+    {
+      "id": "attack-xss-catalog-script-cookie",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
+    },
+    {
+      "id": "attack-sqli-customer-drop-table",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
+    },
+    {
+      "id": "attack-xss-customer-img-onerror",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
+    },
+    {
+      "id": "attack-xss-article-remote-script",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
+    },
+    {
+      "id": "attack-xss-article-javascript-href",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
+    },
+    {
+      "id": "attack-rce-docs-cat-passwd",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
+    },
+    {
+      "id": "attack-rce-docs-curl-pipe-sh",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
+    },
+    {
+      "id": "attack-xss-guestbook-name-script",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
+    },
+    {
+      "id": "attack-sqli-security-level-sqli",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
+    },
+    {
+      "id": "attack-sqli-login-password-sqli",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
+    },
+    {
+      "id": "attack-lfi-fi-page-traversal",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
+    },
+    {
+      "id": "benign-sqli-sql-primer-select-where",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
+    },
+    {
+      "id": "benign-xss-escaped-script-tag-docs",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
+    },
+    {
+      "id": "benign-sqli-union-select-hoodie",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
+    },
+    {
+      "id": "benign-lfi-support-path-and-quote",
+      "expected": "false_positive",
+      "valid": true,
+      "repaired": false,
+      "classification": "false_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
+    },
+    {
+      "id": "attack-rce-shell-ls-in-ping-host",
+      "expected": "attack",
+      "valid": true,
+      "repaired": false,
+      "classification": "true_positive",
+      "latency_ms": 0,
+      "token_usage": {},
+      "finish_reason": "stop",
+      "escalated": false,
+      "crs_rule_ids": [],
+      "crs_rule_available": null,
+      "recording_provenance": {}
     }
   ]
 }

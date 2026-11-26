@@ -1,6 +1,6 @@
 # Model evaluation
 
-`fixtures.jsonl` is the labeled corpus: 264 cases, of which the original 19 are hand-built and 245 are synthesized (`"source": "synthesized"`). Each record has the classifier context plus `label` (`attack` or `false_positive`) and `crs_rule_ids`.
+`fixtures.jsonl` is the labeled corpus: 280 cases (174 attacks, 106 harmless), of which the original 19 are hand-built and 261 are synthesized (`"source": "synthesized"`). A case gets the application profile of the route it hits, whatever its label (`ROUTE_PROFILES` in `corpus.py`). Attacks on profiled free-text routes and harmless requests on routes without a profile are both included, so a profile alone never reveals the answer. Each record has the classifier context plus `label` (`attack` or `false_positive`) and `crs_rule_ids`.
 
 ## Recorded eval (CI, no API key)
 
