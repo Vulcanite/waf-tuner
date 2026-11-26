@@ -32,10 +32,11 @@ from services.application_context import profile_is_current, select_application_
 from services.crs_index import get_rule, get_rule_at, index_status
 from services.draft_scope import canonical_scope_key, case_exception_scope, rule_numeric_id
 from services.exception_builder import build_exception_rule, can_build_exception
+from services.incidents import matched_input_keys
 from services.json_extract import extract_json as _extract_json
 from services.inference_context import (
     bound_repair_input, bound_request_repair_input, build_inference_context, build_request_context,
-    match_evidence_withheld, request_match_view, serialize_inference_context,
+    match_evidence_withheld, prepare_request_evidence, request_match_view, serialize_inference_context,
 )
 from services.llm_options import (
     ESCALATION_EFFORT_REJECTED, analysis_unit, env_bool, is_escalation_effort_rejection, request_payload,
@@ -198,8 +199,8 @@ def _elapsed_ms(started: datetime | None, completed: datetime) -> int | None:
 
 
 # Raise when the evidence rules change in a way that makes older verdicts unsafe to approve.
-# 2: a missing HTTP method is no longer recorded as GET, and rules are compared by signature.
-EVIDENCE_POLICY_VERSION = 2
+# 3: cross-rule conflicts on the same observed input require occurrence-linked verdicts.
+EVIDENCE_POLICY_VERSION = 3
 
 
 def _analysis_generation(ruleset: dict) -> str:
@@ -721,11 +722,12 @@ def refresh_active_false_positive_draft(
         existing.rule_numeric_id = numeric_id
 
 
-async def _open_revision(session, case, *, evidence_digest: str, stage_metrics: dict, claimed_at, **fields):
+async def _open_revision(session, case, *, occurrence_id: int, evidence_digest: str, stage_metrics: dict, claimed_at, **fields):
     """Resume this case's revision that holds a pending repair for the same evidence, else start one."""
     revision = (await session.execute(
         select(AnalysisRevision).where(
             AnalysisRevision.analysis_case_id == case.id,
+            AnalysisRevision.occurrence_id == occurrence_id,
             AnalysisRevision.started_at >= (case.enqueued_at or case.created_at),
             AnalysisRevision.evidence_digest == evidence_digest,
             AnalysisRevision.state.in_(["budget_deferred", "retryable_error", "failed"]),
@@ -734,7 +736,7 @@ async def _open_revision(session, case, *, evidence_digest: str, stage_metrics: 
     )).scalars().first()
     if revision is None:
         revision = AnalysisRevision(
-            analysis_case_id=case.id, state="analyzing", stage_metrics=stage_metrics,
+            analysis_case_id=case.id, occurrence_id=occurrence_id, state="analyzing", stage_metrics=stage_metrics,
             evidence_digest=evidence_digest, **fields,
         )
         session.add(revision)
@@ -792,7 +794,9 @@ async def _analyze_claimed_case(case_id: int) -> None:
         stage_metrics = _stage_metrics(case, audit_event, claimed_at, context_started)
         await _fence_case(session, case_id)
         revision, stage_metrics = await _open_revision(
-            session, case, evidence_digest=evidence_digest, stage_metrics=stage_metrics, claimed_at=claimed_at,
+            session, case, occurrence_id=occurrence.id, evidence_digest=evidence_digest,
+            stage_metrics=stage_metrics, claimed_at=claimed_at,
+            input_keys=matched_input_keys(event, prepare_request_evidence(event), match),
             application_profile_id=profile_id, profile_version=profile_version, crs_digest=crs_digest,
             model=settings["model"], prompt_version=PROMPT_VERSION, prompt_sha256=PROMPT_SHA256,
             model_settings=settings, context=context,
@@ -853,6 +857,8 @@ async def _analyze_claimed_request(case_ids: list[int]) -> None:
         }
         match_indexes = sorted(crs_rules)
         context = build_request_context(event, match_indexes, crs_rules, application_context)
+        request = prepare_request_evidence(event)
+        input_keys = {index: matched_input_keys(event, request, event["matches"][index]) for index in match_indexes}
         profile_id = profile.id if profile else None
         profile_version = profile.version if profile else None
         ruleset = index_status()
@@ -870,7 +876,8 @@ async def _analyze_claimed_request(case_ids: list[int]) -> None:
             crs_rule = crs_rules[occurrence.match_index]
             await _fence_case(session, case.id)
             revision, stage_metrics = await _open_revision(
-                session, case, evidence_digest=evidence_digest, claimed_at=claimed_at,
+                session, case, occurrence_id=occurrence.id, evidence_digest=evidence_digest, claimed_at=claimed_at,
+                input_keys=input_keys[occurrence.match_index],
                 stage_metrics=_stage_metrics(case, audit_event, claimed_at, context_started),
                 application_profile_id=profile_id, profile_version=profile_version,
                 crs_digest=crs_rule.signature if crs_rule else None, model=settings["model"],
@@ -896,6 +903,10 @@ async def _analyze_claimed_request(case_ids: list[int]) -> None:
             raise RetryableInvalidOutput(str(exc), exc.raw_response) from exc
         raise
     model_ms = round((perf_counter() - model_started) * 1000)
+    true_positive_inputs = {
+        key for index, result in results.items() if result["classification"] == "true_positive"
+        for key in input_keys[index]
+    }
     for (case, occurrence, *_), (revision, stage_metrics) in zip(loaded, opened):
         stage_metrics["model_and_validation_ms"] = stage_metrics.get("model_and_validation_ms", 0) + model_ms
         try:
@@ -908,6 +919,7 @@ async def _analyze_claimed_request(case_ids: list[int]) -> None:
                 transaction_id=audit_event.transaction_id, event_line=audit_event.event_line,
                 match_index=occurrence.match_index, audit_observed_at=audit_event.timestamp,
                 raw_response=raws[occurrence.match_index], attempts_revision_id=revision_ids[0],
+                request_conflict=not true_positive_inputs.isdisjoint(input_keys[occurrence.match_index]),
             )
         except ClaimLost:
             logger.info("Analysis claim for case %s expired", case.id)
@@ -917,7 +929,7 @@ async def _finalize_case(
     case_id: int, revision_id: int, result: dict, *, context: dict, crs_rule, scope: dict,
     application_context: dict, event: dict, profile_id, profile_version, generation: str, stage_metrics: dict,
     transaction_id: str, event_line: int, match_index: int, audit_observed_at,
-    raw_response: str | None = None, attempts_revision_id: int | None = None,
+    raw_response: str | None = None, attempts_revision_id: int | None = None, request_conflict: bool = False,
 ) -> None:
     """Apply every server-owned gate to one match's verdict and publish it, in either analysis unit.
 
@@ -981,7 +993,7 @@ async def _finalize_case(
             case.updated_at = revision.completed_at
             await session.commit()
             return
-        if validation_status == "valid" and await has_true_positive(session, case):
+        if validation_status == "valid" and (request_conflict or await has_true_positive(session, case, revision=revision)):
             normalized_rule = None
             validation_status = "scope_conflict"
             validation_error = SCOPE_CONFLICT_ERROR
@@ -1030,7 +1042,7 @@ async def _finalize_case(
         case.last_error = None
         case.updated_at = _utcnow()
         if result["classification"] == "true_positive":
-            await invalidate_false_positive_drafts(session, case)
+            await invalidate_false_positive_drafts(session, case, revision=revision)
 
         sibling_rule_ids = [
             str(m.get("rule_id"))

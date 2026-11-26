@@ -210,6 +210,14 @@ def _query_or_body_values(items, parameter, collection):
     return values
 
 
+def logged_target_value(match: dict, inspected: tuple, resolved: tuple) -> str | None:
+    description = match.get('match_description')
+    native = _NATIVE_VALUE.search(description) if isinstance(description, str) else None
+    if native and extract_match_target(description) in (inspected, resolved):
+        return native.group('value')
+    return None
+
+
 def match_evidence(request: dict, collection: str | None, parameter: str | None, match: dict | None = None) -> dict:
     """Extract ordered values from the exact collection identified by the log.
 
@@ -231,12 +239,9 @@ def match_evidence(request: dict, collection: str | None, parameter: str | None,
     if values:
         # The connector's native Value field is evidence from a known target,
         # even when the captured request parts lack the original field value.
-        description = match.get('match_description') if match else None
-        native_value = _NATIVE_VALUE.search(description) if isinstance(description, str) else None
-        if native_value and extract_match_target(description) in (inspected, (collection, parameter)):
-            logged_value = native_value.group('value')
-            if not any(logged_value in items for items in values.values()):
-                values['audit_log_value'] = [logged_value]
+        logged = logged_target_value(match, inspected, (collection, parameter)) if match else None
+        if logged is not None and not any(logged in items for items in values.values()):
+            values['audit_log_value'] = [logged]
         return values
     if collection == 'REQUEST_HEADERS_NAMES' and parameter:
         return {'header_name': [parameter] if parameter.lower() in request['headers'] else []}
