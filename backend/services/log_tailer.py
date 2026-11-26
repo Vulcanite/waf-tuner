@@ -15,14 +15,15 @@ from sqlalchemy import func, select
 from db.models import AuditEvent, get_session_factory
 from services.audit_cursor import count_lines, load_cursor, save_cursor
 from services.audit_event import normalize_audit_event as _parse_modsec_json
-from services.incidents import register_event, transaction_exists
+from services.incidents import InvalidAuditRecord, register_event, transaction_exists
 
 logger = logging.getLogger(__name__)
 
 EVENTS_JSONL_PATH = os.environ.get('EVENTS_JSONL_PATH', '/shared/events.jsonl')
 READ_CHUNK_BYTES = 8 * 1024 * 1024
-# A record that fails to save this many times in a row is skipped.
+# Only record-specific failures count toward this limit.
 MAX_INGEST_ATTEMPTS = 3
+INGEST_STORAGE_RETRY_SECONDS = 2
 MAX_AUDIT_RECORD_BYTES = 96 * 1024 * 1024
 _AUDIT_RECORD_START = re.compile(r'(?m)^[ \t]*\{[ \t]*"transaction"\s*:')
 
@@ -191,9 +192,10 @@ async def log_tailer(queue_changed: asyncio.Event | None = None):
     reader = None
     drain_rotated = True
     last_logged_path = None
-    failures: dict[str, int] = {}
+    invalid_attempts = storage_failures = 0
     try:
         while True:
+            retry_delay = 2
             try:
                 updated_cursor = cursor.copy()
                 backlog = False
@@ -235,14 +237,20 @@ async def log_tailer(queue_changed: asyncio.Event | None = None):
                         except ZoneInfoNotFoundError:
                             logger.error('MODSEC_AUDIT_TIMEZONE must name an installed IANA timezone')
                             raise
-                        except (TypeError, ValueError, RecursionError) as exc:
+                        except (TypeError, ValueError, OverflowError, RecursionError) as exc:
                             logger.warning('Skipped an invalid ModSecurity audit record (%s)', type(exc).__name__)
                             continue
                         if event is None:
                             continue
                         transaction_id = event['transaction_id']
                         try:
+                            transaction_id.encode('utf-8')
+                        except UnicodeEncodeError:
+                            logger.warning('Skipped an audit record with an invalid transaction ID')
+                            continue
+                        try:
                             if await transaction_exists(session, transaction_id):
+                                invalid_attempts = storage_failures = 0
                                 continue
                             if last_transaction == transaction_id and last_event_line is not None:
                                 event_line = last_event_line
@@ -254,17 +262,23 @@ async def log_tailer(queue_changed: asyncio.Event | None = None):
                                 next_event_line += 1
                             registered = await register_event(session, event, event_line)
                             await session.commit()
+                            invalid_attempts = storage_failures = 0
                             if registered and queue_changed is not None:
                                 queue_changed.set()
                         except Exception as exc:
                             await session.rollback()
-                            failures[transaction_id] = failures.get(transaction_id, 0) + 1
-                            if failures[transaction_id] >= MAX_INGEST_ATTEMPTS:
-                                # A record that fails the same way every time must not block the ones after it.
-                                failures.pop(transaction_id)
-                                logger.error('Skipped audit transaction %s after %d failed attempts (%s)',
-                                             transaction_id, MAX_INGEST_ATTEMPTS, type(exc).__name__)
-                                continue
+                            if isinstance(exc, InvalidAuditRecord):
+                                storage_failures = 0
+                                invalid_attempts += 1
+                                if invalid_attempts >= MAX_INGEST_ATTEMPTS:
+                                    invalid_attempts = 0
+                                    logger.error('Skipped invalid audit transaction %s after %d attempts',
+                                                 transaction_id, MAX_INGEST_ATTEMPTS)
+                                    continue
+                            else:
+                                invalid_attempts = 0
+                                storage_failures = min(storage_failures + 1, 6)
+                                retry_delay = min(60, INGEST_STORAGE_RETRY_SECONDS * 2 ** (storage_failures - 1))
                             logger.warning('Audit ingest will retry transaction %s (%s)', transaction_id, type(exc).__name__)
                             retry = b''.join(
                                 json.dumps(item, ensure_ascii=True, separators=(',', ':')).encode('ascii') + b'\n'
@@ -285,7 +299,7 @@ async def log_tailer(queue_changed: asyncio.Event | None = None):
                     continue
             except Exception as exc:
                 logger.error('Audit tailer error (%s)', type(exc).__name__)
-            await asyncio.sleep(2)
+            await asyncio.sleep(retry_delay)
     finally:
         if reader is not None:
             reader.close()

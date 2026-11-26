@@ -151,6 +151,7 @@ export type AppModeInfo = {
     structured_output: boolean
     thinking?: { type: string }
     reasoning_effort?: string
+    escalation_error?: string | null
     verify_ssl: boolean
     egress_notice: string
     redaction: { sensitive_headers: string[]; sensitive_keys: string; scope: string }

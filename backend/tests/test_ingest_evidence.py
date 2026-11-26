@@ -1,12 +1,15 @@
 import asyncio
+import errno
 import json
 import os
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 
 from db import models
 from services.audit_event import normalize_audit_event
@@ -134,7 +137,7 @@ class EvidenceTests(unittest.TestCase):
 
 
 class DurableIngestTests(unittest.IsolatedAsyncioTestCase):
-    async def test_retries_at_eof_and_archives_aggregate_matches_without_queuing_them(self):
+    async def test_recovers_from_archive_and_sqlite_failures_at_eof(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             audit = root / 'audit.log'
@@ -152,25 +155,37 @@ class DurableIngestTests(unittest.IsolatedAsyncioTestCase):
             models._async_session_factory = None
             with patch.dict(os.environ, env):
                 await models.init_db()
-                attempts = 0
+                archive_attempts = db_attempts = 0
+                append_event = log_tailer._append_event
 
-                async def fail_first(session, event, line):
-                    nonlocal attempts
-                    attempts += 1
-                    if attempts == 1:
-                        raise RuntimeError('temporary storage error')
+                def append_when_space_available(*args):
+                    nonlocal archive_attempts
+                    archive_attempts += 1
+                    if archive_attempts <= 3:
+                        raise OSError(errno.ENOSPC, 'No space left on device')
+                    return append_event(*args)
+
+                async def register_when_unlocked(session, event, line):
+                    nonlocal db_attempts
+                    db_attempts += 1
+                    if db_attempts <= 3:
+                        raise OperationalError('INSERT', {}, sqlite3.OperationalError('database is locked'))
                     return await register_event(session, event, line)
 
                 wake = asyncio.Event()
                 try:
-                    with patch.object(log_tailer, 'register_event', AsyncMock(side_effect=fail_first)):
+                    with (
+                        patch.object(log_tailer, 'INGEST_STORAGE_RETRY_SECONDS', 0.01),
+                        patch.object(log_tailer, '_append_event', append_when_space_available),
+                        patch.object(log_tailer, 'register_event', register_when_unlocked),
+                    ):
                         worker = asyncio.create_task(log_tailer.log_tailer(wake))
                         try:
                             await asyncio.wait_for(wake.wait(), 5)
                         finally:
                             worker.cancel()
                             await asyncio.gather(worker, return_exceptions=True)
-                    self.assertEqual(attempts, 2)
+                    self.assertEqual((archive_attempts, db_attempts), (4, 4))
                     self.assertEqual(len(archive.read_text().splitlines()), 1)
                     async with models.get_session_factory()() as session:
                         events = (await session.execute(select(models.AuditEvent))).scalars().all()
@@ -240,7 +255,9 @@ class DurableIngestTests(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             audit = root / 'audit.log'
-            audit.write_text(json.dumps(audit_object('bad')) + '\n' + json.dumps(audit_object('good')) + '\n')
+            bad = audit_object('bad')
+            bad['transaction']['anomaly_score'] = 2**63
+            audit.write_text(json.dumps(bad) + '\n' + json.dumps(audit_object('good')) + '\n')
             env = {
                 'MODSEC_AUDIT_LOG': str(audit),
                 'EVENTS_JSONL_PATH': str(root / 'events.jsonl'),
@@ -255,15 +272,13 @@ class DurableIngestTests(unittest.IsolatedAsyncioTestCase):
                 await models.init_db()
                 calls = []
 
-                async def fail_bad(session, event, line):
+                async def track_registration(session, event, line):
                     calls.append(event['transaction_id'])
-                    if event['transaction_id'] == 'bad':
-                        raise ValueError('fails the same way every time')
                     return await register_event(session, event, line)
 
                 wake = asyncio.Event()
                 try:
-                    with patch.object(log_tailer, 'register_event', AsyncMock(side_effect=fail_bad)):
+                    with patch.object(log_tailer, 'register_event', track_registration):
                         worker = asyncio.create_task(log_tailer.log_tailer(wake))
                         try:
                             await asyncio.wait_for(wake.wait(), 15)

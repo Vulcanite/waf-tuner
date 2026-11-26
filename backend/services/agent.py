@@ -34,7 +34,9 @@ from services.draft_scope import canonical_scope_key, case_exception_scope, rule
 from services.exception_builder import build_exception_rule, can_build_exception
 from services.json_extract import extract_json as _extract_json
 from services.inference_context import bound_repair_input, build_inference_context, serialize_inference_context
-from services.llm_options import env_bool, request_payload, request_settings
+from services.llm_options import (
+    ESCALATION_EFFORT_REJECTED, env_bool, is_escalation_effort_rejection, request_payload, request_settings,
+)
 from services.model_contract import (
     JSON_REPAIR_PROMPT, PROMPT_SHA256, PROMPT_VERSION, RESPONSE_FORMAT, SYSTEM_PROMPT,
     CompletionOutputError, classify_repair_response, classify_response, completion_text, false_positive_threshold,
@@ -52,6 +54,7 @@ _claim_token: ContextVar[str | None] = ContextVar("analysis_claim_token", defaul
 _provider_client: AsyncOpenAI | None = None
 _provider_settings: dict | None = None
 _provider_configuration_error: str | None = None
+_escalation_error: str | None = None
 _last_generation: str | None = None
 _provider_paused_until: datetime | None = None
 
@@ -119,7 +122,7 @@ def _make_provider(settings: dict, concurrency: int) -> AsyncOpenAI:
 
 
 async def start_analysis_provider(concurrency: int) -> bool:
-    global _provider_client, _provider_settings, _provider_configuration_error
+    global _provider_client, _provider_settings, _provider_configuration_error, _escalation_error
     try:
         settings = request_settings()
         false_positive_threshold()
@@ -135,19 +138,21 @@ async def start_analysis_provider(concurrency: int) -> bool:
         return False
     _provider_settings = settings
     _provider_configuration_error = None
+    _escalation_error = None
     if not settings["verify_ssl"]:
         logger.warning("LLM TLS certificate verification is disabled")
     return True
 
 
 async def stop_analysis_provider() -> None:
-    global _provider_client, _provider_settings, _last_generation, _provider_paused_until
+    global _provider_client, _provider_settings, _last_generation, _provider_paused_until, _escalation_error
     if _provider_client:
         await _provider_client.close()
     _provider_client = None
     _provider_settings = None
     _last_generation = None
     _provider_paused_until = None
+    _escalation_error = None
 
 
 def public_model_settings() -> dict:
@@ -164,6 +169,7 @@ def public_model_settings() -> dict:
         **{key: value for key, value in settings.items() if key not in {"base_url", "api_key", "headers"}},
         "provider": f"{parsed.scheme}://{parsed.netloc}",
         "configuration_error": _provider_configuration_error,
+        "escalation_error": _escalation_error,
     }
 
 
@@ -415,7 +421,7 @@ def _provider_failure(exc: Exception, structured: bool) -> TerminalAnalysisError
 
 
 async def _provider_request(revision_id: int, messages: list[dict], attempt_type: str) -> str:
-    global _provider_configuration_error, _provider_paused_until
+    global _provider_configuration_error, _provider_paused_until, _escalation_error
     try:
         settings = _provider_settings or request_settings()
     except (ValueError, TypeError) as exc:
@@ -439,7 +445,12 @@ async def _provider_request(revision_id: int, messages: list[dict], attempt_type
             raise
         except Exception as exc:
             error = _provider_failure(exc, settings["structured_output"])
-            if error.error_code in {"provider_authentication", "provider_not_found", "structured_output_rejected"}:
+            if attempt_type == "escalation" and is_escalation_effort_rejection(getattr(exc, "status_code", None), str(exc)):
+                if _escalation_error is None:
+                    logger.warning("%s", ESCALATION_EFFORT_REJECTED)
+                _escalation_error = ESCALATION_EFFORT_REJECTED
+                error = TerminalAnalysisError(_escalation_error, error_code="escalation_effort_rejected")
+            elif error.error_code in {"provider_authentication", "provider_not_found", "structured_output_rejected"}:
                 _provider_configuration_error = str(error)
             elif error.error_code == "rate_limited":
                 retry_after = _utcnow() + timedelta(seconds=error.retry_after or 15)
@@ -502,7 +513,7 @@ async def _call_model(
             await _save_repair_input(revision_id, repair_input)
         else:
             settings = _provider_settings or request_settings()
-            if settings["escalation_effort"] and result["classification"] == "uncertain":
+            if settings["escalation_effort"] and not _escalation_error and result["classification"] == "uncertain":
                 try:
                     escalated = await _provider_request(revision_id, messages, "escalation")
                     return classify_response(escalated), escalated, False

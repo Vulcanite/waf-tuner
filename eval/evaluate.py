@@ -30,7 +30,9 @@ from scoring import per_rule_matrix, summary_from_counts  # noqa: E402
 from services.audit_event import normalize_audit_event  # noqa: E402
 from services.crs_index import get_rule, initialize_crs_index  # noqa: E402
 from services.inference_context import bound_repair_input, build_inference_context  # noqa: E402
-from services.llm_options import request_payload, request_settings  # noqa: E402
+from services.llm_options import (  # noqa: E402
+    ESCALATION_EFFORT_REJECTED, is_escalation_effort_rejection, request_payload, request_settings,
+)
 from services.model_contract import (  # noqa: E402
     CompletionOutputError,
     PROMPT_SHA256,
@@ -244,7 +246,10 @@ def classify_live(fixture: dict, settings: dict) -> tuple[dict, dict]:
                     finish = "length" if exc.code == "truncated_output" else exc.code
                 except ValueError:
                     pass
-    if parsed and parsed["classification"] == "uncertain" and settings.get("escalation_effort"):
+    if (
+        parsed and parsed["classification"] == "uncertain"
+        and settings.get("escalation_effort") and not settings.get("escalation_error")
+    ):
         escalated = True
         try:
             choice, extra_latency, extra_usage = request(messages, settings, "escalation")
@@ -252,6 +257,17 @@ def classify_live(fixture: dict, settings: dict) -> tuple[dict, dict]:
             usage = merge_usage(usage, extra_usage)
             escalated_raw = completion_text(choice)
             parsed = classify_response(escalated_raw)
+        except urllib.error.HTTPError as exc:
+            details = ""
+            try:
+                with exc:
+                    if exc.code in (400, 422):
+                        details = exc.read(4096).decode("utf-8", errors="replace")
+            except OSError:
+                pass
+            if is_escalation_effort_rejection(exc.code, details):
+                settings["escalation_error"] = ESCALATION_EFFORT_REJECTED
+                print(ESCALATION_EFFORT_REJECTED, file=sys.stderr)
         except (ValueError, urllib.error.URLError, TimeoutError):
             pass
         else:
@@ -287,7 +303,7 @@ def public_settings(settings):
     return {
         key: value for key, value in settings.items()
         if key in {"model", "max_tokens", "temperature", "timeout", "structured_output", "verify_ssl",
-                   "escalation_effort", "thinking", "reasoning_effort", "mode", "crs_ruleset_digest"}
+                   "escalation_effort", "escalation_error", "thinking", "reasoning_effort", "mode", "crs_ruleset_digest"}
     }
 
 

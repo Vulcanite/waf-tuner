@@ -5,6 +5,16 @@ import os
 from urllib.parse import urlsplit
 
 
+ESCALATION_EFFORT_REJECTED = (
+    "Provider rejected LLM_ESCALATION_REASONING_EFFORT. Escalation is paused. "
+    "First-pass analysis remains available."
+)
+
+
+def is_escalation_effort_rejection(status: int | None, message: str) -> bool:
+    return status in (400, 422) and "reasoning_effort" in message.casefold().replace(" ", "_")
+
+
 def env_bool(name: str, default: bool = False) -> bool:
     value = os.getenv(name, "").strip().lower()
     if default:

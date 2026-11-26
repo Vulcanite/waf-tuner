@@ -137,3 +137,28 @@ def test_recorded_metadata_cannot_rescue_invalid_output():
     fixture = {"id": "benign-catalog", "expected": "false_positive"}
     result = evaluate.classify_recorded(fixture, {"classification": "false_positive", "raw": "not JSON"})
     assert not result["valid"]
+
+
+def test_live_eval_pauses_rejected_escalation_for_remaining_fixtures(monkeypatch):
+    monkeypatch.setenv("LLM_THINKING", "enabled")
+    monkeypatch.setenv("LLM_ESCALATION_REASONING_EFFORT", "hgih")
+    settings = evaluate.request_settings(model="mock")
+    sent = []
+
+    def fake_request(messages, settings, attempt_type="initial"):
+        sent.append(attempt_type)
+        if attempt_type == "escalation":
+            raise evaluate.urllib.error.HTTPError(
+                "http://provider.test/v1/chat/completions", 422, "Unprocessable Entity", {},
+                io.BytesIO(b'{"error":{"param":"reasoning_effort"}}'),
+            )
+        result = {**oracle_response("false_positive"), "classification": "uncertain"}
+        return {"finish_reason": "stop", "message": {"content": json.dumps(result)}}, 1, {}
+
+    monkeypatch.setattr(evaluate, "request", fake_request)
+    for fixture_id in ("first", "second"):
+        fixture = {"id": fixture_id, "expected": "false_positive", "context": {"incident": {"rule_id": "10001"}}}
+        result, _ = evaluate.classify_live(fixture, settings)
+        assert result["classification"] == "uncertain"
+    assert sent == ["initial", "escalation", "initial"]
+    assert evaluate.public_settings(settings)["escalation_error"] == evaluate.ESCALATION_EFFORT_REJECTED

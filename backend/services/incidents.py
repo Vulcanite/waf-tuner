@@ -22,6 +22,10 @@ from services.inference_context import (
 )
 
 
+class InvalidAuditRecord(ValueError):
+    """Audit data that cannot be registered even when storage is healthy."""
+
+
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -122,7 +126,10 @@ async def register_event(session, event: dict, event_line: int) -> bool:
     """Register an audit transaction and detection occurrences atomically."""
     transaction_id = str(event.get('transaction_id') or '')
     if not transaction_id:
-        raise ValueError('event has no transaction_id')
+        raise InvalidAuditRecord('event has no transaction_id')
+    score = event.get('anomaly_score')
+    if isinstance(score, int) and not -(2**63) <= score < 2**63:
+        raise InvalidAuditRecord('anomaly score exceeds SQLite integer range')
     observed_at = parse_audit_timestamp(event.get('timestamp')) or _utcnow()
     path = normalized_path(event.get('uri') or '/')
     statement = (
@@ -138,7 +145,10 @@ async def register_event(session, event: dict, event_line: int) -> bool:
         .on_conflict_do_nothing(index_elements=[AuditEvent.transaction_id])
         .returning(AuditEvent.id)
     )
-    audit_event_id = (await session.execute(statement)).scalar_one_or_none()
+    try:
+        audit_event_id = (await session.execute(statement)).scalar_one_or_none()
+    except UnicodeEncodeError as exc:
+        raise InvalidAuditRecord('audit text cannot be encoded as UTF-8') from exc
     if audit_event_id is None:
         return False
 
@@ -195,7 +205,10 @@ async def register_event(session, event: dict, event_line: int) -> bool:
             )
             .returning(AnalysisCase.id)
         )
-        case_id = (await session.execute(statement)).scalar_one()
+        try:
+            case_id = (await session.execute(statement)).scalar_one()
+        except UnicodeEncodeError as exc:
+            raise InvalidAuditRecord('match text cannot be encoded as UTF-8') from exc
         session.add(IncidentOccurrence(
             audit_event_id=audit_event_id,
             analysis_case_id=case_id,

@@ -167,6 +167,7 @@ export default function Settings() {
               TLS verification {appMode.inference.verify_ssl ? 'on' : 'OFF'}
             </span>
           </div>
+          {appMode.inference.escalation_error && <p className="alert-error">{appMode.inference.escalation_error}</p>}
           <div className="border-l-2 border-amber-600 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs leading-relaxed">
             {appMode.inference.egress_notice}
           </div>

@@ -168,6 +168,58 @@ def test_unstructured_output_without_classification_does_not_trigger_repair():
     assert provider.await_count == 1
 
 
+@pytest.mark.parametrize("provider_error, blocked", [
+    ("Unsupported reasoning_effort", True),
+    ("Invalid evidence format", False),
+])
+def test_only_effort_rejection_pauses_escalation(provider_error, blocked, monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "test")
+    monkeypatch.setenv("LLM_THINKING", "enabled")
+    monkeypatch.setenv("LLM_REASONING_EFFORT", "low")
+    monkeypatch.setenv("LLM_ESCALATION_REASONING_EFFORT", "hgih")
+    monkeypatch.setattr(agent, "_provider_settings", request_settings())
+    monkeypatch.setattr(agent, "_provider_configuration_error", None)
+    monkeypatch.setattr(agent, "_escalation_error", None)
+    sent = []
+    result = {
+        "classification": "uncertain", "confidence": 0.5,
+        "verdict": "This evidence needs review to determine the application intent.",
+        "context_factors": [], "uncertainty_factors": [],
+    }
+
+    def respond(request):
+        effort = json.loads(request.content)["reasoning_effort"]
+        sent.append(effort)
+        if effort == "hgih":
+            return httpx.Response(400, json={"error": {"message": provider_error}})
+        return httpx.Response(200, json={
+            "choices": [{"index": 0, "finish_reason": "stop",
+                         "message": {"role": "assistant", "content": json.dumps(result)}}],
+        })
+
+    async def run():
+        async with AsyncOpenAI(
+            api_key="test", base_url="https://model.example.test/v1", max_retries=0,
+            http_client=httpx.AsyncClient(transport=httpx.MockTransport(respond)),
+        ) as client:
+            with (
+                patch.object(agent, "_provider_client", client),
+                patch.object(agent, "_reserve_attempt", AsyncMock(side_effect=[1, 2, 3, 4])),
+                patch.object(agent, "_finish_attempt", AsyncMock()) as finish,
+            ):
+                for revision_id in (1, 2):
+                    verdict, _, _ = await agent._call_model({}, {}, revision_id)
+                    assert verdict["classification"] == "uncertain"
+                settings = agent.public_model_settings()
+                assert settings["configuration_error"] is None
+                assert bool(settings["escalation_error"]) is blocked
+                if blocked:
+                    assert finish.await_args_list[1].kwargs["error_code"] == "escalation_effort_rejected"
+
+    asyncio.run(run())
+    assert sent == (["low", "hgih", "low"] if blocked else ["low", "hgih", "low", "hgih"])
+
+
 def test_repair_cannot_reclassify_a_detection_as_false_positive():
     initial = json.dumps({"classification": "true_positive", "confidence": 0.96, "evidence": {}})
     repaired = json.dumps({
