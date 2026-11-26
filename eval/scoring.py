@@ -115,15 +115,25 @@ def _rate(num: int, den: int) -> float | None:
 
 
 def is_copyable_exclusion(row: dict[str, Any]) -> bool:
-    """A harmless match cleared as false_positive on a target the exclusion builder accepts.
+    """A harmless match cleared as false_positive that passes the worker's offline-computable draft gates.
 
-    Mirrors the collection and parameter checks of exception_builder.can_build_exception; the
-    path, host, and method checks need the live alert scope, so this is an upper estimate.
+    - the collection and parameter checks of exception_builder.can_build_exception;
+    - the route gate (`route_supports_exception`): a specific route in the fixture's
+      application_context documents this exact target;
+    - the evidence gate (`evidence_withheld`): the match's own target was not hidden or trimmed
+      and a matched value survived, as recorded from the exact context sent.
+
+    A gate input that is None (older recordings, fixtures without evidence) is not applied.
+    Not modelled: the captured host and method the worker requires, the rule builder's path,
+    host and method syntax checks, CRS rule availability, chained rules, ruleset changes,
+    true-positive scope conflicts and rule-ID collisions. This stays an upper estimate.
     """
     return (
         expected_class(row) != "attack" and _predicted(row) == "false_positive"
         and str(row.get("collection") or "").upper() in SAFE_TARGET_COLLECTIONS
         and bool(str(row.get("parameter") or "").strip())
+        and row.get("route_supports_exception") is not False
+        and row.get("evidence_withheld") is not True
     )
 
 
@@ -171,14 +181,15 @@ def _count(value: Any) -> int:
 
 
 def usage_tokens(usage: dict[str, Any]) -> dict[str, int]:
-    """Normalize one call's OpenAI-compatible usage (DeepSeek's cache fields included)."""
+    """Normalize one call's OpenAI-compatible usage.
+
+    Cached prompt tokens come only from `prompt_tokens_details.cached_tokens`; provider-specific
+    top-level fields are ignored.
+    """
     usage = usage or {}
     prompt_details = usage.get("prompt_tokens_details") or {}
     completion_details = usage.get("completion_tokens_details") or {}
     cached = prompt_details.get("cached_tokens") if isinstance(prompt_details, dict) else None
-    if not isinstance(cached, int):
-        # DeepSeek reports the cache hit at the top level; never add both, they count the same tokens.
-        cached = usage.get("prompt_cache_hit_tokens")
     reasoning = completion_details.get("reasoning_tokens") if isinstance(completion_details, dict) else None
     return {
         "prompt_tokens": _count(usage.get("prompt_tokens")),

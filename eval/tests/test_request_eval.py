@@ -206,6 +206,90 @@ def test_request_escalation_only_for_an_unrepaired_uncertain_first_pass(monkeypa
     assert all(row["escalated"] for row in rows) and calls[0]["model_calls"] == 2
 
 
+def test_request_escalation_keeps_confident_first_pass_verdicts(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "mock-key")
+    monkeypatch.setenv("LLM_THINKING", "enabled")
+    monkeypatch.setenv("LLM_ESCALATION_REASONING_EFFORT", "high")
+    settings = evaluate.request_settings(model="mock")
+    mock_provider(monkeypatch, {
+        "initial": request_reply((0, "true_positive"), (1, "uncertain")),
+        # The escalation would clear the attack; only the uncertain match may take its verdict.
+        "escalation": request_reply((0, "false_positive"), (1, "false_positive")),
+    })
+    rows, _, recordings = evaluate.evaluate_fixture(request_fixture(), "request", settings=settings)
+    assert [row["classification"] for row in rows] == ["true_positive", "false_positive"]
+    assert recordings[0]["classifications"] == {"0": "true_positive", "1": "false_positive"}
+    # Replay merges the same way from the stored first pass.
+    replayed, _, _ = evaluate.evaluate_fixture(request_fixture(), "request", stored={"req-search": recordings[0]})
+    assert [row["classification"] for row in replayed] == ["true_positive", "false_positive"]
+
+
+def unlabeled_detection_fixture():
+    """request_fixture plus a fourth, unlabeled detection on the User-Agent header."""
+    fixture = request_fixture()
+    transaction = fixture["modsec_audit"]["transaction"]
+    transaction["request"]["headers"]["User-Agent"] = "lab-scanner/1.0"
+    transaction["messages"].insert(2, {"message": "Found User-Agent associated with security scanner", "details": {
+        "ruleId": "913100", "severity": "2",
+        "data": "Matched Data: lab-scanner found within REQUEST_HEADERS:User-Agent: lab-scanner/1.0",
+    }})
+    return fixture
+
+
+def test_request_unit_analyses_every_detection_and_scores_only_labeled_ones(settings, monkeypatch):
+    sent = mock_provider(monkeypatch, {"initial": request_reply((0, "true_positive"), (1, "false_positive"), (2, "uncertain"))})
+    fixture = unlabeled_detection_fixture()
+    rows, calls, recordings = evaluate.evaluate_fixture(fixture, "request", settings=settings)
+    context = json.loads(sent[0]["messages"][1]["content"])
+    # Like the worker: every non-aggregate detection is analysed; 949110 stays context only.
+    assert [entry["match_index"] for entry in context["matches"]] == [0, 1, 2]
+    assert [item["rule_id"] for item in context["other_matches"]] == ["949110"]
+    assert [(row["id"], row["classification"]) for row in rows] == [
+        ("req-search#0", "true_positive"), ("req-search#1", "false_positive"),
+    ]
+    assert recordings[0]["match_indexes"] == [0, 1, 2] and recordings[0]["classifications"]["2"] == "uncertain"
+    assert calls[0]["analysed_match_indexes"] == [0, 1, 2] and calls[0]["match_ids"] == ["req-search#0", "req-search#1"]
+    replayed, _, _ = evaluate.evaluate_fixture(fixture, "request", stored={"req-search": recordings[0]})
+    assert [row["classification"] for row in replayed] == ["true_positive", "false_positive"]
+    # A recording made when only the labeled matches were analysed still replays.
+    older = {"id": "req-search", "match_indexes": [0, 1], "finish_reason": "stop",
+             "raw": request_reply((0, "true_positive"), (1, "false_positive"))}
+    replayed, _, _ = evaluate.evaluate_fixture(fixture, "request", stored={"req-search": older})
+    assert [row["classification"] for row in replayed] == ["true_positive", "false_positive"]
+    # The match unit still makes one call per labeled match only.
+    sent = mock_provider(monkeypatch, {"initial": json.dumps(verdict("false_positive"))})
+    evaluate.evaluate_fixture(fixture, "match", settings=settings)
+    assert len(sent) == 2
+
+
+def test_copyable_estimate_applies_the_route_and_evidence_gates(settings, monkeypatch):
+    def cleared(fixture, unit="request"):
+        mock_provider(monkeypatch, {"initial": request_reply((0, "true_positive"), (1, "false_positive"))})
+        rows, calls, _ = evaluate.evaluate_fixture(fixture, unit, settings=settings)
+        return evaluate.build_report([fixture], rows, settings, "mock", calls, unit)["summary"], rows
+
+    summary, rows = cleared(request_fixture())
+    assert summary["copyable_exclusions"] == 1
+    assert (rows[1]["route_supports_exception"], rows[1]["evidence_withheld"]) == (True, False)
+
+    # The route does not document `comment`: the worker withholds the draft.
+    undocumented = request_fixture()
+    del undocumented["application_context"]["route"]["parameters"]["comment"]
+    summary, rows = cleared(undocumented)
+    assert summary["copyable_exclusions"] == 0 and rows[1]["route_supports_exception"] is False
+
+    # A cookie entry on the route never vouches for an argument of the same name.
+    cookie_only = request_fixture()
+    parameters = cookie_only["application_context"]["route"]["parameters"]
+    parameters["REQUEST_COOKIES:comment"] = parameters.pop("comment")
+    assert cleared(cookie_only)[0]["copyable_exclusions"] == 0
+
+    # The match's own evidence was trimmed: no copyable rule either.
+    monkeypatch.setenv("AI_MAX_CONTEXT_BYTES", "300")
+    summary, rows = cleared(request_fixture())
+    assert summary["copyable_exclusions"] == 0 and rows[1]["evidence_withheld"] is True
+
+
 def test_cut_off_output_is_never_parsed(settings, monkeypatch):
     def fake_request(messages, settings, attempt_type="initial", response_format=None):
         content = request_reply((0, "true_positive"), (1, "false_positive"))
@@ -237,12 +321,20 @@ def test_tokens_are_summed_once_per_call(settings, monkeypatch):
         context = json.loads(messages[1]["content"])
         return json.dumps(verdict("true_positive" if context["incident"]["rule_id"] == "942100" else "false_positive"))
 
-    # DeepSeek's top-level cache field counts too.
-    mock_provider(monkeypatch, reply, usage={"prompt_tokens": 800, "completion_tokens": 50, "prompt_cache_hit_tokens": 512})
+    mock_provider(monkeypatch, reply, usage={"prompt_tokens": 800, "completion_tokens": 50})
     rows, calls, _ = evaluate.evaluate_fixture(fixtures[0], "match", settings=settings)
     tokens = evaluate.build_report(fixtures[:1], rows, settings, "mock", calls, "match")["summary"]["tokens"]
-    assert (tokens["model_calls"], tokens["prompt_tokens"], tokens["cached_prompt_tokens"]) == (2, 1600, 1024)
+    assert (tokens["model_calls"], tokens["prompt_tokens"], tokens["cached_prompt_tokens"]) == (2, 1600, 0)
     assert tokens["calls_per_request"] == 2 and tokens["per_scored_match"]["prompt_tokens"] == 800
+
+
+def test_cached_tokens_come_only_from_the_openai_compatible_field():
+    from scoring import usage_tokens
+
+    # A provider-specific top-level cache field is ignored, alone or beside the standard one.
+    assert usage_tokens({"prompt_tokens": 800, "prompt_cache_hit_tokens": 512})["cached_prompt_tokens"] == 0
+    both = {"prompt_tokens": 800, "prompt_cache_hit_tokens": 512, "prompt_tokens_details": {"cached_tokens": 256}}
+    assert usage_tokens(both)["cached_prompt_tokens"] == 256
 
 
 def test_metrics_cover_gates_copyable_exclusions_and_stack(settings, monkeypatch):

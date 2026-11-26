@@ -2,7 +2,7 @@
 import asyncio
 import json
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -77,6 +77,108 @@ def test_session_cookies_and_credential_headers_stay_hidden(target, headers):
     context = build_inference_context(event, event["matches"][0])
     assert "private-value" not in serialize_inference_context(context)
     assert context["redaction"]["target_hidden"]
+
+
+@pytest.mark.parametrize("name", [
+    "remember-me", "wordpress_logged_in_5c0a1b", "wordpress_5c0a1b", ".AspNetCore.Identity.Application",
+    "KEYCLOAK_IDENTITY", "_identity", "remember_web_59ba36", "Ocp-Apim-Subscription-Key", "X-Access-Key",
+    "x-apikey", "_csrf", "SAMLResponse", "code", "state", "json.code", "X-Amz-Signature", "id_token",
+])
+def test_credential_cookie_header_and_field_names_are_hidden(name):
+    from services.redaction import is_credential_name
+
+    assert is_credential_name(name)
+
+
+@pytest.mark.parametrize("name", [
+    "prefs", "theme", "lang", "currency", "cart_id", "q", "comment", "author", "coupon_code", "barcode",
+    "statement", "gift_message", "display_name", "User-Agent", "Referer",
+])
+def test_ordinary_names_are_not_credentials(name):
+    from services.redaction import is_credential_name
+
+    assert not is_credential_name(name)
+
+
+@pytest.mark.parametrize("cookie", ["remember-me", "wordpress_logged_in_5c0a1b", "KEYCLOAK_IDENTITY"])
+def test_a_matched_login_cookie_stays_hidden(cookie):
+    event = audit([("942100", within(f"REQUEST_COOKIES:{cookie}", "private-value"))],
+                  headers={"Cookie": f"{cookie}=private-value; prefs=dark"})
+    for context in (build_inference_context(event, event["matches"][0]), build_request_context(event, [0], {}, {})):
+        assert "private-value" not in serialize_inference_context(context)
+    assert build_inference_context(event, event["matches"][0])["redaction"]["target_hidden"]
+
+
+def test_request_mode_hides_csrf_sso_oauth_and_signature_fields():
+    secrets = {
+        "code": "private-oauth-code", "state": "private-oauth-state", "X-Amz-Signature": "private-signature",
+        "id_token": "private-id-token",
+    }
+    event = normalize_audit_event({"transaction": {
+        "id": "sso-callback", "time_stamp": "Mon Jan 01 12:00:00 2024",
+        "request": {
+            "method": "POST", "uri": "/callback?q=books&" + "&".join(f"{k}={v}" for k, v in secrets.items()),
+            "headers": {"Host": "shop.example", "Content-Type": "application/x-www-form-urlencoded"},
+            "body": "_csrf=private-csrf&SAMLResponse=private-saml&comment=hello+there",
+        },
+        "messages": [{"message": "fixture", "details": {"ruleId": "942100", "data": within("ARGS:q", "books")}}],
+    }})
+    context = build_request_context(event, [0], {}, {})
+    serialized = serialize_inference_context(context)
+    for private in (*secrets.values(), "private-csrf", "private-saml"):
+        assert private not in serialized
+    assert ["comment", "hello there"] in context["request"]["body"]
+    assert ["q", "books"] in context["request"]["query"]
+
+
+def test_a_matched_documented_signature_field_is_still_analysed():
+    # `signature` is hidden as an unmatched request field, but a rule match on it keeps its value.
+    event = audit([("942100", within("ARGS:signature", SQLI))], uri="/account/settings?signature=%27%20or%201%3D1--%20-")
+    context = build_inference_context(event, event["matches"][0])
+    assert context["incident"]["uri"]["query"] == [SQLI]
+    assert not context["redaction"]["target_hidden"]
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("https://shop.example/cart;jsessionid=A1B2C3D4E5?x=1", "https://shop.example/cart;jsessionid=[REDACTED]?x=1"),
+    ("https://shop.example/?PHPSESSID=abcd1234&q=1", "https://shop.example/?PHPSESSID=[REDACTED]&q=1"),
+    ("https://shop.example/?q=1&sid=f00dfeed#top", "https://shop.example/?q=1&sid=[REDACTED]#top"),
+    ("https://shop.example/?session_id=abc", "https://shop.example/?session_id=[REDACTED]"),
+])
+def test_session_ids_in_urls_are_redacted(text, expected):
+    from services.redaction import sanitize_evidence_text
+
+    assert sanitize_evidence_text(text) == expected
+
+
+def test_a_referer_session_id_is_not_sent():
+    referer = f"https://shop.example/catalog;jsessionid=private-jsession?q={XSS}"
+    event = audit([("941100", within("REQUEST_HEADERS:Referer", XSS))], headers={"Referer": referer})
+    assert "private-jsession" not in serialize_inference_context(build_inference_context(event, event["matches"][0]))
+
+
+def test_a_route_cookie_entry_vouches_only_for_that_cookie():
+    from services.lab_profiles import seeded_profiles
+    from services.profile_match import application_context_for, route_supports_exception
+
+    profiles = seeded_profiles()
+    _, dvwa = application_context_for(profiles, "payments.example.com", "GET", "/login.php")
+    assert route_supports_exception(dvwa, "REQUEST_COOKIES", "lang")
+    assert route_supports_exception(dvwa, "REQUEST_COOKIES", "LANG")  # cookie names ignore case
+    assert route_supports_exception(dvwa, "ARGS", "username")
+    for collection, name in (("ARGS", "lang"), ("ARGS_GET", "prefs"), ("REQUEST_HEADERS", "prefs"),
+                             ("REQUEST_COOKIES", "username"), ("REQUEST_COOKIES", "PHPSESSID")):
+        assert not route_supports_exception(dvwa, collection, name), (collection, name)
+    _, shop = application_context_for(profiles, "shop.lab", "GET", "/search")
+    assert route_supports_exception(shop, "REQUEST_COOKIES", "cart_id") and route_supports_exception(shop, "ARGS", "q")
+    assert not route_supports_exception(shop, "ARGS", "cart_id")
+    # The model sees the cookie's documented meaning under its qualified key in request mode.
+    event = audit([("942100", within("REQUEST_COOKIES:prefs", SQLI))], uri="/search?q=bags",
+                  headers={"Cookie": f"prefs={SQLI}"})
+    match_context = build_inference_context(event, event["matches"][0], application_context=shop)
+    assert "UI preferences" in match_context["application_context"]["route"]["parameter_semantics"]
+    semantics = build_request_context(event, [0], {}, shop)["application_context"]["route"]["parameter_semantics"]
+    assert set(semantics) == {"REQUEST_COOKIES:prefs", "q"}
 
 
 def test_a_cookie_case_is_identified_by_its_own_value(monkeypatch):
@@ -230,8 +332,38 @@ def test_request_context_is_bounded_and_flags_truncation(monkeypatch):
     assert len(serialize_inference_context(context)) <= 600
     assert context["redaction"]["truncated"] is True
     assert [entry["match_index"] for entry in context["matches"]] == [0, 1]
-    # A trimmed context cannot support a copyable exclusion for any match.
-    assert agent._request_match_view(context, 0)["redaction"]["truncated"] is True
+    # At this budget every match lost its own rule text, so none can support a copyable exclusion.
+    from services.inference_context import request_match_view
+
+    assert all(request_match_view(context, index)["redaction"]["truncated"] for index in (0, 1))
+
+
+def test_request_truncation_marks_only_the_match_whose_own_evidence_was_cut(monkeypatch):
+    from services.inference_context import request_match_view
+
+    rules = {0: RULES[0], 1: {**RULES[1], "raw": 'SecRule REQUEST_COOKIES "@rx ' + "a" * 4000 + '" "id:942200"'}}
+    event = two_match_event()
+    full = len(serialize_inference_context(build_request_context(event, [0, 1], rules, {})))
+    # Room for everything except the long rule text of match 1 (plus shared request fields).
+    monkeypatch.setenv("AI_MAX_CONTEXT_BYTES", str(full - 3500))
+    context = build_request_context(event, [0, 1], rules, {})
+    assert context["redaction"]["truncated"] is True
+    assert "raw" in context["matches"][0]["crs_rule"] and "raw" not in context["matches"][1]["crs_rule"]
+    assert request_match_view(context, 0)["redaction"]["truncated"] is False
+    assert request_match_view(context, 1)["redaction"]["truncated"] is True
+
+
+def test_request_shared_trimming_does_not_mark_a_match(monkeypatch):
+    from services.inference_context import request_match_view
+
+    event = audit([("942100", within("ARGS:q", "books"))],
+                  uri="/catalog?q=books&" + "&".join(f"f{n}={'x' * 200}" for n in range(30)))
+    full = len(serialize_inference_context(build_request_context(event, [0], RULES, {})))
+    monkeypatch.setenv("AI_MAX_CONTEXT_BYTES", str(full - 1000))
+    context = build_request_context(event, [0], RULES, {})
+    assert context["redaction"]["truncated"] is True and "query" not in context["request"]
+    assert context["matches"][0]["crs_rule"]["raw"] == RULES[0]["raw"]
+    assert request_match_view(context, 0)["redaction"]["truncated"] is False
 
 
 # Step 4: the request-mode response contract.
@@ -313,6 +445,22 @@ def test_analysis_unit_changes_the_generation(monkeypatch):
     assert agent._analysis_generation({}) != per_match
 
 
+def test_request_escalation_replaces_only_first_pass_uncertain_verdicts(monkeypatch):
+    monkeypatch.setenv("LLM_API_KEY", "test")
+    first = raw(verdict(0, "true_positive", 0.97), verdict(1, "uncertain", 0.5), verdict(2, "uncertain", 0.5))
+    escalated = raw(verdict(0, "false_positive", 0.99), verdict(1, "false_positive", 0.99), verdict(2, "true_positive"))
+    provider = AsyncMock(side_effect=[first, escalated])
+    settings = {**request_settings(), "escalation_effort": "high"}
+    with patch.object(agent, "_provider_request", provider), patch.object(agent, "_provider_settings", settings):
+        results, raws = asyncio.run(agent._call_request_model({}, [0, 1, 2], [1]))
+    # A confident first-pass true_positive never becomes false_positive through escalation.
+    assert {index: item["classification"] for index, item in results.items()} == {
+        0: "true_positive", 1: "false_positive", 2: "true_positive",
+    }
+    assert results[0]["confidence"] == 0.97
+    assert raws == {0: first, 1: escalated, 2: escalated}
+
+
 def test_a_repaired_request_is_not_escalated(monkeypatch):
     monkeypatch.setenv("LLM_API_KEY", "test")
     first = raw({"match_index": 0, "classification": "uncertain", "confidence": 0.5},
@@ -321,8 +469,10 @@ def test_a_repaired_request_is_not_escalated(monkeypatch):
     provider = AsyncMock(side_effect=[first, repaired, raw(verdict(0), verdict(1))])
     settings = {**request_settings(), "escalation_effort": "high"}
     with patch.object(agent, "_provider_request", provider), patch.object(agent, "_provider_settings", settings):
-        results, _, was_repaired = asyncio.run(agent._call_request_model({}, [0, 1], [1]))
-    assert (results[0]["classification"], was_repaired, provider.await_count) == ("uncertain", True, 2)
+        results, raws = asyncio.run(agent._call_request_model({}, [0, 1], [1]))
+    assert (results[0]["classification"], provider.await_count) == ("uncertain", 2)
+    assert [call.args[2] for call in provider.await_args_list] == ["initial", "repair"]
+    assert raws == {0: repaired, 1: repaired}
 
 
 # Step 4: the worker.
@@ -340,10 +490,13 @@ def test_request_mode_claims_the_transaction_siblings_under_one_lease(tmp_path, 
         async with models.get_session_factory()() as session:
             events = [models.AuditEvent(transaction_id=f"txn-{n}", event_line=n, timestamp=now, raw_event={}) for n in (1, 2)]
             cases = [models.AnalysisCase(fingerprint=f"case-{n}", method="GET", path="/p", rule_id="942100",
-                                         latest_event_line=1, enqueued_at=now) for n in range(3)]
+                                         latest_event_line=1, enqueued_at=now) for n in range(4)]
+            # case-3 shares the transaction but is still in retry backoff, so it is not ready.
+            cases[3].state = "retryable_error"
+            cases[3].next_retry_at = now + timedelta(hours=1)
             session.add_all([*events, *cases])
             await session.flush()
-            for index, (case, event) in enumerate(zip(cases, (events[0], events[0], events[1]))):
+            for index, (case, event) in enumerate(zip(cases, (events[0], events[0], events[1], events[0]))):
                 session.add(models.IncidentOccurrence(
                     audit_event_id=event.id, analysis_case_id=case.id, transaction_id=event.transaction_id,
                     event_line=event.event_line, match_index=index, rule_id="942100", fingerprint=case.fingerprint,
@@ -362,7 +515,54 @@ def test_request_mode_claims_the_transaction_siblings_under_one_lease(tmp_path, 
 
     group, states = asyncio.run(run())
     assert len(group) == 2
-    assert states == {"case-0": "analyzing", "case-1": "analyzing", "case-2": "queued"}
+    assert states == {"case-0": "analyzing", "case-1": "analyzing", "case-2": "queued", "case-3": "retryable_error"}
+
+
+@pytest.mark.parametrize("group_size, expected", [(2, ("retryable_error", 1)), (1, ("failed", 1))])
+def test_invalid_request_output_retries_a_group_and_fails_a_single_case(tmp_path, monkeypatch, group_size, expected):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "invalid.db"))
+    monkeypatch.setenv("ANALYSIS_UNIT", "request")
+    monkeypatch.setenv("LLM_API_KEY", "test")
+    monkeypatch.setenv("AGENT_MAX_RETRIES", "5")
+    monkeypatch.setattr(models, "_async_engine", None)
+    monkeypatch.setattr(models, "_async_session_factory", None)
+    event = two_match_event()
+
+    async def run():
+        await models.init_db()
+        now = datetime.now(timezone.utc)
+        async with models.get_session_factory()() as session:
+            audit_event = models.AuditEvent(transaction_id="txn-invalid", event_line=1, timestamp=now, raw_event=event)
+            cases = [models.AnalysisCase(fingerprint=f"case-{n}", method="GET", path="/catalog",
+                                         rule_id=event["matches"][n]["rule_id"], latest_event_line=1, enqueued_at=now)
+                     for n in range(group_size)]
+            session.add_all([audit_event, *cases])
+            await session.flush()
+            for index, case in enumerate(cases):
+                session.add(models.IncidentOccurrence(
+                    audit_event_id=audit_event.id, analysis_case_id=case.id, transaction_id="txn-invalid",
+                    event_line=1, match_index=index, rule_id=case.rule_id, fingerprint=case.fingerprint,
+                ))
+            await session.commit()
+        token = agent._claim_token.set("worker-a")
+        try:
+            claimed = await agent._claim_case("worker-a")
+            with patch.object(agent, "_provider_request", AsyncMock(return_value="not json")):
+                await agent._run_claimed_case(claimed)
+        finally:
+            agent._claim_token.reset(token)
+        async with models.get_session_factory()() as session:
+            states = (await session.execute(select(models.AnalysisCase.state, models.AnalysisCase.retry_count))).all()
+            revisions = (await session.scalars(select(models.AnalysisRevision))).all()
+            result = [tuple(row) for row in states], [(r.state, r.error_code, r.raw_response) for r in revisions]
+        await models._async_engine.dispose()
+        return result
+
+    states, revisions = asyncio.run(run())
+    assert states == [expected] * group_size
+    revision_state = "failed" if expected[0] == "failed" else "retryable_error"
+    assert revisions == [(revision_state, "invalid_output", "not json")] * group_size
 
 
 def test_request_mode_makes_one_call_per_transaction_and_gates_each_match(tmp_path, monkeypatch):

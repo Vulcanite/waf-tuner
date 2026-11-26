@@ -13,7 +13,7 @@ from sqlalchemy import select
 from db import models
 from routers import analytics, cases, events, exceptions, profiles
 from services import agent
-from services.application_context import application_context_for, route_supports_exception
+from services.profile_match import application_context_for, route_supports_exception
 from services.crs_index import CRSRule
 from services.draft_scope import canonical_scope_key, rule_numeric_id
 from services.exception_builder import build_exception_rule
@@ -26,11 +26,11 @@ def test_specific_route_with_named_evidence_wins_over_a_catchall():
                               routes=[{"path": "/catalog", "methods": ["GET"], "parameters": {"q": "product search"}}])
     chosen, context = application_context_for([catchall, specific], "catalog.test", "GET", "/catalog")
     assert chosen is specific
-    assert route_supports_exception(context, "q")
-    assert not route_supports_exception(context, "other")
+    assert route_supports_exception(context, "ARGS", "q")
+    assert not route_supports_exception(context, "ARGS", "other")
     chosen, context = application_context_for([catchall, specific], "catalog.test", "POST", "/catalog")
     assert chosen is catchall
-    assert not route_supports_exception(context, "q")
+    assert not route_supports_exception(context, "ARGS", "q")
 
 
 def test_exclusion_identity_matches_exact_scoped_rule():

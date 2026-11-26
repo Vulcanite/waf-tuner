@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from services.application_context import _route_score
+from services.profile_match import _route_score
 from services.crs_index import build_crs_index
 from services.exception_builder import build_exception_rule, can_build_exception
 from services.incidents import incident_fingerprint, normalized_path
@@ -355,12 +355,8 @@ class DefaultProfileSeedTests(unittest.TestCase):
     def test_first_run_creates_catch_all_profile(self):
         import asyncio
         from db.models import ApplicationProfile
-        from services.application_context import (
-            DEFAULT_LAB_PROFILE_NAME,
-            SHOP_LAB_PROFILE_NAME,
-            ensure_default_application_profile,
-            select_application_context,
-        )
+        from services.application_context import ensure_default_application_profile, select_application_context
+        from services.lab_profiles import DEFAULT_LAB_PROFILE_NAME, SHOP_LAB_PROFILE_NAME
         from sqlalchemy import func, select
 
         with tempfile.TemporaryDirectory() as directory:

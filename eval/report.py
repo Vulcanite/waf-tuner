@@ -3,7 +3,7 @@
 comparison when there are several.
 
 A run is a recording stem: `oracle` (legacy match-unit file) or `<name>__<unit>`, for example
-`--runs deepseek-flash__match,deepseek-flash__request,deepseek-pro__match,deepseek-pro__request`.
+`--runs small__match,small__request,large__match,large__request`.
 """
 from __future__ import annotations
 
@@ -239,7 +239,7 @@ def main() -> int:
     parser.add_argument("--models", default="", help="comma-separated run names; default: every *.jsonl in recordings/")
     parser.add_argument(
         "--runs", default="",
-        help="comma-separated runs such as deepseek-flash__match,deepseek-flash__request (overrides --models)",
+        help="comma-separated runs such as small__match,small__request (overrides --models)",
     )
     parser.add_argument("--output-dir", default=str(ROOT / "eval/reports"))
     args = parser.parse_args()

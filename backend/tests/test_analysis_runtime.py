@@ -208,7 +208,7 @@ def test_only_effort_rejection_pauses_escalation(provider_error, blocked, monkey
                 patch.object(agent, "_finish_attempt", AsyncMock()) as finish,
             ):
                 for revision_id in (1, 2):
-                    verdict, _, _ = await agent._call_model({}, {}, revision_id)
+                    verdict, _ = await agent._call_model({}, {}, revision_id)
                     assert verdict["classification"] == "uncertain"
                 settings = agent.public_model_settings()
                 assert settings["configuration_error"] is None

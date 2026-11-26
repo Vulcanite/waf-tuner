@@ -9,6 +9,7 @@ from collections.abc import Mapping
 from urllib.parse import SplitResult, parse_qsl, unquote, unquote_plus, urlsplit
 
 from services.json_extract import extract_json
+from services.profile_match import route_parameter_key, route_parameter_semantics
 from services.redaction import REDACTED, is_credential_name, is_sensitive_name, sanitize_evidence_text
 
 
@@ -309,7 +310,12 @@ def _safe_profile(value, depth=0):
     return _text(value, 512)
 
 
-def _profile_projection(profile: dict, parameter: str | None = None, *, parameters: list[str] | None = None) -> dict:
+def _profile_projection(profile: dict, target: tuple | None = None, *, targets: list[tuple] | None = None) -> dict:
+    """`target` is the match's (collection, parameter); request mode passes every request field as `targets`.
+
+    A cookie or header is documented under `REQUEST_COOKIES:<name>` / `REQUEST_HEADERS:<name>`
+    (see profile_match.route_parameter_key), an argument under its plain name.
+    """
     application = profile.get('application') or {}
     route = profile.get('route')
     result = {
@@ -317,14 +323,19 @@ def _profile_projection(profile: dict, parameter: str | None = None, *, paramete
     }
     if isinstance(route, dict):
         route_fields = {key: route[key] for key in ('path', 'methods', 'notes', 'purpose') if key in route}
-        semantics = route.get('parameters') or {}
-        if isinstance(semantics, dict) and parameter in semantics and not is_sensitive_name(parameter):
-            route_fields['parameter_semantics'] = semantics[parameter]
-        if isinstance(semantics, dict) and parameters:
+        if target and target[1] and not is_sensitive_name(target[1]):
+            semantics = route_parameter_semantics(route, *target)
+            if semantics is not None:
+                route_fields['parameter_semantics'] = semantics
+        if targets:
             # Request mode: semantics for every field of the request that the route documents.
-            named = {name: semantics[name] for name in parameters if name in semantics and not is_sensitive_name(name)}
+            named = {}
+            for collection, name in targets:
+                semantics = route_parameter_semantics(route, collection, name) if name and not is_sensitive_name(name) else None
+                if semantics is not None:
+                    named[route_parameter_key(collection, name)] = semantics
             if named:
-                route_fields['parameter_semantics'] = named
+                route_fields['parameter_semantics'] = dict(sorted(named.items()))
         result['route'] = route_fields
     for key in ('profile_name', 'profile_version'):
         if key in profile:
@@ -421,7 +432,7 @@ def _project_match(request: dict, match: dict, collection, parameter, field_limi
     if 'uri_query' in evidence:
         evidence['query'] = [
             # Check the decoded name, so an encoded name such as pass%77ord is still redacted.
-            f'{name}={REDACTED if is_sensitive_name(unquote_plus(name)) else value}'
+            f'{name}={REDACTED if is_credential_name(unquote_plus(name)) else value}'
             for name, value in evidence.pop('uri_query')
         ]
     values = {key: _bounded_values(items, field_limit) for key, items in evidence.items() if items}
@@ -505,7 +516,7 @@ def build_inference_context(event, match, *, match_index=0, crs_rule=None, appli
         'request': {'content_type': _text(request['media_type'], 128), 'body_status': request['body_status'], 'matched_values': values},
         'crs_rule': _rule_projection(crs_rule, field_limit),
         'application_context': (
-            _profile_projection(application_context, resolve_input_target(collection, parameter)[1])
+            _profile_projection(application_context, resolve_input_target(collection, parameter))
             if application_context else {}
         ),
         'redaction': {
@@ -521,8 +532,9 @@ def build_inference_context(event, match, *, match_index=0, crs_rule=None, appli
 
 
 def _request_fields(items, field_limit: int) -> tuple[list, bool]:
+    # Unmatched fields: also hide session, CSRF, SSO, signature and OAuth code/state values.
     fields = [
-        [_text(name, 128), REDACTED if is_sensitive_name(str(name)) else _bounded_values([value], field_limit)[0]]
+        [_text(name, 128), REDACTED if is_credential_name(str(name)) else _bounded_values([value], field_limit)[0]]
         for name, value in items[:32]
     ]
     truncated = len(items) > 32 or any(isinstance(value, str) and len(value) > field_limit for _, value in items[:32])
@@ -530,29 +542,42 @@ def _request_fields(items, field_limit: int) -> tuple[list, bool]:
 
 
 def _fit_request_context(context: dict, budget: int) -> dict:
+    """Trim to the budget, marking a match truncated only when its own evidence is cut.
+
+    Shared evidence (other_matches, unmatched request fields, the profile) goes first and
+    marks no match. Rule text goes largest first, so one long rule costs one match its draft.
+    """
     if len(_encode(context)) <= budget:
         return context
     context['redaction']['truncated'] = True
     request = context['request']
-    rules = [entry['crs_rule'] for entry in context['matches'] if entry.get('crs_rule')]
-    # Drop the least specific evidence first; each match keeps its own matched values longest.
+    entries = context['matches']
+    by_rule_size = sorted(entries, key=lambda entry: len(_encode(entry.get('crs_rule') or {})), reverse=True)
     steps = [
-        *((rule, 'raw') for rule in rules), *((rule, 'tags') for rule in rules),
-        (context, 'other_matches'), (request, 'body'), (request, 'query'), (context, 'application_context'),
-        *((rule, 'message') for rule in rules), *((entry, 'rule_message') for entry in context['matches']),
-        *((rule, 'source_file') for rule in rules), *((entry, 'matched_data') for entry in context['matches']),
-        (request, 'content_type'),
+        (None, context, 'other_matches'), (None, request, 'body'), (None, request, 'query'),
+        *((entry, entry.get('crs_rule'), 'raw') for entry in by_rule_size),
+        *((entry, entry.get('crs_rule'), 'tags') for entry in by_rule_size),
+        (None, context, 'application_context'),
+        *((entry, entry.get('crs_rule'), 'message') for entry in entries),
+        *((entry, entry, 'rule_message') for entry in entries),
+        *((entry, entry.get('crs_rule'), 'source_file') for entry in entries),
+        *((entry, entry, 'matched_data') for entry in entries),
+        (None, request, 'content_type'),
     ]
-    for container, key in steps:
-        container.pop(key, None)
+    for owner, container, key in steps:
+        if not container or key not in container:
+            continue
+        if container.pop(key) and owner is not None:
+            owner['redaction']['truncated'] = True
         if len(_encode(context)) <= budget:
             return context
     # Retain each match's identity at very small budgets and let the model abstain.
+    # Entries without a redaction block count as truncated (request_match_view).
     minimal = {
         'request': {'method': request.get('method')},
         'matches': [
             {key: entry.get(key) for key in ('match_index', 'rule_id', 'collection', 'parameter')}
-            for entry in context['matches']
+            for entry in entries
         ],
         'redaction': {'truncated': True},
     }
@@ -585,16 +610,16 @@ def build_request_context(event, match_indexes, crs_rules, application_context) 
         if type(index) is int and 0 <= index < len(matches) and not is_aggregate_match(matches[index])
     })
     entries = []
-    parameters = set()
+    targets = set()
     for index in analysed:
         match = matches[index]
         collection, parameter = request['targets'][index]
         crs_rule = crs_rules.get(index)
         projected = _project_match(request, match, collection, parameter, field_limit)
         input_target = _input_target(collection, parameter)
-        input_parameter = resolve_input_target(collection, parameter)[1]
-        if input_parameter:
-            parameters.add(input_parameter)
+        resolved = resolve_input_target(collection, parameter)
+        if resolved[1]:
+            targets.add(resolved)
         entries.append({
             'match_index': index,
             'rule_id': _text(match.get('rule_id') or '', 24),
@@ -613,7 +638,7 @@ def build_request_context(event, match_indexes, crs_rules, application_context) 
         })
     query, query_truncated = _request_fields(request['query_items'], field_limit)
     body, body_truncated = _request_fields(request['body_items'], field_limit)
-    parameters.update(str(name) for name, _ in [*request['query_items'], *request['body_items']])
+    targets.update(('ARGS', str(name)) for name, _ in [*request['query_items'], *request['body_items']])
     other_matches, other_truncated = _context_matches(event, request, set(analysed))
     context = {
         'request': {
@@ -628,15 +653,57 @@ def build_request_context(event, match_indexes, crs_rules, application_context) 
         },
         'matches': entries,
         'other_matches': other_matches,
-        'application_context': _profile_projection(application_context, parameters=sorted(parameters)) if application_context else {},
+        'application_context': (
+            _profile_projection(application_context, targets=sorted(targets, key=lambda item: (str(item[0]), item[1])))
+            if application_context else {}
+        ),
         'redaction': {
-            # Set when the path or the whole context was cut; withholds every draft from this request.
+            # Any trimming anywhere, for the model. Drafts read each match's own flag (request_match_view).
             'truncated': len(request['path']) > field_limit,
+            # The shared path was cut; withholds every draft from this request.
+            'path_truncated': len(request['path']) > field_limit,
             # Unmatched request fields were cut; each match's own values carry their own flag.
             'request_fields_truncated': query_truncated or body_truncated or other_truncated,
         },
     }
     return _fit_request_context(context, max_context_bytes())
+
+
+def request_match_view(context: dict, match_index: int) -> dict:
+    """One match's evidence in a request context, in the per-match shape the draft gates read.
+
+    A match counts as truncated when its own evidence (values, rule projection, matched
+    excerpt) was trimmed, when the shared path was cut, or when the context fell back to
+    identities only. Trimming another match's rule text, other_matches, unmatched request
+    fields or the profile does not mark it.
+    """
+    entry = next((item for item in context.get('matches') or [] if item.get('match_index') == match_index), {})
+    own = entry.get('redaction')
+    return {
+        'incident': {'matched_data': entry.get('matched_data'), 'uri': {'query': []}},
+        'request': {'matched_values': entry.get('matched_values') or {}},
+        'crs_rule': entry.get('crs_rule'),
+        'redaction': {
+            'target_hidden': bool((own or {}).get('target_hidden')),
+            'truncated': bool(
+                own is None or own.get('truncated') or (context.get('redaction') or {}).get('path_truncated')
+            ),
+        },
+    }
+
+
+def match_evidence_withheld(context: dict) -> bool:
+    """The worker's draft gate on a per-match context: hidden or trimmed target, or no matched value."""
+    redaction = context.get('redaction') or {}
+    incident = context.get('incident') or {}
+    return bool(
+        redaction.get('target_hidden') or redaction.get('truncated')
+        or not (
+            incident.get('matched_data')
+            or (incident.get('uri') or {}).get('query')
+            or (context.get('request') or {}).get('matched_values')
+        )
+    )
 
 
 def serialize_inference_context(context: dict) -> str:

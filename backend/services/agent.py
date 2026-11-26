@@ -28,14 +28,14 @@ from db.models import (
     IncidentOccurrence,
     get_session_factory,
 )
-from services.application_context import profile_is_current, route_supports_exception, select_application_context
+from services.application_context import profile_is_current, select_application_context
 from services.crs_index import get_rule, get_rule_at, index_status
 from services.draft_scope import canonical_scope_key, case_exception_scope, rule_numeric_id
 from services.exception_builder import build_exception_rule, can_build_exception
 from services.json_extract import extract_json as _extract_json
 from services.inference_context import (
     bound_repair_input, bound_request_repair_input, build_inference_context, build_request_context,
-    serialize_inference_context,
+    match_evidence_withheld, request_match_view, serialize_inference_context,
 )
 from services.llm_options import (
     ESCALATION_EFFORT_REJECTED, analysis_unit, env_bool, is_escalation_effort_rejection, request_payload,
@@ -48,6 +48,7 @@ from services.model_contract import (
     classify_response, completion_text, false_positive_threshold, repair_messages, request_repair_messages,
     request_response_messages, response_messages,
 )
+from services.profile_match import route_supports_exception
 from services.scope_conflicts import (
     SCOPE_CONFLICT_ERROR,
     has_true_positive,
@@ -89,6 +90,14 @@ class TerminalAnalysisError(RuntimeError):
 
 
 class InvalidOutputError(TerminalAnalysisError):
+    def __init__(self, message: str, raw_response: str):
+        super().__init__(message, error_code="invalid_output")
+        self.raw_response = raw_response
+
+
+class RetryableInvalidOutput(RetryableAnalysisError):
+    """Request mode: invalid output for a group of several cases goes through the normal retry path."""
+
     def __init__(self, message: str, raw_response: str):
         super().__init__(message, error_code="invalid_output")
         self.raw_response = raw_response
@@ -297,9 +306,11 @@ async def next_budget_at() -> datetime | None:
 
 
 # Request mode: the claimed case's queued siblings from the same audited transaction join its lease.
+# Siblings must be ready by the same condition as the primary (no pending retry backoff).
 _CLAIM_REQUEST_SIBLINGS = (
     "UPDATE analysis_cases SET state='analyzing', lease_expires_at=:lease, lease_token=:token, "
-    "updated_at=:now, next_retry_at=NULL WHERE state IN ('queued','retryable_error') AND id IN ("
+    "updated_at=:now, next_retry_at=NULL WHERE state IN ('queued','retryable_error') "
+    "AND (next_retry_at IS NULL OR next_retry_at<=:now) AND id IN ("
     "SELECT o.analysis_case_id FROM incident_occurrences o WHERE o.audit_event_id=("
     "SELECT p.audit_event_id FROM incident_occurrences p WHERE p.analysis_case_id=:case_id "
     "ORDER BY p.observed_at DESC, p.id DESC LIMIT 1))"
@@ -309,9 +320,10 @@ _CLAIM_REQUEST_SIBLINGS = (
 async def _claim_case(lease_token: str | None = None) -> int | None:
     """Claim the case that has been ready the longest.
 
-    With ANALYSIS_UNIT=request the same transaction also claims every queued or retryable
+    With ANALYSIS_UNIT=request the same transaction also claims every ready queued or retryable
     case with an occurrence in that case's latest audit event, under the same lease token,
-    so one worker analyses the whole request and no case is analysed twice.
+    so one worker analyses the whole request and no case is analysed twice. A sibling still
+    waiting for its retry time is left for a later claim.
     """
     if lease_token is None:
         await _recover_expired_leases()
@@ -544,7 +556,8 @@ async def _save_repair_input(revision_ids: list[int], repair_input: str) -> None
 
 async def _call_model(
     context: dict, _scope: dict, revision_id: int, *, pending_repair_input: str | None = None,
-) -> tuple[dict, str, bool]:
+) -> tuple[dict, str]:
+    """One match: (verdict, the raw response it came from)."""
     messages = response_messages(context)
     repair_input = pending_repair_input
     if repair_input is None:
@@ -561,26 +574,28 @@ async def _call_model(
             if settings["escalation_effort"] and not _escalation_error and result["classification"] == "uncertain":
                 try:
                     escalated = await _provider_request(revision_id, messages, "escalation")
-                    return classify_response(escalated), escalated, False
+                    return classify_response(escalated), escalated
                 except (RetryableAnalysisError, TerminalAnalysisError, BudgetDeferred, ValueError):
                     logger.info("Kept uncertain verdict after analysis escalation could not finish")
-            return result, raw, False
+            return result, raw
 
     repaired = await _provider_request(revision_id, repair_messages(repair_input), "repair")
     try:
-        return classify_repair_response(repaired, repair_input), repaired, True
+        return classify_repair_response(repaired, repair_input), repaired
     except (ValueError, TypeError) as exc:
         raise InvalidOutputError(f"invalid repair output ({exc})", repaired) from exc
 
 
 async def _call_request_model(
     context: dict, match_indexes: list[int], revision_ids: list[int], *, pending_repair_input: str | None = None,
-) -> tuple[dict[int, dict], str, bool]:
+) -> tuple[dict[int, dict], dict[int, str]]:
     """One model call for a whole request, with the same repair and escalation rules as one match.
 
+    Returns ({match_index: verdict}, {match_index: the raw response that verdict came from}).
     Attempts are recorded on revision_ids[0]. Escalation runs only when the first pass was
     valid (not repaired) and at least one verdict is uncertain; it must return a valid verdict
-    for every match or the first pass is kept.
+    for every match or the first pass is kept, and it replaces only the verdicts that were
+    uncertain on the first pass, so a confident first-pass verdict never changes.
     """
     primary = revision_ids[0]
     messages = request_response_messages(context)
@@ -601,14 +616,21 @@ async def _call_request_model(
             ):
                 try:
                     escalated = await _provider_request(primary, messages, "escalation", REQUEST_RESPONSE_FORMAT)
-                    return classify_request_response(escalated, match_indexes), escalated, False
+                    second = classify_request_response(escalated, match_indexes)
                 except (RetryableAnalysisError, TerminalAnalysisError, BudgetDeferred, ValueError):
                     logger.info("Kept uncertain verdicts after request escalation could not finish")
-            return results, raw, False
+                else:
+                    uncertain = {index for index, result in results.items() if result["classification"] == "uncertain"}
+                    return (
+                        {index: second[index] if index in uncertain else result for index, result in results.items()},
+                        {index: escalated if index in uncertain else raw for index in results},
+                    )
+            return results, {index: raw for index in results}
 
     repaired = await _provider_request(primary, request_repair_messages(repair_input), "repair", REQUEST_RESPONSE_FORMAT)
     try:
-        return classify_request_repair_response(repaired, repair_input), repaired, True
+        results = classify_request_repair_response(repaired, repair_input)
+        return results, {index: repaired for index in results}
     except (ValueError, TypeError, KeyError) as exc:
         raise InvalidOutputError(f"invalid repair output ({exc})", repaired) from exc
 
@@ -781,7 +803,7 @@ async def _analyze_claimed_case(case_id: int) -> None:
 
     model_started = perf_counter()
     try:
-        result, _raw, _repaired = await _call_model(context, scope, revision_id, pending_repair_input=pending_repair_input)
+        result, _raw = await _call_model(context, scope, revision_id, pending_repair_input=pending_repair_input)
     except BudgetDeferred as exc:
         exc.elapsed_ms = round((perf_counter() - model_started) * 1000)
         raise
@@ -794,21 +816,6 @@ async def _analyze_claimed_case(case_id: int) -> None:
         transaction_id=audit_event.transaction_id, event_line=audit_event.event_line,
         match_index=occurrence.match_index, audit_observed_at=audit_event.timestamp,
     )
-
-
-def _request_match_view(context: dict, match_index: int) -> dict:
-    """One match's evidence in a request context, in the per-match shape the draft gates read."""
-    entry = next((item for item in context.get("matches") or [] if item.get("match_index") == match_index), {})
-    own = entry.get("redaction") or {}
-    return {
-        "incident": {"matched_data": entry.get("matched_data"), "uri": {"query": []}},
-        "request": {"matched_values": entry.get("matched_values") or {}},
-        "crs_rule": entry.get("crs_rule"),
-        "redaction": {
-            "target_hidden": bool(own.get("target_hidden")),
-            "truncated": bool((context.get("redaction") or {}).get("truncated") or own.get("truncated")),
-        },
-    }
 
 
 async def _claimed_group(case_id: int) -> list[int]:
@@ -877,11 +884,16 @@ async def _analyze_claimed_request(case_ids: list[int]) -> None:
 
     model_started = perf_counter()
     try:
-        results, raw, _repaired = await _call_request_model(
+        results, raws = await _call_request_model(
             context, match_indexes, revision_ids, pending_repair_input=pending_repair_input,
         )
     except BudgetDeferred as exc:
         exc.elapsed_ms = round((perf_counter() - model_started) * 1000)
+        raise
+    except InvalidOutputError as exc:
+        # One bad answer for several matches is worth another try; a one-match request fails like match mode.
+        if len(case_ids) > 1:
+            raise RetryableInvalidOutput(str(exc), exc.raw_response) from exc
         raise
     model_ms = round((perf_counter() - model_started) * 1000)
     for (case, occurrence, *_), (revision, stage_metrics) in zip(loaded, opened):
@@ -889,13 +901,13 @@ async def _analyze_claimed_request(case_ids: list[int]) -> None:
         try:
             await _finalize_case(
                 case.id, revision.id, results[occurrence.match_index],
-                context=_request_match_view(context, occurrence.match_index),
+                context=request_match_view(context, occurrence.match_index),
                 crs_rule=crs_rules[occurrence.match_index], scope=case_exception_scope(case),
                 application_context=application_context, event=event, profile_id=profile_id,
                 profile_version=profile_version, generation=generation, stage_metrics=stage_metrics,
                 transaction_id=audit_event.transaction_id, event_line=audit_event.event_line,
                 match_index=occurrence.match_index, audit_observed_at=audit_event.timestamp,
-                raw_response=raw, attempts_revision_id=revision_ids[0],
+                raw_response=raws[occurrence.match_index], attempts_revision_id=revision_ids[0],
             )
         except ClaimLost:
             logger.info("Analysis claim for case %s expired", case.id)
@@ -909,14 +921,16 @@ async def _finalize_case(
 ) -> None:
     """Apply every server-owned gate to one match's verdict and publish it, in either analysis unit.
 
-    `context` is the per-match evidence shape (build_inference_context, or _request_match_view).
+    `context` is the per-match evidence shape (build_inference_context, or inference_context.request_match_view).
     `raw_response`/`attempts_revision_id` are set in request mode, where the attempts live on
     one revision of the group.
     """
     factory = get_session_factory()
     crs_raw = crs_rule.raw if crs_rule else ""
     publish_started = perf_counter()
-    route_context_present = bool(scope.get("host")) and route_supports_exception(application_context, scope.get("parameter"))
+    route_context_present = bool(scope.get("host")) and route_supports_exception(
+        application_context, scope.get("collection"), scope.get("parameter"),
+    )
     normalized_rule, validation_status, validation_error = await _apply_draft_policy(result, scope, route_context_present)
     if result["classification"] == "false_positive":
         if not crs_rule or not context.get("crs_rule"):
@@ -943,15 +957,7 @@ async def _finalize_case(
             normalized_rule, validation_status, validation_error = (
                 None, "missing_request_scope", "The captured host and HTTP method are required for a scoped exception.",
             )
-        redaction = context.get("redaction") or {}
-        if validation_status == "valid" and (
-            redaction.get("target_hidden") or redaction.get("truncated")
-            or not (
-                (context.get("incident") or {}).get("matched_data")
-                or (context.get("incident") or {}).get("uri", {}).get("query")
-                or (context.get("request") or {}).get("matched_values")
-            )
-        ):
+        if validation_status == "valid" and match_evidence_withheld(context):
             normalized_rule, validation_status, validation_error = (
                 None, "missing_match_evidence", "The matched value was unavailable or redacted.",
             )
@@ -1151,7 +1157,8 @@ async def _record_retry(case_id: int, error: Exception, *, terminal: bool = Fals
             revision.validation_error = case.last_error
             revision.raw_response = _retained_response(getattr(error, "raw_response", None))
             revision.completed_at = case.updated_at
-            if case.state == "failed":
+            if case.state == "failed" or isinstance(error, RetryableInvalidOutput):
+                # A retry after invalid output starts a fresh analysis instead of repeating the repair.
                 revision.pending_repair_input = None
             await session.execute(update(InferenceAttempt).where(
                 InferenceAttempt.analysis_revision_id == revision.id, InferenceAttempt.status == "active",

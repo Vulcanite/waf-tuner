@@ -68,10 +68,10 @@ class ModelResponseTests(unittest.TestCase):
     def test_exactly_one_repair_is_attempted(self):
         provider = AsyncMock(side_effect=['{"classification":"true_positive","confidence":0.95}', VALID])
         with patch.object(agent, "_provider_request", provider):
-            result, _, repaired = asyncio.run(agent._call_model({}, {}, 1))
-        self.assertTrue(repaired)
+            result, _ = asyncio.run(agent._call_model({}, {}, 1))
         self.assertEqual(result["classification"], "true_positive")
         self.assertEqual(provider.await_count, 2)
+        self.assertEqual(provider.await_args_list[1].args[2], "repair")
 
     def test_only_a_false_positive_gets_an_exclusion_draft(self):
         scope = {"host": "shop.example", "method": "GET", "uri": "/search",
@@ -88,8 +88,9 @@ class ModelResponseTests(unittest.TestCase):
         provider = AsyncMock(side_effect=['{"classification":"uncertain","confidence":0.5}', uncertain, VALID])
         settings = {**request_settings(), "escalation_effort": "high"}
         with patch.object(agent, "_provider_request", provider), patch.object(agent, "_provider_settings", settings):
-            result, _, repaired = asyncio.run(agent._call_model({}, {}, 1))
-        self.assertEqual((result["classification"], repaired, provider.await_count), ("uncertain", True, 2))
+            result, _ = asyncio.run(agent._call_model({}, {}, 1))
+        self.assertEqual((result["classification"], provider.await_count), ("uncertain", 2))
+        self.assertEqual([call.args[2] for call in provider.await_args_list], ["initial", "repair"])
 
     def test_evidence_policy_change_makes_older_verdicts_stale(self):
         # Drafts built under an older evidence policy (e.g. a guessed GET) must not stay approvable.

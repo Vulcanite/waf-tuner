@@ -9,16 +9,9 @@ from sqlalchemy import select
 
 from db.models import ApplicationProfile, get_session_factory
 from services.inference_context import application_host, split_request_uri
-from services.lab_profiles import (  # noqa: F401 - re-exported for callers and tests
-    DEFAULT_LAB_PROFILE_NAME,
-    DEFAULT_LAB_ROUTES,
-    SEEDED_PROFILES,
-    SHOP_LAB_PROFILE_NAME,
-    SHOP_LAB_ROUTES,
-    seed_metadata,
-)
+from services.lab_profiles import SEEDED_PROFILES, seed_metadata
 from services.llm_options import env_bool
-from services.profile_match import _host_score, _route_score, application_context_for  # noqa: F401
+from services.profile_match import application_context_for
 
 logger = logging.getLogger(__name__)
 
@@ -69,18 +62,6 @@ async def select_application_context(session, event: dict) -> tuple[ApplicationP
     method = str(event.get("method") or "").upper()
     path = split_request_uri(str(event.get("uri") or "/")).path or "/"
     return application_context_for(profiles, application_host(event), method, path)
-
-
-def route_supports_exception(application_context: dict, parameter: str | None) -> bool:
-    route = application_context.get("route") or {}
-    parameters = route.get("parameters")
-    if not parameter or route.get("path") in (None, "", "/*") or not isinstance(parameters, dict):
-        return False
-    semantics = parameters.get(parameter)
-    return bool(
-        (isinstance(semantics, str) and semantics.strip())
-        or (isinstance(semantics, dict) and semantics)
-    )
 
 
 async def profile_is_current(session, event: dict, profile_id: int | None, profile_version: int | None) -> bool:

@@ -120,9 +120,9 @@ DEFAULT_LAB_ROUTES = [
     },
 ]
 
-# Cookies the browser sends on every route. Non-credential ones are also listed
-# in each specific route's parameters, because a cookie false positive only gets
-# a copyable rule when the route documents the cookie name.
+# Non-credential cookies the browser sends on every route. Each specific route lists them as
+# REQUEST_COOKIES:<name>, because a cookie false positive only gets a copyable rule when the
+# route documents that cookie, and a cookie entry must never vouch for an argument of the same name.
 DEFAULT_LAB_COOKIES = {
     "security": "cookie: DVWA security level (low, medium, high or impossible)",
     "theme": "cookie: UI theme name such as dark or light",
@@ -135,8 +135,6 @@ DEFAULT_LAB_CONTEXT = {
     "languages": ["php"],
     "frameworks": ["dvwa"],
     "data_stores": ["mysql"],
-    "web_server": "apache httpd + mod_php",
-    "cookies": {"PHPSESSID": "PHP session id (credential)", **DEFAULT_LAB_COOKIES},
 }
 
 # Parameter names follow ModSecurity's naming: JSON body fields are ARGS:json.<field>.
@@ -257,15 +255,16 @@ SHOP_LAB_CONTEXT = {
     "languages": ["python"],
     "frameworks": ["flask", "jinja2"],
     "data_stores": ["sqlite"],
-    "web_server": "gunicorn",
-    "cookies": {"session": "Flask signed session cookie (credential)", **SHOP_LAB_COOKIES},
 }
 
 def _with_cookies(routes: list[dict], cookies: dict[str, str]) -> list[dict]:
-    """Add the site-wide cookies to every specific route; a route's own field keeps its meaning."""
+    """Add the site-wide cookies to every specific route as REQUEST_COOKIES:<name> entries."""
     for route in routes:
         if route["path"] != "/*":
-            route["parameters"] = {**cookies, **route["parameters"]}
+            route["parameters"] = {
+                **{f"REQUEST_COOKIES:{name}": meaning for name, meaning in cookies.items()},
+                **route["parameters"],
+            }
     return routes
 
 

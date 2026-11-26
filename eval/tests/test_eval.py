@@ -9,7 +9,7 @@ sys.path.insert(0, str(EVAL))
 
 from capture_lab import label_request_matches, parse_audit_log  # noqa: E402
 from corpus import RequestCase, all_cases, request_cases, route_profile  # noqa: E402
-from evaluate import classify_recorded, load_recordings, oracle_response, recording_path  # noqa: E402
+from evaluate import load_recordings, oracle_response, recording_path  # noqa: E402
 from fixtures import case_to_fixture, load_fixtures, merge_fixtures  # noqa: E402
 from report import evaluate_recordings, matrix_markdown, write_reports  # noqa: E402
 import evaluate  # noqa: E402
@@ -21,6 +21,18 @@ from services.profile_match import application_context_for  # noqa: E402
 from services.redaction import is_credential_name  # noqa: E402
 
 REQUESTS = EVAL / "requests.jsonl"
+
+
+def replay(fixture, recording):
+    """One match-level fixture replayed in the match unit (the path `evaluate.py --mode recorded` takes)."""
+    rows, _, _ = evaluate.evaluate_fixture(fixture, "match", stored={fixture["id"]: recording} if recording else {})
+    return rows[0]
+
+
+def run_live(fixture, settings):
+    """One match-level fixture run live in the match unit: (row, recording)."""
+    rows, _, recordings = evaluate.evaluate_fixture(fixture, "match", settings=settings)
+    return rows[0], recordings[0]
 REQUEST_KEYS = {"id", "app", "source", "expected_request", "modsec_audit", "labels", "application_context",
                 "payload_target", "notes"}
 
@@ -68,7 +80,7 @@ def test_oracle_recorded_eval_has_no_attack_misses():
     fixtures = load_fixtures()
     stored = load_recordings(recording_path("oracle"))
     assert len(stored) == len(fixtures)
-    results = [classify_recorded(fixture, stored[fixture["id"]]) for fixture in fixtures]
+    results = [replay(fixture, stored[fixture["id"]]) for fixture in fixtures]
     assert all(row["valid"] for row in results)
     assert sum(row["classification"] == "false_positive" for row in results if row["expected"] == "attack") == 0
     benign = [row for row in results if row["expected"] == "false_positive"]
@@ -139,7 +151,7 @@ def test_live_eval_sends_the_backend_contract_and_records_provenance(tmp_path, m
         }).encode())
 
     monkeypatch.setattr(evaluate.urllib.request, "urlopen", fake_urlopen)
-    result, recording = evaluate.classify_live(fixture, evaluate.request_settings(model="mock"))
+    result, recording = run_live(fixture, evaluate.request_settings(model="mock"))
     assert result["classification"] == "false_positive"
     assert len(sent) == 1 and sent[0]["response_format"]["type"] == "json_schema"
     user_message = sent[0]["messages"][1]["content"]
@@ -149,12 +161,12 @@ def test_live_eval_sends_the_backend_contract_and_records_provenance(tmp_path, m
     assert "secret-fixture" not in user_message and "local-fixture" not in user_message
     assert "api_key" not in recording["settings"]
     assert recording["prompt_sha256"] == evaluate.PROMPT_SHA256
-    assert evaluate.classify_recorded({**fixture, "expected": "attack"}, recording)["finish_reason"] == "fixture_mismatch"
+    assert replay({**fixture, "expected": "attack"}, recording)["finish_reason"] == "fixture_mismatch"
 
 
 def test_recorded_metadata_cannot_rescue_invalid_output():
     fixture = {"id": "benign-catalog", "expected": "false_positive"}
-    result = evaluate.classify_recorded(fixture, {"classification": "false_positive", "raw": "not JSON"})
+    result = replay(fixture, {"classification": "false_positive", "raw": "not JSON"})
     assert not result["valid"]
 
 
@@ -177,7 +189,7 @@ def test_live_eval_pauses_rejected_escalation_for_remaining_fixtures(monkeypatch
     monkeypatch.setattr(evaluate, "request", fake_request)
     for fixture_id in ("first", "second"):
         fixture = {"id": fixture_id, "expected": "false_positive", "context": {"incident": {"rule_id": "10001"}}}
-        result, _ = evaluate.classify_live(fixture, settings)
+        result, _ = run_live(fixture, settings)
         assert result["classification"] == "uncertain"
     assert sent == ["initial", "escalation", "initial"]
     assert evaluate.public_settings(settings)["escalation_error"] == evaluate.ESCALATION_EFFORT_REJECTED
@@ -199,7 +211,7 @@ def test_live_eval_does_not_escalate_a_repaired_verdict(monkeypatch):
 
     monkeypatch.setattr(evaluate, "request", fake_request)
     fixture = {"id": "repaired", "expected": "attack", "context": {"incident": {"rule_id": "10001"}}}
-    result, _ = evaluate.classify_live(fixture, settings)
+    result, _ = run_live(fixture, settings)
     assert (result["classification"], sent) == ("uncertain", ["initial", "repair"])
 
 
@@ -219,7 +231,8 @@ def test_eval_uses_the_alert_pinned_ruleset_like_the_worker(monkeypatch):
     event = {"method": "GET", "uri": "/catalog?q=x", "crs_ruleset_digest": "a" * 64,
              "raw_request": {"headers": {"Host": "catalog.test"}},
              "matches": [{"rule_id": "10001", "collection": "ARGS", "parameter": "q"}]}
-    context = evaluate.fixture_context({"id": "pinned", "audit_event": event})
+    fixture = {"id": "pinned", "audit_event": event}
+    context = evaluate.match_context(fixture, *evaluate.fixture_event(fixture)[::2], 0)
     assert lookups == ["a" * 64] and context["crs_rule"]["operator"] == "@streq first"
 
 
@@ -251,8 +264,11 @@ def test_request_corpus_covers_both_apps_stacks_and_inputs():
     assert {case.app for case in cases if case.wrong_stack} == {"dvwa", "flask"}
     assert all(case.label == "attack" for case in cases if case.wrong_stack)
     assert {"header", "cookie", "json", "path"} <= {case.target for case in cases}
-    # A credential-named cookie or header is hidden from the model, so the corpus avoids them.
-    assert not [case.id for case in cases if case.target in {"header", "cookie"} and is_credential_name(case.parameter)]
+    # A credential-named cookie or header is hidden from the model, so the corpus avoids them. The one
+    # exception was captured before remember-me cookies counted as credentials; the model now sees
+    # that target hidden. Rename the cookie when eval/requests.jsonl is next regenerated.
+    hidden = [case.id for case in cases if case.target in {"header", "cookie"} and is_credential_name(case.parameter)]
+    assert hidden == ["dvwa-attack-java-cookie-java-deser"]
 
 
 def test_request_labels_follow_the_payload_target():
@@ -309,4 +325,5 @@ def test_request_set_profile_matches_the_app():
         host = normalized["raw_request"]["headers"].get("Host")
         assert (host == SHOP_LAB_HOST) == (record["app"] == "flask")
         path = normalized["uri"].split("?", 1)[0]
-        assert application_context_for(profiles, host, normalized["method"], path)[1] == context
+        live = application_context_for(profiles, host, normalized["method"], path)[1]
+        assert live == context

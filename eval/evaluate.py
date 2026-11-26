@@ -4,11 +4,12 @@
 Two fixture shapes are accepted, one per line:
 - match-level (eval/fixtures.jsonl): one match per fixture with `expected`/`label`;
 - request-level (eval/requests.jsonl): a raw `modsec_audit` record plus `labels`, a list of
-  {match_index, expected}. Only labeled matches are analysed and scored.
+  {match_index, expected}. Only labeled matches are scored.
 
-`--unit match` sends one model call per scored match (backend ANALYSIS_UNIT=match);
-`--unit request` sends one call per request covering its scored matches
-(ANALYSIS_UNIT=request). A match-level fixture under `--unit request` is a one-match request.
+`--unit match` sends one model call per labeled match (backend ANALYSIS_UNIT=match);
+`--unit request` sends one call per request that analyses every non-aggregate detection, as
+the worker does (ANALYSIS_UNIT=request); verdicts for unlabeled detections are recorded but
+not scored. A match-level fixture under `--unit request` is a one-match request.
 Both units produce the same per-match result rows, so scoring is identical.
 
 Recorded mode reads eval/recordings/<name>__<unit>.jsonl (for the match unit it falls back
@@ -42,7 +43,7 @@ from services.audit_event import normalize_audit_event  # noqa: E402
 from services.crs_index import get_rule_at, initialize_crs_index  # noqa: E402
 from services.inference_context import (  # noqa: E402
     bound_repair_input, bound_request_repair_input, build_inference_context, build_request_context,
-    is_aggregate_match,
+    is_aggregate_match, match_evidence_withheld, match_target, request_match_view,
 )
 from services.llm_options import (  # noqa: E402
     ESCALATION_EFFORT_REJECTED, analysis_unit, is_escalation_effort_rejection, request_payload, request_settings,
@@ -65,6 +66,7 @@ from services.model_contract import (  # noqa: E402
     request_response_messages,
     response_messages,
 )
+from services.profile_match import route_supports_exception  # noqa: E402
 
 
 RECORDINGS_DIR = ROOT / "eval" / "recordings"
@@ -140,6 +142,18 @@ def fixture_labels(fixture: dict) -> list[dict]:
     return sorted(labels, key=lambda label: label["match_index"])
 
 
+def analysed_indexes(fixture: dict, event: dict | None, labeled: list[int]) -> list[int]:
+    """The request unit's analysed matches: every non-aggregate detection, as the worker queues
+    them (incidents.register_event), plus the labeled ones. A match-level fixture is a one-match request."""
+    if not is_request_fixture(fixture) or event is None:
+        return sorted(labeled)
+    detections = {
+        index for index, match in enumerate(event.get("matches") or [])
+        if match.get("rule_id") and not is_aggregate_match(match)
+    }
+    return sorted(detections | set(labeled))
+
+
 def check_match_indexes(fixture: dict, event: dict, indexes: list[int]) -> None:
     matches = event.get("matches") or []
     for index in indexes:
@@ -176,19 +190,23 @@ def match_context(fixture: dict, event: dict, legacy: dict, match_index: int) ->
 
 
 def request_context(fixture: dict, event: dict, legacy: dict, match_indexes: list[int]) -> tuple[dict, dict]:
-    """Request unit: the worker's build_request_context call with the scored matches as the analysed set."""
+    """Request unit: the worker's build_request_context call with `match_indexes` as the analysed set."""
     crs_rules = {index: _crs_rule(event, event["matches"][index], legacy) for index in match_indexes}
     context = build_request_context(event, match_indexes, crs_rules, _application_context(fixture, legacy))
     analysed = sorted(entry["match_index"] for entry in context.get("matches") or [])
     if analysed != sorted(match_indexes):
-        raise ValueError(f"fixture {fixture['id']}: request context does not analyse every labeled match")
+        raise ValueError(f"fixture {fixture['id']}: request context does not analyse every listed match")
     return context, crs_rules
 
 
-def fixture_context(fixture: dict) -> dict:
-    event, match_index, legacy = fixture_event(fixture)
-    check_match_indexes(fixture, event, [match_index])
-    return match_context(fixture, event, legacy, match_index)
+def gate_inputs(view: dict) -> dict:
+    """The worker's per-match evidence gate (agent._finalize_case) on a per-match context."""
+    redaction = view.get("redaction") or {}
+    return {
+        "evidence_withheld": match_evidence_withheld(view),
+        "target_hidden": bool(redaction.get("target_hidden")),
+        "truncated": bool(redaction.get("truncated")),
+    }
 
 
 def request(messages, settings, attempt_type="initial", response_format=None):
@@ -247,7 +265,7 @@ def resolve_recording_path(model: str, recordings_dir: Path | None, unit: str) -
 
 
 def split_run_name(name: str) -> tuple[str, str | None]:
-    """'deepseek-flash__request' -> ('deepseek-flash', 'request'); 'oracle' -> ('oracle', None)."""
+    """'small__request' -> ('small', 'request'); 'oracle' -> ('oracle', None)."""
     for unit in UNITS:
         if name.endswith(f"__{unit}"):
             return name[: -len(unit) - 2], unit
@@ -289,30 +307,53 @@ def call_ids(fixture: dict, unit: str) -> list[str]:
     return [label["row_id"] for label in fixture_labels(fixture)]
 
 
+def merge_escalation(first: dict[int, dict], escalated: dict[int, dict]) -> dict[int, dict]:
+    """Same rule as the worker: escalation replaces only the verdicts that were uncertain on the first pass."""
+    return {
+        index: escalated[index] if verdict["classification"] == "uncertain" else verdict
+        for index, verdict in first.items()
+    }
+
+
+def recorded_indexes(recording: dict | None, default: list[int]) -> list[int]:
+    """The matches a recorded call analysed. Recordings made before every detection was analysed
+    list only the labeled ones, and still replay."""
+    stored = (recording or {}).get("match_indexes")
+    if isinstance(stored, list) and stored and all(type(index) is int for index in stored):
+        return sorted(stored)
+    return default
+
+
 def parse_recording(recording: dict, digest: str, unit: str, match_indexes: list[int]):
     """Validate a stored response exactly as the worker would: ({match_index: verdict} or None, finish)."""
     finish = recording.get("finish_reason")
     expected_digest = recording.get("fixture_sha256")
     if expected_digest and expected_digest != digest:
         return None, "fixture_mismatch"
+    threshold = recording.get("false_positive_threshold")
+    repair_input = recording.get("repair_input")
+
+    def parse(text):
+        if unit == "request":
+            return classify_request_response(text, match_indexes, threshold=threshold)
+        return {match_indexes[0]: classify_response(text, threshold=threshold)}
+
     try:
         # A cut-off, refused, or empty completion is never parsed.
         text = completion_text({"finish_reason": finish, "message": {"content": recording.get("raw") or ""}})
-        threshold = recording.get("false_positive_threshold")
-        repair_input = recording.get("repair_input")
-        if unit == "request":
-            if repair_input:
+        if repair_input:
+            if unit == "request":
                 parsed = classify_request_repair_response(text, repair_input, threshold=threshold)
             else:
-                parsed = classify_request_response(text, match_indexes, threshold=threshold)
-            if set(parsed) != set(match_indexes):
-                return None, finish
-            return parsed, finish
-        if repair_input:
-            verdict = classify_repair_response(text, repair_input, threshold=threshold)
+                parsed = {match_indexes[0]: classify_repair_response(text, repair_input, threshold=threshold)}
         else:
-            verdict = classify_response(text, threshold=threshold)
-        return {match_indexes[0]: verdict}, finish
+            parsed = parse(text)
+            if recording.get("initial_raw"):
+                # `raw` is the escalation; the first pass keeps every verdict that was not uncertain.
+                parsed = merge_escalation(parse(recording["initial_raw"]), parsed)
+        if set(parsed) != set(match_indexes):
+            return None, finish
+        return parsed, finish
     except (ValueError, TypeError, KeyError):
         return None, finish
 
@@ -351,6 +392,7 @@ def call_live(messages, settings: dict, unit: str, context: dict, match_indexes:
     choice = send(messages, "initial")
     finish = choice.get("finish_reason")
     raw = ""
+    initial_raw = None
     repaired = False
     escalated = False
     final_repair_input = None
@@ -393,7 +435,7 @@ def call_live(messages, settings: dict, unit: str, context: dict, match_indexes:
         try:
             choice = send(messages, "escalation")
             escalated_raw = completion_text(choice)
-            parsed = parse(escalated_raw)
+            escalated_verdicts = parse(escalated_raw)
         except urllib.error.HTTPError as exc:
             details = ""
             try:
@@ -408,11 +450,13 @@ def call_live(messages, settings: dict, unit: str, context: dict, match_indexes:
         except (ValueError, TypeError, urllib.error.URLError, TimeoutError):
             pass
         else:
-            raw, finish = escalated_raw, choice.get("finish_reason")
+            parsed = merge_escalation(parsed, escalated_verdicts)
+            initial_raw, raw, finish = raw, escalated_raw, choice.get("finish_reason")
             final_repair_input = None
     prompt_version, prompt_sha256 = PROMPTS[unit]
     recording = {
         "raw": raw,
+        **({"initial_raw": initial_raw} if initial_raw is not None else {}),
         "repaired": repaired,
         "escalated": escalated,
         "model_calls": state["calls"],
@@ -455,7 +499,16 @@ def _model_calls(recording: dict | None) -> int:
     return 1 + bool(recording.get("repaired")) + bool(recording.get("escalated"))
 
 
-def _row(fixture, label, event, recording, verdicts, finish, call_id, unit) -> dict:
+def _route_supported(fixture: dict, legacy: dict, event: dict | None, match: dict) -> bool | None:
+    """The worker's route gate (route_supports_exception): the fixture's specific route documents
+    this exact target. The worker also needs a captured host; that is left to the live scope."""
+    if event is None or not match:
+        return None
+    collection, parameter = match_target(match)
+    return route_supports_exception(_application_context(fixture, legacy) or {}, collection, parameter)
+
+
+def _row(fixture, label, event, legacy, recording, verdicts, finish, call_id, unit) -> dict:
     index = label["match_index"]
     matches = (event or {}).get("matches") or []
     match = matches[index] if type(index) is int and 0 <= index < len(matches) else {}
@@ -464,6 +517,8 @@ def _row(fixture, label, event, recording, verdicts, finish, call_id, unit) -> d
     available = (recording or {}).get("crs_rule_available")
     if isinstance(available, dict):
         available = available.get(str(index))
+    # Recorded at live time from the exact context sent; absent in older recordings.
+    gate = ((recording or {}).get("gate_inputs") or {}).get(str(index)) or {}
     row = {
         "id": label["row_id"],
         "request_id": fixture["id"],
@@ -482,6 +537,8 @@ def _row(fixture, label, event, recording, verdicts, finish, call_id, unit) -> d
         "call_id": call_id,
         "crs_rule_ids": rule_ids,
         "crs_rule_available": available,
+        "evidence_withheld": gate.get("evidence_withheld"),
+        "route_supports_exception": _route_supported(fixture, legacy, event, match),
     }
     if "wrong_stack" in label:
         row["wrong_stack"] = label["wrong_stack"]
@@ -493,8 +550,9 @@ def _row(fixture, label, event, recording, verdicts, finish, call_id, unit) -> d
 def evaluate_fixture(fixture: dict, unit: str, *, stored: dict | None = None, settings: dict | None = None):
     """Score one fixture in one unit. Live when `settings` is given, else replay from `stored`.
 
-    Returns (rows, calls, recordings): one row per scored match; one call entry per analysis
-    unit carrying its token usage, so request-mode tokens are counted once per request.
+    Returns (rows, calls, recordings): one row per labeled match; one call entry per analysis
+    unit carrying its token usage, so request-mode tokens are counted once per request. The
+    request unit analyses every non-aggregate detection, but only labeled matches get rows.
     """
     if unit not in UNITS:
         raise ValueError("--unit must be match or request")
@@ -507,61 +565,51 @@ def evaluate_fixture(fixture: dict, unit: str, *, stored: dict | None = None, se
     else:
         event, _, legacy = _event_or_none(fixture)
     digest = fingerprint(fixture)
-    groups = [(fixture["id"], labels)] if unit == "request" else [(label["row_id"], [label]) for label in labels]
+    if unit == "request":
+        groups = [(fixture["id"], labels, analysed_indexes(fixture, event, indexes))]
+    else:
+        groups = [(label["row_id"], [label], [label["match_index"]]) for label in labels]
     rows, calls, recordings = [], [], []
-    for call_id, group in groups:
-        group_indexes = [label["match_index"] for label in group]
+    for call_id, group, group_indexes in groups:
         if live:
             if unit == "request":
                 context, crs_rules = request_context(fixture, event, legacy, group_indexes)
                 messages = request_response_messages(context)
                 available = {str(index): bool(crs_rules[index]) for index in group_indexes}
+                gates = {str(index): gate_inputs(request_match_view(context, index)) for index in group_indexes}
             else:
                 context = match_context(fixture, event, legacy, group_indexes[0])
                 messages = response_messages(context)
                 available = bool(context.get("crs_rule"))
+                gates = {str(group_indexes[0]): gate_inputs(context)}
             recording = {"id": call_id, "request_id": fixture["id"], "match_indexes": group_indexes,
                          **call_live(messages, settings, unit, context, group_indexes),
-                         "fixture_sha256": digest, "crs_rule_available": available,
+                         "fixture_sha256": digest, "crs_rule_available": available, "gate_inputs": gates,
                          "crs_rule_ids": [str(event["matches"][index]["rule_id"]) for index in group_indexes
                                           if event["matches"][index].get("rule_id")]}
             recordings.append(recording)
         else:
             recording = (stored or {}).get(call_id)
+            if unit == "request":
+                group_indexes = recorded_indexes(recording, analysed_indexes(fixture, event, indexes))
         if recording is None:
             verdicts, finish = None, "missing_recording"
         else:
             verdicts, finish = parse_recording(recording, digest, unit, group_indexes)
-        group_rows = [_row(fixture, label, event, recording, verdicts, finish, call_id, unit) for label in group]
+        group_rows = [_row(fixture, label, event, legacy, recording, verdicts, finish, call_id, unit) for label in group]
         rows.extend(group_rows)
         calls.append({
             "id": call_id,
             "request_id": fixture["id"],
             "unit": unit,
             "match_ids": [row["id"] for row in group_rows],
+            "analysed_match_indexes": group_indexes,
             "model_calls": _model_calls(recording),
             "latency_ms": (recording or {}).get("latency_ms") or 0,
             "token_usage": (recording or {}).get("token_usage") or {},
             "finish_reason": finish,
         })
     return rows, calls, recordings
-
-
-def _legacy_row(rows, calls) -> dict:
-    # Match-level helpers keep their historical row shape, including latency and token usage.
-    return {**rows[0], "latency_ms": calls[0]["latency_ms"], "token_usage": calls[0]["token_usage"]}
-
-
-def classify_recorded(fixture: dict, recording: dict | None) -> dict:
-    """Replay one match-level fixture in the match unit."""
-    rows, calls, _ = evaluate_fixture(fixture, "match", stored={fixture["id"]: recording} if recording else {})
-    return _legacy_row(rows, calls)
-
-
-def classify_live(fixture: dict, settings: dict) -> tuple[dict, dict]:
-    """Run one match-level fixture live in the match unit: (result row, recording)."""
-    rows, calls, recordings = evaluate_fixture(fixture, "match", settings=settings)
-    return _legacy_row(rows, calls), recordings[0]
 
 
 def public_settings(settings):
@@ -573,20 +621,7 @@ def public_settings(settings):
     }
 
 
-def _derived_calls(results: list[dict]) -> list[dict]:
-    # Older callers pass rows only; then every row is its own call.
-    return [{
-        "id": row["id"], "request_id": row.get("request_id", row["id"]), "unit": row.get("unit", "match"),
-        "match_ids": [row["id"]],
-        "model_calls": 0 if row.get("finish_reason") == "missing_recording"
-        else row.get("model_calls") or 1 + bool(row.get("repaired")) + bool(row.get("escalated")),
-        "latency_ms": row.get("latency_ms") or 0, "token_usage": row.get("token_usage") or {},
-    } for row in results]
-
-
-def build_report(fixtures, results, settings, model: str, calls: list[dict] | None = None,
-                 unit: str | None = None) -> dict:
-    calls = _derived_calls(results) if calls is None else calls
+def build_report(fixtures, results, settings, model: str, calls: list[dict], unit: str | None = None) -> dict:
     matrix = per_rule_matrix(fixtures, results)
     counts = matrix["overall"]["counts"]
     latencies = sorted(call["latency_ms"] for call in calls if call.get("latency_ms"))
