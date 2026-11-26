@@ -7,13 +7,22 @@ EVAL = Path(__file__).resolve().parents[1]
 ROOT = EVAL.parent
 sys.path.insert(0, str(EVAL))
 
-from capture_lab import parse_audit_log  # noqa: E402
-from corpus import all_cases, route_profile  # noqa: E402
+from capture_lab import label_request_matches, parse_audit_log  # noqa: E402
+from corpus import RequestCase, all_cases, request_cases, route_profile  # noqa: E402
 from evaluate import classify_recorded, load_recordings, oracle_response, recording_path  # noqa: E402
 from fixtures import case_to_fixture, load_fixtures, merge_fixtures  # noqa: E402
 from report import evaluate_recordings, matrix_markdown, write_reports  # noqa: E402
 import evaluate  # noqa: E402
 from services import crs_index  # noqa: E402
+from services.audit_event import normalize_audit_event  # noqa: E402
+from services.inference_context import is_aggregate_match  # noqa: E402
+from services.lab_profiles import SHOP_LAB_HOST, seeded_profiles  # noqa: E402
+from services.profile_match import application_context_for  # noqa: E402
+from services.redaction import is_credential_name  # noqa: E402
+
+REQUESTS = EVAL / "requests.jsonl"
+REQUEST_KEYS = {"id", "app", "source", "expected_request", "modsec_audit", "labels", "application_context",
+                "payload_target", "notes"}
 
 
 def test_corpus_has_unique_ids_and_rule_citations():
@@ -228,3 +237,76 @@ def test_gate_fails_a_model_that_never_commits_to_a_verdict(tmp_path):
             "--recordings-dir", str(tmp_path), "--output", str(tmp_path / "report.json")]
     assert evaluate.main(argv) == 1
     assert evaluate.main([*argv, "--min-attack-detection", "0"]) == 0
+
+
+def load_requests():
+    return [json.loads(line) for line in REQUESTS.read_text().splitlines() if line.strip()]
+
+
+def test_request_corpus_covers_both_apps_stacks_and_inputs():
+    cases = request_cases()
+    assert len({case.id for case in cases}) == len(cases)
+    assert {(case.app, case.label) for case in cases} == {
+        ("dvwa", "attack"), ("dvwa", "false_positive"), ("flask", "attack"), ("flask", "false_positive")}
+    assert {case.app for case in cases if case.wrong_stack} == {"dvwa", "flask"}
+    assert all(case.label == "attack" for case in cases if case.wrong_stack)
+    assert {"header", "cookie", "json", "path"} <= {case.target for case in cases}
+    # A credential-named cookie or header is hidden from the model, so the corpus avoids them.
+    assert not [case.id for case in cases if case.target in {"header", "cookie"} and is_credential_name(case.parameter)]
+
+
+def test_request_labels_follow_the_payload_target():
+    case = RequestCase(id="t", app="flask", label="attack", category="sqli", method="GET", path="/search",
+                       target="cookie", parameter="cart_id", payload="1' OR '1'='1")
+    normalized = {"matches": [
+        {"rule_id": "942100", "collection": "REQUEST_COOKIES", "parameter": "cart_id", "matched_data": ""},
+        {"rule_id": "932240", "collection": "MATCHED_VARS", "parameter": "REQUEST_COOKIES:cart_id", "matched_data": ""},
+        {"rule_id": "930110", "collection": "REQUEST_HEADERS", "parameter": "Cookie", "matched_data": ""},
+        {"rule_id": "949110", "collection": None, "parameter": None, "matched_data": ""},
+    ]}
+    assert label_request_matches(case, normalized) == [
+        {"match_index": 0, "expected": "attack"}, {"match_index": 1, "expected": "attack"}]
+
+
+def test_request_set_schema_and_labels():
+    records = load_requests()
+    assert 150 <= len(records) <= 300
+    ids = [record["id"] for record in records]
+    assert len(ids) == len(set(ids))
+    cases = {case.id: case for case in request_cases()}
+    for record in records:
+        assert REQUEST_KEYS <= set(record)
+        assert record["source"] == "lab-capture"
+        assert record["app"] in {"dvwa", "flask"}
+        assert record["expected_request"] in {"attack", "false_positive"}
+        case = cases[record["id"]]
+        assert (case.app, case.label) == (record["app"], record["expected_request"])
+        assert record["payload_target"] == case.payload_target
+        matches = normalize_audit_event(record["modsec_audit"])["matches"]
+        assert record["labels"]
+        indexes = [label["match_index"] for label in record["labels"]]
+        assert len(indexes) == len(set(indexes))
+        for label in record["labels"]:
+            assert 0 <= label["match_index"] < len(matches)
+            assert label["expected"] == record["expected_request"]
+            assert not is_aggregate_match(matches[label["match_index"]])
+    assert {(r["app"], r["expected_request"]) for r in records} == {
+        ("dvwa", "attack"), ("dvwa", "false_positive"), ("flask", "attack"), ("flask", "false_positive")}
+    assert sum(len(record["labels"]) > 1 for record in records) >= len(records) // 2
+    assert any(record["wrong_stack"] for record in records if record["app"] == "flask")
+    assert any(record["wrong_stack"] for record in records if record["app"] == "dvwa")
+    assert {"REQUEST_HEADERS", "REQUEST_COOKIES"} <= {record["payload_target"]["collection"] for record in records}
+
+
+def test_request_set_profile_matches_the_app():
+    profiles = seeded_profiles()
+    expected = {"dvwa": ("default-lab", ["php"]), "flask": ("shop-lab", ["python"])}
+    for record in load_requests():
+        context = record["application_context"]
+        name, languages = expected[record["app"]]
+        assert (context["profile_name"], context["application"]["languages"]) == (name, languages)
+        normalized = normalize_audit_event(record["modsec_audit"])
+        host = normalized["raw_request"]["headers"].get("Host")
+        assert (host == SHOP_LAB_HOST) == (record["app"] == "flask")
+        path = normalized["uri"].split("?", 1)[0]
+        assert application_context_for(profiles, host, normalized["method"], path)[1] == context

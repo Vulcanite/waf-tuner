@@ -33,14 +33,20 @@ from services.crs_index import get_rule, get_rule_at, index_status
 from services.draft_scope import canonical_scope_key, case_exception_scope, rule_numeric_id
 from services.exception_builder import build_exception_rule, can_build_exception
 from services.json_extract import extract_json as _extract_json
-from services.inference_context import bound_repair_input, build_inference_context, serialize_inference_context
+from services.inference_context import (
+    bound_repair_input, bound_request_repair_input, build_inference_context, build_request_context,
+    serialize_inference_context,
+)
 from services.llm_options import (
-    ESCALATION_EFFORT_REJECTED, env_bool, is_escalation_effort_rejection, request_payload, request_settings,
+    ESCALATION_EFFORT_REJECTED, analysis_unit, env_bool, is_escalation_effort_rejection, request_payload,
+    request_settings,
 )
 from services.model_contract import (
-    JSON_REPAIR_PROMPT, PROMPT_SHA256, PROMPT_VERSION, RESPONSE_FORMAT, SYSTEM_PROMPT,
-    CompletionOutputError, classify_repair_response, classify_response, completion_text, false_positive_threshold,
-    repair_messages, response_messages,
+    JSON_REPAIR_PROMPT, PROMPT_SHA256, PROMPT_VERSION, REQUEST_JSON_REPAIR_PROMPT, REQUEST_PROMPT_SHA256,
+    REQUEST_PROMPT_VERSION, REQUEST_RESPONSE_FORMAT, RESPONSE_FORMAT,
+    CompletionOutputError, classify_repair_response, classify_request_repair_response, classify_request_response,
+    classify_response, completion_text, false_positive_threshold, repair_messages, request_repair_messages,
+    request_response_messages, response_messages,
 )
 from services.scope_conflicts import (
     SCOPE_CONFLICT_ERROR,
@@ -125,6 +131,7 @@ async def start_analysis_provider(concurrency: int) -> bool:
     global _provider_client, _provider_settings, _provider_configuration_error, _escalation_error
     try:
         settings = request_settings()
+        analysis_unit()
         false_positive_threshold()
         request_budget()
         _max_retries()
@@ -157,7 +164,7 @@ async def stop_analysis_provider() -> None:
 
 def public_model_settings() -> dict:
     try:
-        settings = _provider_settings or request_settings()
+        settings = {**(_provider_settings or request_settings()), "analysis_unit": analysis_unit()}
     except (ValueError, TypeError):
         return {
             "model": os.getenv("LLM_MODEL", "").strip() or "Foundation-Sec-1.1-8B-Instruct",
@@ -188,11 +195,15 @@ EVIDENCE_POLICY_VERSION = 2
 
 def _analysis_generation(ruleset: dict) -> str:
     settings = _provider_settings or request_settings()
+    unit = analysis_unit()
+    per_request = unit == "request"
     inputs = {
-        "prompt": PROMPT_SHA256,
-        "repair_prompt": hashlib.sha256(JSON_REPAIR_PROMPT.encode()).hexdigest(),
+        # Switching the analysis unit changes the prompt and evidence, so older verdicts go stale.
+        "analysis_unit": unit,
+        "prompt": REQUEST_PROMPT_SHA256 if per_request else PROMPT_SHA256,
+        "repair_prompt": hashlib.sha256((REQUEST_JSON_REPAIR_PROMPT if per_request else JSON_REPAIR_PROMPT).encode()).hexdigest(),
         "settings": {key: value for key, value in settings.items() if key != "api_key"},
-        "schema": RESPONSE_FORMAT,
+        "schema": REQUEST_RESPONSE_FORMAT if per_request else RESPONSE_FORMAT,
         "threshold": false_positive_threshold(),
         "ruleset": ruleset,
         "redaction": {
@@ -285,8 +296,23 @@ async def next_budget_at() -> datetime | None:
     return (next_start or now).replace(tzinfo=timezone.utc) + timedelta(hours=1, seconds=1)
 
 
+# Request mode: the claimed case's queued siblings from the same audited transaction join its lease.
+_CLAIM_REQUEST_SIBLINGS = (
+    "UPDATE analysis_cases SET state='analyzing', lease_expires_at=:lease, lease_token=:token, "
+    "updated_at=:now, next_retry_at=NULL WHERE state IN ('queued','retryable_error') AND id IN ("
+    "SELECT o.analysis_case_id FROM incident_occurrences o WHERE o.audit_event_id=("
+    "SELECT p.audit_event_id FROM incident_occurrences p WHERE p.analysis_case_id=:case_id "
+    "ORDER BY p.observed_at DESC, p.id DESC LIMIT 1))"
+)
+
+
 async def _claim_case(lease_token: str | None = None) -> int | None:
-    """Claim the case that has been ready the longest."""
+    """Claim the case that has been ready the longest.
+
+    With ANALYSIS_UNIT=request the same transaction also claims every queued or retryable
+    case with an occurrence in that case's latest audit event, under the same lease token,
+    so one worker analyses the whole request and no case is analysed twice.
+    """
     if lease_token is None:
         await _recover_expired_leases()
         lease_token = uuid4().hex
@@ -305,6 +331,11 @@ async def _claim_case(lease_token: str | None = None) -> int | None:
             f"SELECT id FROM analysis_cases WHERE {ready} "
             "ORDER BY COALESCE(next_retry_at,enqueued_at,created_at), id LIMIT 1) RETURNING id"
         ), {"now": now, "lease": lease, "token": lease_token})).first()
+        if row and analysis_unit() == "request":
+            # Same write transaction, so no other worker can claim a sibling in between.
+            await session.execute(text(_CLAIM_REQUEST_SIBLINGS), {
+                "now": now, "lease": lease, "token": lease_token, "case_id": int(row[0]),
+            })
         await session.commit()
         return int(row[0]) if row else None
 
@@ -319,13 +350,17 @@ async def _fence_case(session, case_id: int) -> None:
         raise ClaimLost()
 
 
-async def _load_case_evidence(session, case_id: int):
+async def _load_case_evidence(session, case_id: int, audit_event_id: int | None = None):
+    """The case's latest occurrence, or its occurrence in one audit event (request mode)."""
     case = await session.get(AnalysisCase, case_id)
+    filters = [IncidentOccurrence.analysis_case_id == case_id]
+    if audit_event_id is not None:
+        filters.append(IncidentOccurrence.audit_event_id == audit_event_id)
     row = (
         await session.execute(
             select(IncidentOccurrence, AuditEvent)
             .join(AuditEvent, AuditEvent.id == IncidentOccurrence.audit_event_id)
-            .where(IncidentOccurrence.analysis_case_id == case_id)
+            .where(*filters)
             .order_by(IncidentOccurrence.observed_at.desc(), IncidentOccurrence.id.desc())
             .limit(1)
         )
@@ -426,7 +461,9 @@ def _provider_failure(exc: Exception, structured: bool) -> TerminalAnalysisError
     return RetryableAnalysisError("provider request failed", retry_after=_retry_after(exc))
 
 
-async def _provider_request(revision_id: int, messages: list[dict], attempt_type: str) -> str:
+async def _provider_request(
+    revision_id: int, messages: list[dict], attempt_type: str, response_format: dict | None = None,
+) -> str:
     global _provider_configuration_error, _provider_paused_until, _escalation_error
     try:
         settings = _provider_settings or request_settings()
@@ -434,7 +471,7 @@ async def _provider_request(revision_id: int, messages: list[dict], attempt_type
         raise TerminalAnalysisError("invalid analysis provider settings") from exc
     temporary_client = _provider_client is None
     client = _provider_client or _make_provider(settings, 1)
-    options = request_payload(settings, messages, attempt_type)
+    options = request_payload(settings, messages, attempt_type, response_format)
     thinking = {key: options.pop(key) for key in ("thinking", "reasoning_effort") if key in options}
     if thinking:
         options["extra_body"] = thinking
@@ -493,13 +530,15 @@ async def _provider_request(revision_id: int, messages: list[dict], attempt_type
             await client.close()
 
 
-async def _save_repair_input(revision_id: int, repair_input: str) -> None:
+async def _save_repair_input(revision_ids: list[int], repair_input: str) -> None:
+    """Keep the repair input so a budget-deferred repair resumes; request mode saves it on every revision."""
     if _claim_token.get() is None:
         return
     async with get_session_factory()() as session:
-        revision = await session.get(AnalysisRevision, revision_id)
-        await _fence_case(session, revision.analysis_case_id)
-        revision.pending_repair_input = repair_input
+        for revision_id in revision_ids:
+            revision = await session.get(AnalysisRevision, revision_id)
+            await _fence_case(session, revision.analysis_case_id)
+            revision.pending_repair_input = repair_input
         await session.commit()
 
 
@@ -516,7 +555,7 @@ async def _call_model(
             repair_input = bound_repair_input(raw, context)
             if not repair_input:
                 raise InvalidOutputError(f"invalid output with no safe repair input ({exc})", raw) from exc
-            await _save_repair_input(revision_id, repair_input)
+            await _save_repair_input([revision_id], repair_input)
         else:
             settings = _provider_settings or request_settings()
             if settings["escalation_effort"] and not _escalation_error and result["classification"] == "uncertain":
@@ -531,6 +570,46 @@ async def _call_model(
     try:
         return classify_repair_response(repaired, repair_input), repaired, True
     except (ValueError, TypeError) as exc:
+        raise InvalidOutputError(f"invalid repair output ({exc})", repaired) from exc
+
+
+async def _call_request_model(
+    context: dict, match_indexes: list[int], revision_ids: list[int], *, pending_repair_input: str | None = None,
+) -> tuple[dict[int, dict], str, bool]:
+    """One model call for a whole request, with the same repair and escalation rules as one match.
+
+    Attempts are recorded on revision_ids[0]. Escalation runs only when the first pass was
+    valid (not repaired) and at least one verdict is uncertain; it must return a valid verdict
+    for every match or the first pass is kept.
+    """
+    primary = revision_ids[0]
+    messages = request_response_messages(context)
+    repair_input = pending_repair_input
+    if repair_input is None:
+        raw = await _provider_request(primary, messages, "initial", REQUEST_RESPONSE_FORMAT)
+        try:
+            results = classify_request_response(raw, match_indexes)
+        except (ValueError, TypeError) as exc:
+            repair_input = bound_request_repair_input(raw, context, match_indexes)
+            if not repair_input:
+                raise InvalidOutputError(f"invalid output with no safe repair input ({exc})", raw) from exc
+            await _save_repair_input(revision_ids, repair_input)
+        else:
+            settings = _provider_settings or request_settings()
+            if settings["escalation_effort"] and not _escalation_error and any(
+                result["classification"] == "uncertain" for result in results.values()
+            ):
+                try:
+                    escalated = await _provider_request(primary, messages, "escalation", REQUEST_RESPONSE_FORMAT)
+                    return classify_request_response(escalated, match_indexes), escalated, False
+                except (RetryableAnalysisError, TerminalAnalysisError, BudgetDeferred, ValueError):
+                    logger.info("Kept uncertain verdicts after request escalation could not finish")
+            return results, raw, False
+
+    repaired = await _provider_request(primary, request_repair_messages(repair_input), "repair", REQUEST_RESPONSE_FORMAT)
+    try:
+        return classify_request_repair_response(repaired, repair_input), repaired, True
+    except (ValueError, TypeError, KeyError) as exc:
         raise InvalidOutputError(f"invalid repair output ({exc})", repaired) from exc
 
 
@@ -620,6 +699,46 @@ def refresh_active_false_positive_draft(
         existing.rule_numeric_id = numeric_id
 
 
+async def _open_revision(session, case, *, evidence_digest: str, stage_metrics: dict, claimed_at, **fields):
+    """Resume this case's revision that holds a pending repair for the same evidence, else start one."""
+    revision = (await session.execute(
+        select(AnalysisRevision).where(
+            AnalysisRevision.analysis_case_id == case.id,
+            AnalysisRevision.started_at >= (case.enqueued_at or case.created_at),
+            AnalysisRevision.evidence_digest == evidence_digest,
+            AnalysisRevision.state.in_(["budget_deferred", "retryable_error", "failed"]),
+            AnalysisRevision.pending_repair_input.is_not(None),
+        ).order_by(AnalysisRevision.id.desc()).limit(1)
+    )).scalars().first()
+    if revision is None:
+        revision = AnalysisRevision(
+            analysis_case_id=case.id, state="analyzing", stage_metrics=stage_metrics,
+            evidence_digest=evidence_digest, **fields,
+        )
+        session.add(revision)
+    else:
+        stage_metrics = dict(revision.stage_metrics or stage_metrics)
+        if revision.state == "budget_deferred":
+            stage_metrics["budget_wait_ms"] = stage_metrics.get("budget_wait_ms", 0) + (
+                _elapsed_ms(revision.completed_at, claimed_at) or 0
+            )
+        revision.state = "analyzing"
+        revision.error_code = None
+        revision.validation_error = None
+        revision.completed_at = None
+        revision.stage_metrics = stage_metrics
+    await session.flush()
+    return revision, stage_metrics
+
+
+def _stage_metrics(case, audit_event, claimed_at, context_started) -> dict:
+    return {
+        "audit_to_ingest_ms": _elapsed_ms(audit_event.timestamp, audit_event.created_at),
+        "queue_wait_ms": _elapsed_ms(case.enqueued_at or case.created_at, claimed_at),
+        "context_ms": round((perf_counter() - context_started) * 1000),
+    }
+
+
 async def _analyze_claimed_case(case_id: int) -> None:
     factory = get_session_factory()
     claimed_at = _utcnow()
@@ -629,7 +748,6 @@ async def _analyze_claimed_case(case_id: int) -> None:
         profile, application_context = await select_application_context(session, event)
         # Analyse against the rule that fired, from the ruleset active when the alert was ingested.
         crs_rule = get_rule_at(case.rule_id, event.get('crs_ruleset_digest'))
-        crs_raw = crs_rule.raw if crs_rule else ""
         scope = case_exception_scope(case)
         context = build_inference_context(
             event, match, match_index=occurrence.match_index, crs_rule=crs_rule,
@@ -649,53 +767,14 @@ async def _analyze_claimed_case(case_id: int) -> None:
             "context": serialize_inference_context(context),
         }
         evidence_digest = hashlib.sha256(json.dumps(decision, sort_keys=True).encode()).hexdigest()
-        stage_metrics = {
-            "audit_to_ingest_ms": _elapsed_ms(audit_event.timestamp, audit_event.created_at),
-            "queue_wait_ms": _elapsed_ms(case.enqueued_at or case.created_at, claimed_at),
-            "context_ms": round((perf_counter() - context_started) * 1000),
-        }
-        transaction_id = audit_event.transaction_id
-        event_line = audit_event.event_line
-        match_index = occurrence.match_index
-        audit_observed_at = audit_event.timestamp
+        stage_metrics = _stage_metrics(case, audit_event, claimed_at, context_started)
         await _fence_case(session, case_id)
-        revision = (await session.execute(
-            select(AnalysisRevision).where(
-                AnalysisRevision.analysis_case_id == case_id,
-                AnalysisRevision.started_at >= (case.enqueued_at or case.created_at),
-                AnalysisRevision.evidence_digest == evidence_digest,
-                AnalysisRevision.state.in_(["budget_deferred", "retryable_error", "failed"]),
-                AnalysisRevision.pending_repair_input.is_not(None),
-            ).order_by(AnalysisRevision.id.desc()).limit(1)
-        )).scalars().first()
-        if revision is None:
-            revision = AnalysisRevision(
-                analysis_case_id=case.id,
-                application_profile_id=profile_id,
-                profile_version=profile_version,
-                crs_digest=crs_digest,
-                model=settings["model"],
-                prompt_version=PROMPT_VERSION,
-                prompt_sha256=PROMPT_SHA256,
-                model_settings=settings,
-                state="analyzing",
-                context=context,
-                stage_metrics=stage_metrics,
-                evidence_digest=evidence_digest,
-            )
-            session.add(revision)
-        else:
-            stage_metrics = dict(revision.stage_metrics or stage_metrics)
-            if revision.state == "budget_deferred":
-                stage_metrics["budget_wait_ms"] = stage_metrics.get("budget_wait_ms", 0) + (
-                    _elapsed_ms(revision.completed_at, claimed_at) or 0
-                )
-            revision.state = "analyzing"
-            revision.error_code = None
-            revision.validation_error = None
-            revision.completed_at = None
-            revision.stage_metrics = stage_metrics
-        await session.flush()
+        revision, stage_metrics = await _open_revision(
+            session, case, evidence_digest=evidence_digest, stage_metrics=stage_metrics, claimed_at=claimed_at,
+            application_profile_id=profile_id, profile_version=profile_version, crs_digest=crs_digest,
+            model=settings["model"], prompt_version=PROMPT_VERSION, prompt_sha256=PROMPT_SHA256,
+            model_settings=settings, context=context,
+        )
         revision_id = revision.id
         pending_repair_input = revision.pending_repair_input
         await session.commit()
@@ -708,6 +787,134 @@ async def _analyze_claimed_case(case_id: int) -> None:
         raise
     model_ms = round((perf_counter() - model_started) * 1000)
     stage_metrics["model_and_validation_ms"] = stage_metrics.get("model_and_validation_ms", 0) + model_ms
+    await _finalize_case(
+        case_id, revision_id, result, context=context, crs_rule=crs_rule, scope=scope,
+        application_context=application_context, event=event, profile_id=profile_id,
+        profile_version=profile_version, generation=generation, stage_metrics=stage_metrics,
+        transaction_id=audit_event.transaction_id, event_line=audit_event.event_line,
+        match_index=occurrence.match_index, audit_observed_at=audit_event.timestamp,
+    )
+
+
+def _request_match_view(context: dict, match_index: int) -> dict:
+    """One match's evidence in a request context, in the per-match shape the draft gates read."""
+    entry = next((item for item in context.get("matches") or [] if item.get("match_index") == match_index), {})
+    own = entry.get("redaction") or {}
+    return {
+        "incident": {"matched_data": entry.get("matched_data"), "uri": {"query": []}},
+        "request": {"matched_values": entry.get("matched_values") or {}},
+        "crs_rule": entry.get("crs_rule"),
+        "redaction": {
+            "target_hidden": bool(own.get("target_hidden")),
+            "truncated": bool((context.get("redaction") or {}).get("truncated") or own.get("truncated")),
+        },
+    }
+
+
+async def _claimed_group(case_id: int) -> list[int]:
+    """The claimed case first, then the request siblings that share its lease token."""
+    token = _claim_token.get()
+    if token is None:
+        return [case_id]
+    async with get_session_factory()() as session:
+        ids = (await session.execute(
+            select(AnalysisCase.id).where(AnalysisCase.lease_token == token, AnalysisCase.state == "analyzing")
+            .order_by(AnalysisCase.id)
+        )).scalars().all()
+    return [case_id, *(other for other in ids if other != case_id)]
+
+
+async def _analyze_claimed_request(case_ids: list[int]) -> None:
+    """ANALYSIS_UNIT=request: one model call for the claimed cases of one audited request.
+
+    Every case gets its own revision and is finalized through the same per-case gates as
+    match mode. The provider attempts are recorded on the first case's revision; each
+    revision stores the raw response its verdict came from.
+    """
+    factory = get_session_factory()
+    claimed_at = _utcnow()
+    context_started = perf_counter()
+    async with factory() as session:
+        loaded = [await _load_case_evidence(session, case_ids[0])]
+        audit_event, event = loaded[0][2], loaded[0][3]
+        for other in case_ids[1:]:
+            loaded.append(await _load_case_evidence(session, other, audit_event.id))
+        profile, application_context = await select_application_context(session, event)
+        crs_rules = {
+            occurrence.match_index: get_rule_at(case.rule_id, event.get('crs_ruleset_digest'))
+            for case, occurrence, *_ in loaded
+        }
+        match_indexes = sorted(crs_rules)
+        context = build_request_context(event, match_indexes, crs_rules, application_context)
+        profile_id = profile.id if profile else None
+        profile_version = profile.version if profile else None
+        ruleset = index_status()
+        generation = _analysis_generation(ruleset)
+        settings = {**public_model_settings(), "ruleset_digest": ruleset.get("digest")}
+        decision = {
+            "generation": generation,
+            "profile": [profile_id, profile_version],
+            "crs_digest": {str(index): rule.signature if rule else None for index, rule in crs_rules.items()},
+            "context": serialize_inference_context(context),
+        }
+        evidence_digest = hashlib.sha256(json.dumps(decision, sort_keys=True).encode()).hexdigest()
+        opened = []
+        for case, occurrence, *_ in loaded:
+            crs_rule = crs_rules[occurrence.match_index]
+            await _fence_case(session, case.id)
+            revision, stage_metrics = await _open_revision(
+                session, case, evidence_digest=evidence_digest, claimed_at=claimed_at,
+                stage_metrics=_stage_metrics(case, audit_event, claimed_at, context_started),
+                application_profile_id=profile_id, profile_version=profile_version,
+                crs_digest=crs_rule.signature if crs_rule else None, model=settings["model"],
+                prompt_version=REQUEST_PROMPT_VERSION, prompt_sha256=REQUEST_PROMPT_SHA256,
+                model_settings=settings, context=context,
+            )
+            opened.append((revision, stage_metrics))
+        revision_ids = [revision.id for revision, _ in opened]
+        pending_repair_input = next((revision.pending_repair_input for revision, _ in opened if revision.pending_repair_input), None)
+        await session.commit()
+
+    model_started = perf_counter()
+    try:
+        results, raw, _repaired = await _call_request_model(
+            context, match_indexes, revision_ids, pending_repair_input=pending_repair_input,
+        )
+    except BudgetDeferred as exc:
+        exc.elapsed_ms = round((perf_counter() - model_started) * 1000)
+        raise
+    model_ms = round((perf_counter() - model_started) * 1000)
+    for (case, occurrence, *_), (revision, stage_metrics) in zip(loaded, opened):
+        stage_metrics["model_and_validation_ms"] = stage_metrics.get("model_and_validation_ms", 0) + model_ms
+        try:
+            await _finalize_case(
+                case.id, revision.id, results[occurrence.match_index],
+                context=_request_match_view(context, occurrence.match_index),
+                crs_rule=crs_rules[occurrence.match_index], scope=case_exception_scope(case),
+                application_context=application_context, event=event, profile_id=profile_id,
+                profile_version=profile_version, generation=generation, stage_metrics=stage_metrics,
+                transaction_id=audit_event.transaction_id, event_line=audit_event.event_line,
+                match_index=occurrence.match_index, audit_observed_at=audit_event.timestamp,
+                raw_response=raw, attempts_revision_id=revision_ids[0],
+            )
+        except ClaimLost:
+            logger.info("Analysis claim for case %s expired", case.id)
+
+
+async def _finalize_case(
+    case_id: int, revision_id: int, result: dict, *, context: dict, crs_rule, scope: dict,
+    application_context: dict, event: dict, profile_id, profile_version, generation: str, stage_metrics: dict,
+    transaction_id: str, event_line: int, match_index: int, audit_observed_at,
+    raw_response: str | None = None, attempts_revision_id: int | None = None,
+) -> None:
+    """Apply every server-owned gate to one match's verdict and publish it, in either analysis unit.
+
+    `context` is the per-match evidence shape (build_inference_context, or _request_match_view).
+    `raw_response`/`attempts_revision_id` are set in request mode, where the attempts live on
+    one revision of the group.
+    """
+    factory = get_session_factory()
+    crs_raw = crs_rule.raw if crs_rule else ""
     publish_started = perf_counter()
     route_context_present = bool(scope.get("host")) and route_supports_exception(application_context, scope.get("parameter"))
     normalized_rule, validation_status, validation_error = await _apply_draft_policy(result, scope, route_context_present)
@@ -721,7 +928,7 @@ async def _analyze_claimed_case(case_id: int) -> None:
                 None, "ruleset_uncertain",
                 "A new CRS ruleset went live around when this alert fired. Review a new alert under the current ruleset.",
             )
-        elif validation_status == "valid" and getattr(get_rule(case.rule_id), "signature", None) != crs_rule.signature:
+        elif validation_status == "valid" and getattr(get_rule(scope["rule_id"]), "signature", None) != crs_rule.signature:
             # The exclusion would be deployed against today's rule. If it is gone or detects differently, withhold it.
             normalized_rule, validation_status, validation_error = (
                 None, "rule_changed_since_alert",
@@ -792,6 +999,13 @@ async def _analyze_claimed_case(case_id: int) -> None:
                 numeric_id = None
 
         revision.state = "complete"
+        # Recorded only; no gate reads applies_to_stack. Kept in a JSON column so no migration is needed.
+        revision.model_settings = {
+            **(revision.model_settings or {}), "applies_to_stack": result.get("applies_to_stack", "unknown"),
+            **({"attempts_revision_id": attempts_revision_id} if attempts_revision_id is not None else {}),
+        }
+        if raw_response is not None:
+            revision.raw_response = _retained_response(raw_response)
         revision.classification = result["classification"]
         revision.confidence = result["confidence"]
         revision.verdict = result["verdict"]
@@ -946,26 +1160,36 @@ async def _record_retry(case_id: int, error: Exception, *, terminal: bool = Fals
 
 
 async def _run_claimed_case(case_id: int) -> None:
+    case_ids = [case_id]
     try:
-        await _analyze_claimed_case(case_id)
+        if analysis_unit() == "request":
+            case_ids = await _claimed_group(case_id)
+            await _analyze_claimed_request(case_ids)
+        else:
+            await _analyze_claimed_case(case_id)
     except ClaimLost:
         logger.info("Analysis claim for case %s expired", case_id)
     except asyncio.CancelledError:
-        await asyncio.shield(_record_retry(
-            case_id, RetryableAnalysisError("analysis worker stopped", error_code="cancelled"),
-        ))
+        for claimed in case_ids:
+            await asyncio.shield(_record_retry(
+                claimed, RetryableAnalysisError("analysis worker stopped", error_code="cancelled"),
+            ))
         raise
     except BudgetDeferred as exc:
-        await _record_budget_deferral(case_id, exc.retry_at, exc.elapsed_ms)
+        for claimed in case_ids:
+            await _record_budget_deferral(claimed, exc.retry_at, exc.elapsed_ms)
     except TerminalAnalysisError as exc:
         logger.warning("Analysis case %s failed (%s)", case_id, exc.error_code)
-        await _record_retry(case_id, exc, terminal=True)
+        for claimed in case_ids:
+            await _record_retry(claimed, exc, terminal=True)
     except RetryableAnalysisError as exc:
         logger.warning("Analysis case %s deferred (%s)", case_id, exc.error_code)
-        await _record_retry(case_id, exc)
+        for claimed in case_ids:
+            await _record_retry(claimed, exc)
     except Exception:
         logger.exception("Analysis worker could not process case %s", case_id)
-        await _record_retry(case_id, RetryableAnalysisError("Analysis could not be processed.", error_code="worker_error"))
+        for claimed in case_ids:
+            await _record_retry(claimed, RetryableAnalysisError("Analysis could not be processed.", error_code="worker_error"))
 
 
 async def analysis_lease_reaper() -> None:

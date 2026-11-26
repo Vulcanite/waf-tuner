@@ -22,6 +22,15 @@ def env_bool(name: str, default: bool = False) -> bool:
     return value in {"1", "true", "yes", "on"}
 
 
+def analysis_unit() -> str:
+    """ANALYSIS_UNIT: "match" (default) sends one model call per rule match; "request" sends one
+    call per audited request covering all of its queued matches, still one verdict per match."""
+    unit = (os.getenv("ANALYSIS_UNIT", "").strip() or "match").lower()
+    if unit not in {"match", "request"}:
+        raise ValueError("ANALYSIS_UNIT must be match or request")
+    return unit
+
+
 def thinking_options() -> dict:
     """Thinking controls as the `thinking` and `reasoning_effort` request fields. LLM_THINKING=off sends neither."""
     thinking = (os.environ.get("LLM_THINKING", "").strip() or "enabled").lower()
@@ -76,7 +85,11 @@ def request_settings(*, model: str | None = None) -> dict:
     }
 
 
-def request_payload(settings: dict, messages: list[dict], attempt_type: str = "initial") -> dict:
+def request_payload(
+    settings: dict, messages: list[dict], attempt_type: str = "initial", response_format: dict | None = None,
+) -> dict:
+    """Chat-completions payload. `response_format` defaults to the per-match schema; pass
+    model_contract.REQUEST_RESPONSE_FORMAT for request-mode calls."""
     from services.model_contract import RESPONSE_FORMAT
 
     thinking = {key: settings[key] for key in ("thinking", "reasoning_effort") if key in settings}
@@ -90,5 +103,5 @@ def request_payload(settings: dict, messages: list[dict], attempt_type: str = "i
         **thinking,
     }
     if settings.get("structured_output"):
-        options["response_format"] = RESPONSE_FORMAT
+        options["response_format"] = response_format or RESPONSE_FORMAT
     return options

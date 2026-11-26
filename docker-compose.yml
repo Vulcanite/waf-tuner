@@ -7,6 +7,7 @@
 #   docker compose up --build
 #   open http://localhost:3000
 #   open http://localhost:8080               # DVWA admin / password
+#   curl -H 'Host: shop.lab' http://localhost:8080/   # Flask "Lab Shop"
 #   ./scripts/run_incident_matrix.sh
 
 networks:
@@ -47,8 +48,12 @@ services:
       MODSEC_REQ_BODY_ACCESS: "On"
       MODSEC_RESP_BODY_ACCESS: "On"
       WAF_SHARED_DIR: "/shared"
+      # Host shop.lab -> Flask lab app; any other Host -> DVWA (BACKEND).
+      FLASK_BACKEND: "http://flask-app:5000"
+      SHOP_SERVER_NAME: "shop.lab"
     depends_on:
       - dvwa
+      - flask-app
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:8080/ || exit 1"]
       interval: 10s
@@ -67,6 +72,14 @@ services:
       timeout: 5s
       retries: 12
       start_period: 30s
+
+  flask-app:
+    build:
+      context: ./lab/flask-app
+      dockerfile: Dockerfile
+    container_name: waf-lab-flask
+    networks:
+      - waf-net
 
   waf-tuner-backend:
     build:

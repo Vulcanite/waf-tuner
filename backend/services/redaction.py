@@ -14,6 +14,8 @@ _SENSITIVE_KEY_RE = re.compile(
         r"private[_-]?key|cvv|card[_-]?(?:number|no)|(?:^|[_.-])(?:pin|otp|ssn)(?:$|[_.-]))",
     )
 )
+# Cookie and header names that usually carry a session or anti-forgery identifier.
+_SESSION_NAME_RE = re.compile(r"(?i)(sess|sid|token|auth|jwt|csrf|xsrf)")
 REDACTED = "[REDACTED]"
 
 _EMAIL_RE = re.compile(r"(?i)\b[\w.+-]{1,64}@[\w.-]{1,253}\.[a-z]{2,63}\b")
@@ -28,6 +30,11 @@ _JWT_RE = re.compile(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b")
 
 def is_sensitive_name(name: str) -> bool:
     return bool(_SENSITIVE_KEY_RE.search(name))
+
+
+def is_credential_name(name: str) -> bool:
+    """A header or cookie whose value is a credential or session identifier and must stay hidden."""
+    return name.lower() in SENSITIVE_HEADERS or is_sensitive_name(name) or bool(_SESSION_NAME_RE.search(name))
 
 
 def sanitize_evidence_text(value: str) -> str:

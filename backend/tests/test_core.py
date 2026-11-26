@@ -357,6 +357,7 @@ class DefaultProfileSeedTests(unittest.TestCase):
         from db.models import ApplicationProfile
         from services.application_context import (
             DEFAULT_LAB_PROFILE_NAME,
+            SHOP_LAB_PROFILE_NAME,
             ensure_default_application_profile,
             select_application_context,
         )
@@ -386,12 +387,31 @@ class DefaultProfileSeedTests(unittest.TestCase):
                             session,
                             {"method": "POST", "uri": "/some/other/app/path", "raw_request": {}},
                         )
-                    return created, again, count, profile, context, fallback
+                        shop, shop_context = await select_application_context(
+                            session,
+                            {
+                                "method": "GET",
+                                "uri": "/download?name=user-guide.v2.pdf",
+                                "raw_request": {"headers": {"Host": "shop.lab:8080"}},
+                            },
+                        )
+                        _, shop_fallback = await select_application_context(
+                            session,
+                            {"method": "GET", "uri": "/unknown", "raw_request": {"headers": {"Host": "shop.lab"}}},
+                        )
+                    return created, again, count, profile, context, fallback, shop, shop_context, shop_fallback
 
-                created, again, count, profile, context, fallback = asyncio.run(_run())
+                created, again, count, profile, context, fallback, shop, shop_context, shop_fallback = asyncio.run(_run())
                 self.assertTrue(created)
                 self.assertFalse(again)
-                self.assertEqual(count, 1)
+                self.assertEqual(count, 2)
+                # The Flask lab app has its own seeded profile, selected by Host.
+                self.assertEqual(shop.name, SHOP_LAB_PROFILE_NAME)
+                self.assertEqual(shop_context["application"]["languages"], ["python"])
+                self.assertEqual(shop_context["route"]["path"], "/download")
+                self.assertIn("name", shop_context["route"]["parameters"])
+                self.assertEqual(shop_fallback["profile_name"], SHOP_LAB_PROFILE_NAME)
+                self.assertEqual(shop_fallback["route"]["path"], "/*")
                 self.assertEqual(profile.name, DEFAULT_LAB_PROFILE_NAME)
                 self.assertEqual(context["route"]["path"], "/vulnerabilities/sqli/")
                 # Catch-all keeps REQUIRE_APPLICATION_CONTEXT (default on) satisfied

@@ -1,8 +1,17 @@
 """Confusion-matrix scoring for recorded or live eval results."""
 from __future__ import annotations
 
-from collections import defaultdict
+import sys
+from collections import Counter, defaultdict
+from pathlib import Path
 from typing import Any, Iterable
+
+_BACKEND = str(Path(__file__).resolve().parents[1] / "backend")
+if _BACKEND not in sys.path:
+    sys.path.insert(0, _BACKEND)
+
+# Stdlib-only module; the same set the worker's draft gate (can_build_exception) accepts.
+from services.exception_builder import SAFE_TARGET_COLLECTIONS  # noqa: E402
 
 
 CLASSIFICATIONS = ("true_positive", "false_positive", "uncertain", "invalid")
@@ -94,4 +103,108 @@ def summary_from_counts(counts: dict[str, int]) -> dict[str, Any]:
         "attack_false_positives": counts["attack_false_positive"],
         "attack_uncertain": counts["attack_uncertain"],
         "benign_accuracy": counts["benign_false_positive"] / counts["benign"] if counts["benign"] else None,
+    }
+
+
+def _predicted(row: dict[str, Any]) -> str:
+    return row.get("classification") if row.get("valid") and row.get("classification") else "invalid"
+
+
+def _rate(num: int, den: int) -> float | None:
+    return num / den if den else None
+
+
+def is_copyable_exclusion(row: dict[str, Any]) -> bool:
+    """A harmless match cleared as false_positive on a target the exclusion builder accepts.
+
+    Mirrors the collection and parameter checks of exception_builder.can_build_exception; the
+    path, host, and method checks need the live alert scope, so this is an upper estimate.
+    """
+    return (
+        expected_class(row) != "attack" and _predicted(row) == "false_positive"
+        and str(row.get("collection") or "").upper() in SAFE_TARGET_COLLECTIONS
+        and bool(str(row.get("parameter") or "").strip())
+    )
+
+
+def run_metrics(rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
+    """Per-run headline metrics over scored match rows (identical for the match and request units)."""
+    rows = list(rows)
+    attacks = [row for row in rows if expected_class(row) == "attack"]
+    harmless = [row for row in rows if expected_class(row) != "attack"]
+    stack: dict[str, Counter] = {"attack": Counter(), "false_positive": Counter()}
+    for row in rows:
+        value = row.get("applies_to_stack") if _predicted(row) != "invalid" else "invalid"
+        stack[expected_class(row)][value or "unknown"] += 1
+    wrong_stack_rows = [row for row in attacks if row.get("wrong_stack") is True]
+    has_wrong_stack = any(isinstance(row.get("wrong_stack"), bool) for row in rows)
+    wrong_stack = None
+    if has_wrong_stack:
+        predicted = Counter(_predicted(row) for row in wrong_stack_rows)
+        wrong_stack = {
+            "attacks": len(wrong_stack_rows),
+            **{key: predicted.get(key, 0) for key in ("true_positive", "false_positive", "uncertain", "invalid")},
+            "detection": _rate(predicted.get("true_positive", 0), len(wrong_stack_rows)),
+            "applies_to_stack": dict(Counter(
+                (row.get("applies_to_stack") or "unknown") if _predicted(row) != "invalid" else "invalid"
+                for row in wrong_stack_rows
+            )),
+        }
+    return {
+        "requests": len({row.get("request_id", row["id"]) for row in rows}),
+        "scored_matches": len(rows),
+        "attacks": len(attacks),
+        "harmless": len(harmless),
+        "invalid": sum(_predicted(row) == "invalid" for row in rows),
+        "attacks_classified_false_positive": sum(_predicted(row) == "false_positive" for row in attacks),
+        "attack_detection": _rate(sum(_predicted(row) == "true_positive" for row in attacks), len(attacks)),
+        "harmless_cleared_rate": _rate(sum(_predicted(row) == "false_positive" for row in harmless), len(harmless)),
+        "uncertain_rate": _rate(sum(_predicted(row) == "uncertain" for row in rows), len(rows)),
+        "copyable_exclusions": sum(is_copyable_exclusion(row) for row in rows),
+        "applies_to_stack": {label: dict(counts) for label, counts in stack.items()},
+        "wrong_stack_attacks": wrong_stack,
+    }
+
+
+def _count(value: Any) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def usage_tokens(usage: dict[str, Any]) -> dict[str, int]:
+    """Normalize one call's OpenAI-compatible usage (DeepSeek's cache fields included)."""
+    usage = usage or {}
+    prompt_details = usage.get("prompt_tokens_details") or {}
+    completion_details = usage.get("completion_tokens_details") or {}
+    cached = prompt_details.get("cached_tokens") if isinstance(prompt_details, dict) else None
+    if not isinstance(cached, int):
+        # DeepSeek reports the cache hit at the top level; never add both, they count the same tokens.
+        cached = usage.get("prompt_cache_hit_tokens")
+    reasoning = completion_details.get("reasoning_tokens") if isinstance(completion_details, dict) else None
+    return {
+        "prompt_tokens": _count(usage.get("prompt_tokens")),
+        "cached_prompt_tokens": _count(cached),
+        "completion_tokens": _count(usage.get("completion_tokens")),
+        "reasoning_tokens": _count(reasoning),
+    }
+
+
+TOKEN_FIELDS = ("prompt_tokens", "cached_prompt_tokens", "completion_tokens", "reasoning_tokens")
+
+
+def token_totals(calls: Iterable[dict[str, Any]], requests: int, scored_matches: int) -> dict[str, Any]:
+    """Token totals over analysis-unit calls. A request-mode call is one entry for its whole request."""
+    totals = {field: 0 for field in TOKEN_FIELDS}
+    model_calls = 0
+    for call in calls:
+        model_calls += _count(call.get("model_calls"))
+        for field, value in usage_tokens(call.get("token_usage") or {}).items():
+            totals[field] += value
+    return {
+        "model_calls": model_calls,
+        **totals,
+        "calls_per_request": model_calls / requests if requests else None,
+        "per_request": {field: totals[field] / requests if requests else None for field in TOKEN_FIELDS},
+        "per_scored_match": {
+            field: totals[field] / scored_matches if scored_matches else None for field in TOKEN_FIELDS
+        },
     }
