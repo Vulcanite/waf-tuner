@@ -1,47 +1,48 @@
 #!/bin/sh
-# Runs before template processing (20-envsubst-on-templates.sh).
-# Seeds CRS rules into the shared data volume so waf-tuner-backend can parse them.
+# Publish an immutable copy of the CRS files for the analyzer.
 set -e
+export LC_ALL=C
 
-# Lab compose mounts one shared dir at /shared and also at /waf-data.
 SHARED="${WAF_SHARED_DIR:-/shared}"
-mkdir -p "$SHARED/modsec" "$SHARED/crs-rules" "$SHARED/exceptions" \
-         /waf-data/crs-rules /waf-data/exceptions /var/log/modsec
+DEST="$SHARED/crs-rules"
+mkdir -p "$SHARED/modsec" "$SHARED/exceptions" "$DEST/.snapshots"
 
-# Keep legacy /waf-data paths populated (exception Include + CRS index).
-CRS_DEST="/waf-data/crs-rules"
-# If /waf-data is the same mount as /shared, also use shared layout.
-if [ -d "$SHARED" ]; then
-    mkdir -p "$SHARED/crs-rules" "$SHARED/exceptions" "$SHARED/modsec"
-    # Prefer writing CRS under shared when distinct; always ensure waf-data exists.
-    if [ "$SHARED" != "/waf-data" ] && [ ! -e /waf-data/crs-rules/.seeded ] 2>/dev/null; then
-        :
-    fi
-fi
-
-PLACEHOLDER="/waf-data/exceptions/00-placeholder.conf"
-if [ ! -f "$PLACEHOLDER" ]; then
-    echo "# WAF Tuner — placeholder (do not delete)" > "$PLACEHOLDER"
-fi
-if [ -d "$SHARED/exceptions" ] && [ ! -f "$SHARED/exceptions/00-placeholder.conf" ]; then
-    echo "# WAF Tuner — placeholder (do not delete)" > "$SHARED/exceptions/00-placeholder.conf"
-fi
-
-if [ -z "$(ls -A "$CRS_DEST" 2>/dev/null)" ]; then
-    for src in \
-        /opt/owasp-crs/rules \
-        /etc/nginx/modsecurity/crs/rules \
-        /usr/share/modsecurity-crs/rules \
-        /etc/modsecurity/crs/rules; do
-        if [ -d "$src" ] && [ -n "$(ls -A "$src" 2>/dev/null)" ]; then
-            cp -r "$src"/. "$CRS_DEST/"
-            echo "[09-seed-crs] Seeded $(find "$CRS_DEST" -name '*.conf' | wc -l) CRS rule files from $src"
+source_dir="${WAF_CRS_SOURCE_DIR:-}"
+if [ -z "$source_dir" ]; then
+    for candidate in /etc/nginx/modsecurity/crs/rules /opt/owasp-crs/rules \
+                     /usr/share/modsecurity-crs/rules /etc/modsecurity/crs/rules; do
+        set -- "$candidate"/*.conf
+        if [ -f "$1" ]; then
+            source_dir="$candidate"
             break
         fi
     done
-    if [ -z "$(ls -A "$CRS_DEST" 2>/dev/null)" ]; then
-        echo "[09-seed-crs] Warning: could not find bundled CRS rules to seed"
-    fi
-else
-    echo "[09-seed-crs] CRS rules already seeded ($(find "$CRS_DEST" -name '*.conf' | wc -l) files)"
 fi
+
+marker="$(mktemp "$DEST/.active-snapshot.XXXXXX")"
+snapshot="$(mktemp -d "$DEST/.snapshots/.new.XXXXXX")"
+trap 'rm -f "$marker"; rm -rf "$snapshot"' EXIT
+
+set -- "${source_dir:-/nonexistent}"/*.conf
+if [ ! -f "$1" ]; then
+    printf '%s\n' unavailable > "$marker"
+    chmod 644 "$marker"
+    mv -f "$marker" "$DEST/.active-snapshot"
+    echo "[09-seed-crs] Unable to locate the CRS ruleset"
+    exit 0
+fi
+
+for rule in "$source_dir"/*; do
+    case "$rule" in
+        *.conf|*.data) [ ! -f "$rule" ] || cp "$rule" "$snapshot/" ;;
+    esac
+done
+digest="$(cd "$snapshot" && sha256sum -- * | sha256sum | cut -d ' ' -f 1)"
+chmod 755 "$snapshot"
+if [ ! -d "$DEST/.snapshots/$digest" ]; then
+    mv "$snapshot" "$DEST/.snapshots/$digest"
+fi
+printf '%s\n' "$digest" > "$marker"
+chmod 644 "$marker"
+mv -f "$marker" "$DEST/.active-snapshot"
+echo "[09-seed-crs] Published CRS snapshot $digest"

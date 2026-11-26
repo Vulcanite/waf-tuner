@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { getCases, getCase, reanalyzeCase } from '../api'
 
+const ACTIVE_STATES = new Set(['queued', 'analyzing', 'retryable_error'])
+
 export default function Cases() {
   const { caseId: caseIdParam } = useParams()
   const navigate = useNavigate()
@@ -77,6 +79,30 @@ export default function Cases() {
     }
   }, [items, loading, selected?.id, caseIdParam])
 
+  const activeCaseId = ACTIVE_STATES.has(selected?.state) ? selected.id : null
+  const retryAt = selected?.next_retry_at
+  useEffect(() => {
+    if (!activeCaseId || (caseIdParam && Number(caseIdParam) !== activeCaseId)) return
+    const controller = new AbortController()
+    let timer: ReturnType<typeof setTimeout>
+    const poll = async () => {
+      try {
+        const detail = await getCase(activeCaseId, {}, controller.signal)
+        if (controller.signal.aborted) return
+        setSelected((current: any) => current?.id === activeCaseId ? detail : current)
+        setItems((rows) => rows.map((row) => row.id === activeCaseId ? { ...row, state: detail.state } : row))
+        if (!ACTIVE_STATES.has(detail.state)) return
+      } catch (err: any) {
+        if (controller.signal.aborted) return
+        setError(err.message)
+      }
+      timer = setTimeout(poll, 1500)
+    }
+    const wait = retryAt ? Date.parse(retryAt) - Date.now() : 1500
+    timer = setTimeout(poll, Math.max(1500, Math.min(15000, wait || 0)))
+    return () => { clearTimeout(timer); controller.abort() }
+  }, [activeCaseId, caseIdParam, retryAt])
+
   const doReanalyze = async (id: number) => {
     setBusyId(id)
     try {
@@ -93,13 +119,20 @@ export default function Cases() {
   const totalPages = Math.max(1, Math.ceil(total / limit))
 
   const revisions = selected?.revisions || []
-  const successful = revisions.filter(
-    (r: any) => r.state === 'complete' && r.classification
-  )
-  const failed = revisions.filter(
-    (r: any) => ['retryable_error', 'failed', 'analyzing', 'budget_deferred'].includes(r.state)
-  )
-  const latest = successful[0] || revisions[0]
+  const latest = revisions[0]
+  const previous = revisions.slice(1)
+
+  const loadOlder = async () => {
+    const id = selected.id
+    try {
+      const detail = await getCase(id, { before_revision: selected.next_revision })
+      setSelected((current: any) => current?.id === id
+        ? { ...current, revisions: [...current.revisions, ...detail.revisions], next_revision: detail.next_revision }
+        : current)
+    } catch (err: any) {
+      setError(err.message)
+    }
+  }
 
   // Fill the app main area; page shell does not scroll — only table + detail panes do.
   return (
@@ -131,6 +164,7 @@ export default function Cases() {
             <option value="complete">complete</option>
             <option value="retryable_error">retryable_error</option>
             <option value="failed">failed</option>
+            <option value="stale">stale</option>
           </select>
         </div>
         <div className="flex flex-col gap-2">
@@ -310,7 +344,7 @@ export default function Cases() {
                       Case #{selected.id}
                     </p>
                     <p className="text-sm">
-                      {selected.method} {selected.path}
+                      {selected.method} {selected.application_host || ''}{selected.path}
                     </p>
                     <p className="text-xs muted mt-1">
                       rule {selected.rule_id} · {selected.collection || '—'}
@@ -321,26 +355,34 @@ export default function Cases() {
                   </div>
                   <button
                     className="btn-primary text-xs shrink-0"
-                    disabled={busyId === selected.id || selected.state === 'analyzing'}
+                    disabled={busyId === selected.id || selected.state === 'analyzing' || selected.evidence_expired}
                     onClick={() => doReanalyze(selected.id)}
                   >
                     {busyId === selected.id ? '…' : 'Reanalyze'}
                   </button>
                 </div>
+                {selected.next_retry_at && (
+                  <p className="text-xs muted" aria-live="polite">
+                    {selected.budget_deferred ? 'Waiting for inference budget' : 'Retry scheduled'} ·{' '}
+                    <time dateTime={selected.next_retry_at}>{new Date(selected.next_retry_at).toLocaleString()}</time>
+                  </p>
+                )}
                 {selected.last_error && selected.state !== 'complete' && (
                   <div className="alert-error">{selected.last_error}</div>
                 )}
                 <div>
                   <p className="section-label">Matched data</p>
-                  <div className="mono-block text-xs">{selected.matched_data || '—'}</div>
+                  <div className="mono-block text-xs">{selected.evidence_expired ? 'Audit evidence expired' : selected.matched_data || '—'}</div>
                 </div>
 
-                {latest && latest.state === 'complete' && (
+                {latest && (
                   <div>
                     <p className="section-label">Latest analysis</p>
                     <div className="border border-stone-200 dark:border-zinc-800 rounded p-3 text-xs space-y-2">
                       <div className="flex gap-2 flex-wrap items-center">
                         <span className="badge-stale">revision #{latest.id}</span>
+                        <span>{latest.state}</span>
+                        {latest.error_code && <span>{latest.error_code}</span>}
                         {latest.classification && (
                           <span className="text-amber-700 dark:text-amber-400 font-semibold">
                             {latest.classification}
@@ -353,20 +395,21 @@ export default function Cases() {
                         {latest.model && <span className="muted">{latest.model}</span>}
                       </div>
                       {latest.verdict && <p className="leading-relaxed">{latest.verdict}</p>}
-                      {latest.normalized_rule && (
+                      {latest.validation_error && <p className="muted">{latest.validation_error}</p>}
+                      {latest.normalized_rule && selected.state === 'complete' && (
                         <div className="mono-block rule-ok">{latest.normalized_rule}</div>
                       )}
                     </div>
                   </div>
                 )}
 
-                {failed.length > 0 && (
+                {(previous.length > 0 || selected.next_revision) && (
                   <details>
                     <summary className="text-xs muted cursor-pointer">
-                      Non-complete attempts ({failed.length})
+                      Earlier revisions ({previous.length})
                     </summary>
                     <div className="space-y-2 mt-2">
-                      {failed.map((r: any) => (
+                      {previous.map((r: any) => (
                         <div
                           key={r.id}
                           className="border border-stone-200 dark:border-zinc-800 rounded p-2 text-xs space-y-1"
@@ -374,6 +417,7 @@ export default function Cases() {
                           <div className="flex gap-2 flex-wrap">
                             <span className="badge-stale">#{r.id}</span>
                             <span>{r.state}</span>
+                            {r.classification && <span>{r.classification}</span>}
                             {r.error_code && (
                               <span
                                 className={
@@ -386,6 +430,7 @@ export default function Cases() {
                               </span>
                             )}
                           </div>
+                          {r.verdict && <p>{r.verdict}</p>}
                           {(r.validation_error || r.last_error) && (
                             <p className="text-red-700 dark:text-red-400">
                               {r.validation_error || r.last_error}
@@ -393,6 +438,7 @@ export default function Cases() {
                           )}
                         </div>
                       ))}
+                      {selected.next_revision && <button type="button" className="btn-ghost text-xs" onClick={loadOlder}>Load older revisions</button>}
                     </div>
                   </details>
                 )}

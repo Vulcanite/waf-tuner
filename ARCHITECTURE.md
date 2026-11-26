@@ -9,7 +9,7 @@ Traffic → Nginx/Apache + ModSecurity + CRS
  waf-tuner-backend
  ├── log tailer → events.jsonl + SQLite cases
  ├── redaction + LLM classify (off-path workers)
- ├── exception_builder + structural rule_validator
+ ├── exception_builder (server builds the only rule shape)
  └── REST API
  ▼
  waf-tuner-frontend

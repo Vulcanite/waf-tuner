@@ -22,8 +22,13 @@ def load_cursor(events_path: str) -> dict:
     path = cursor_path()
     try:
         data = json.loads(path.read_text())
-        data["pending"] = base64.b64decode(data.pop("pending_b64", ""))
-        data.setdefault("next_event_line", count_lines(events_path))
+        if not isinstance(data, dict) or not isinstance(data.get("offset"), int) or data["offset"] < 0:
+            raise ValueError("invalid audit cursor")
+        data["pending"] = base64.b64decode(data.pop("pending_b64", ""), validate=True)
+        # Older cursors used the same buffer for EOF retries and partial input.
+        data.setdefault("retry_pending", bool(data["pending"]))
+        if "next_event_line" not in data:
+            data["next_event_line"] = count_lines(events_path)
         return data
     except (FileNotFoundError, json.JSONDecodeError, ValueError):
         return {

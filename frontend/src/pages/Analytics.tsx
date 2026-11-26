@@ -36,6 +36,20 @@ function StatCard({ label, value, accent }: { label: string; value: number; acce
   )
 }
 
+const STAGE_LABELS: Record<string, string> = {
+  audit_to_ingest_ms: 'Audit to ingest',
+  queue_wait_ms: 'Queue wait',
+  context_ms: 'Context assembly',
+  provider_ms: 'Provider request',
+  model_and_validation_ms: 'Inference and validation',
+  budget_wait_ms: 'Budget wait',
+  publish_ms: 'Verdict commit',
+  audit_to_verdict_ms: 'Audit to verdict',
+  prompt_tokens: 'Prompt tokens',
+  completion_tokens: 'Completion tokens',
+  reasoning_tokens: 'Reasoning tokens',
+}
+
 function HealthPanel({ health }: { health: AnalysisHealth }) {
   const valid = health.valid_output_rate == null ? '—' : `${Math.round(health.valid_output_rate * 100)}%`
   const repair = health.repair_rate == null ? '—' : `${Math.round(health.repair_rate * 100)}%`
@@ -45,11 +59,18 @@ function HealthPanel({ health }: { health: AnalysisHealth }) {
         <div>
           <h2 id="analysis-health-heading" className="text-sm font-semibold heading-text">Analysis health</h2>
           <p className="text-xs muted mt-1">{health.model} · {health.prompt_version}</p>
+          {health.crs_rules && (
+            <p className="text-xs muted mt-1">CRS snapshot {health.crs_rules.state} · {health.crs_rules.rules} rules</p>
+          )}
         </div>
-        <span className={health.paused_by_budget ? 'badge-rejected' : 'badge-complete'}>
-          {health.paused_by_budget ? 'paused by budget' : 'workers available'}
+        <span className={health.paused_by_budget || health.configuration_error ? 'badge-rejected' : 'badge-complete'}>
+          {health.configuration_error ? 'Configuration error' : health.paused_by_budget ? 'Paused by budget' : 'Workers available'}
         </span>
       </div>
+      {health.configuration_error && <p className="alert-error">{health.configuration_error}</p>}
+      {health.budget_resumes_at && (
+        <p className="text-xs muted">Next available request {new Date(health.budget_resumes_at).toLocaleString()}</p>
+      )}
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3 text-xs">
         <div><p className="muted">Workers</p><p className="font-semibold text-lg">{health.worker_count}</p></div>
         <div><p className="muted">Requests / hour</p><p className="font-semibold text-lg">{health.hourly_requests_used}/{health.hourly_budget}</p></div>
@@ -58,11 +79,28 @@ function HealthPanel({ health }: { health: AnalysisHealth }) {
         <div><p className="muted">Repair rate</p><p className="font-semibold text-lg">{repair}</p></div>
         <div><p className="muted">Structured output</p><p className="font-semibold text-lg">{health.structured_output ? 'on' : 'off'}</p></div>
       </div>
-      <div className="grid md:grid-cols-3 gap-3 text-xs border-t border-stone-200 dark:border-zinc-800 pt-3">
+      <div className="grid md:grid-cols-4 gap-3 text-xs border-t border-stone-200 dark:border-zinc-800 pt-3">
         <div><p className="muted">Cases</p><p className="break-words">{Object.entries(health.cases_by_state).map(([k, v]) => `${k} ${v}`).join(' · ') || 'none'}</p></div>
         <div><p className="muted">Analysis errors</p><p className="break-words">{Object.entries(health.revisions_by_error_code).map(([k, v]) => `${k} ${v}`).join(' · ') || 'none'}</p></div>
+        <div><p className="muted">Oldest queued</p><p>{health.oldest_queued_at ? new Date(health.oldest_queued_at).toLocaleString() : 'none'}</p></div>
         <div><p className="muted">Last success</p><p>{health.last_successful_completion ? new Date(health.last_successful_completion).toLocaleString() : 'none'}</p></div>
       </div>
+      {health.stages_last_hour && Object.keys(health.stages_last_hour).length > 0 && (
+        <details className="text-xs border-t pt-2">
+          <summary className="cursor-pointer">Analysis timings and token usage (last hour)</summary>
+          <table className="mt-2 w-full text-left">
+            <thead><tr><th>Stage</th><th>Samples</th><th>p50</th><th>p95</th></tr></thead>
+            <tbody>
+              {Object.entries(STAGE_LABELS).map(([key, label]) => {
+                const stage = health.stages_last_hour?.[key]
+                if (!stage) return null
+                const unit = key.endsWith('_ms') ? ' ms' : ''
+                return <tr key={key}><td>{label}</td><td>{stage.samples}</td><td>{stage.p50}{unit}</td><td>{stage.p95}{unit}</td></tr>
+              })}
+            </tbody>
+          </table>
+        </details>
+      )}
     </section>
   )
 }
@@ -80,7 +118,7 @@ export default function Analytics() {
     try {
       setLoading(true)
       const [s, h, r, u, t] = await Promise.all([
-        getSummary(), getAnalysisHealth(), getTopRules(), getTopUris(), getTimeline({ interval: 'hour' }),
+        getSummary(), getAnalysisHealth(), getTopRules(), getTopUris(), getTimeline({ interval: 'hour', date_from: new Date(Date.now() - 86_400_000).toISOString() }),
       ])
       setSummary(s); setHealth(h); setTopRules(r); setTopUris(u); setTimeline(t); setError(null)
     } catch (e: any) {

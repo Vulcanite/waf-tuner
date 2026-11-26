@@ -1,29 +1,18 @@
-"""
-Analytics Router — Phase 5
-
-Computes analytics from events.jsonl with a 60-second in-memory cache.
-"""
-import json
+"""Indexed audit summaries and stage timing statistics from SQLite."""
 import os
-import time
-from collections import Counter
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import func, select
+from sqlalchemy import Integer, cast, func, literal, select, true, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from db.models import AnalysisCase, AnalysisRevision, ExceptionDraft, InferenceAttempt, get_db
+from db.models import AnalysisCase, AnalysisRevision, AuditEvent, ExceptionDraft, InferenceAttempt, get_db
 from services.agent import PROMPT_SHA256, PROMPT_VERSION, public_model_settings, request_budget
+from services.crs_index import index_status
+from routers.events import _as_utc, audit_path_column
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
-
-EVENTS_JSONL_PATH = os.environ.get("EVENTS_JSONL_PATH", "/shared/events.jsonl")
-_cache: dict = {}
-_cache_ts: float = 0.0
-CACHE_TTL = 60.0
-
 
 def _grouped(rows) -> dict[str, int]:
     return {str(key or "none"): int(count) for key, count in rows}
@@ -44,45 +33,43 @@ async def analysis_health(db: AsyncSession = Depends(get_db)):
         .where(AnalysisRevision.error_code.is_not(None))
         .group_by(AnalysisRevision.error_code)
     )).all())
-    active_attempts = int((await db.execute(
-        select(func.count()).select_from(InferenceAttempt).where(InferenceAttempt.status == "active")
-    )).scalar_one())
+    # One aggregate query per table; FILTER keeps each count's own condition.
     oldest_queued = (await db.execute(
-        select(func.min(AnalysisCase.created_at)).where(
+        select(func.min(func.coalesce(AnalysisCase.enqueued_at, AnalysisCase.created_at))).where(
             AnalysisCase.state.in_(["queued", "retryable_error"])
         )
     )).scalar_one_or_none()
-    last_success = (await db.execute(
-        select(func.max(AnalysisRevision.completed_at)).where(AnalysisRevision.state == "complete")
-    )).scalar_one_or_none()
-    valid = int((await db.execute(
-        select(func.count()).select_from(AnalysisRevision).where(
-            AnalysisRevision.state == "complete", AnalysisRevision.error_code.is_(None)
+    last_success, valid, invalid = (await db.execute(
+        select(
+            func.max(AnalysisRevision.completed_at).filter(AnalysisRevision.state == "complete"),
+            func.count().filter(
+                AnalysisRevision.state == "complete", AnalysisRevision.error_code.is_(None)
+            ),
+            func.count().filter(AnalysisRevision.error_code == "invalid_output"),
         )
-    )).scalar_one())
-    invalid = int((await db.execute(
-        select(func.count()).select_from(AnalysisRevision).where(AnalysisRevision.error_code == "invalid_output")
-    )).scalar_one())
-    initial = int((await db.execute(
-        select(func.count()).select_from(InferenceAttempt).where(InferenceAttempt.attempt_type == "initial")
-    )).scalar_one())
-    repairs = int((await db.execute(
-        select(func.count()).select_from(InferenceAttempt).where(InferenceAttempt.attempt_type == "repair")
-    )).scalar_one())
-    used = int((await db.execute(
-        select(func.count()).select_from(InferenceAttempt).where(InferenceAttempt.started_at >= cutoff)
-    )).scalar_one())
+    )).one()
+    active_attempts, initial, repairs, used, first_attempt = (await db.execute(
+        select(
+            func.count().filter(InferenceAttempt.status == "active"),
+            func.count().filter(InferenceAttempt.attempt_type == "initial"),
+            func.count().filter(InferenceAttempt.attempt_type == "repair"),
+            func.count().filter(InferenceAttempt.started_at >= cutoff),
+            func.min(InferenceAttempt.started_at).filter(InferenceAttempt.started_at >= cutoff),
+        )
+    )).one()
     budget = request_budget()
     settings = public_model_settings()
+    timings = await _stage_timings(db, cutoff)
     return {
         "worker_count": max(1, min(16, int(os.environ.get("AGENT_WORKER_CONCURRENCY", "4")))),
+        "configuration_error": settings.get("configuration_error"),
         "hourly_budget": budget,
         "cases_by_state": case_states,
         "revisions_by_state": revision_states,
         "revisions_by_error_code": error_codes,
         "active_attempts": active_attempts,
-        "oldest_queued_at": oldest_queued.isoformat() if oldest_queued else None,
-        "last_successful_completion": last_success.isoformat() if last_success else None,
+        "oldest_queued_at": _as_utc(oldest_queued).isoformat() if isinstance(oldest_queued, datetime) else oldest_queued,
+        "last_successful_completion": _as_utc(last_success).isoformat() if last_success else None,
         "valid_output_rate": valid / (valid + invalid) if valid + invalid else None,
         "repair_rate": repairs / initial if initial else None,
         "hourly_requests_used": used,
@@ -92,125 +79,102 @@ async def analysis_health(db: AsyncSession = Depends(get_db)):
         "prompt_sha256": PROMPT_SHA256,
         "structured_output": settings["structured_output"],
         "paused_by_budget": used >= budget,
+        "budget_resumes_at": (_as_utc(first_attempt) + timedelta(hours=1)).isoformat()
+        if used >= budget and first_attempt else None,
+        "stages_last_hour": timings,
+        "crs_rules": index_status(),
     }
 
 
-def _load_events_cached() -> list[dict]:
-    global _cache, _cache_ts
-    now = time.time()
-    if now - _cache_ts < CACHE_TTL and "events" in _cache:
-        return _cache["events"]
-
-    events = []
-    path = os.environ.get("EVENTS_JSONL_PATH", EVENTS_JSONL_PATH)
-    if os.path.exists(path):
-        with open(path) as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    events.append(json.loads(line))
-                except json.JSONDecodeError:
-                    continue
-
-    _cache = {"events": events}
-    _cache_ts = now
-    return events
+async def _stage_timings(db: AsyncSession, cutoff: datetime) -> dict:
+    metric = func.json_each(AnalysisRevision.stage_metrics).table_valued("key", "value", "type")
+    samples = [
+        select(metric.c.key.label("stage"), metric.c.value.label("value"))
+        .select_from(AnalysisRevision).join(metric, true())
+        .where(AnalysisRevision.completed_at >= cutoff, metric.c.type.in_(["integer", "real"]))
+    ]
+    for name, column in (
+        ("provider_ms", InferenceAttempt.provider_ms),
+        ("prompt_tokens", InferenceAttempt.prompt_tokens),
+        ("completion_tokens", InferenceAttempt.completion_tokens),
+        ("reasoning_tokens", InferenceAttempt.reasoning_tokens),
+    ):
+        samples.append(select(literal(name).label("stage"), column.label("value")).where(
+            InferenceAttempt.started_at >= cutoff, column.is_not(None)
+        ))
+    samples = union_all(*samples).subquery()
+    ranked = select(
+        samples.c.stage, samples.c.value,
+        func.row_number().over(partition_by=samples.c.stage, order_by=samples.c.value).label("rank"),
+        func.count().over(partition_by=samples.c.stage).label("samples"),
+    ).subquery()
+    rows = (await db.execute(select(
+        ranked.c.stage,
+        func.max(ranked.c.samples),
+        func.max(ranked.c.value).filter(ranked.c.rank == cast((ranked.c.samples + 1) / 2, Integer)),
+        func.max(ranked.c.value).filter(ranked.c.rank == cast((ranked.c.samples * 95 + 99) / 100, Integer)),
+    ).group_by(ranked.c.stage))).all()
+    return {stage: {"samples": n, "p50": p50, "p95": p95} for stage, n, p50, p95 in rows}
 
 
 @router.get("/summary")
 async def summary(db: AsyncSession = Depends(get_db)):
-    events = _load_events_cached()
-    total_events = len(events)
-
-    counts = {}
-    for status in ("pending", "approved", "rejected"):
-        r = await db.execute(
-            select(func.count()).select_from(ExceptionDraft)
-            .where(ExceptionDraft.status == status)
-        )
-        counts[status] = r.scalar() or 0
-
-    total_drafts_r = await db.execute(select(func.count()).select_from(ExceptionDraft))
-    total_drafts = total_drafts_r.scalar() or 0
-
+    total_events = await db.scalar(select(func.count()).select_from(AuditEvent))
+    total, pending, approved, ready, rejected = (await db.execute(select(
+        func.count(),
+        func.count().filter(ExceptionDraft.status == "pending"),
+        func.count().filter(ExceptionDraft.status == "approved"),
+        func.count().filter(
+            ExceptionDraft.status == "approved", ExceptionDraft.validation_status == "valid",
+            ExceptionDraft.proposed_rule.is_not(None),
+        ),
+        func.count().filter(ExceptionDraft.status == "rejected"),
+    ))).one()
     return {
-        "total_events": total_events,
-        "total_drafts": total_drafts,
-        "pending_review": counts["pending"],
-        "approved": counts["approved"],
-        "ready_to_copy": counts["approved"],
-        "rejected": counts["rejected"],
+        "total_events": total_events, "total_drafts": total, "pending_review": pending,
+        "approved": approved, "ready_to_copy": ready, "rejected": rejected,
     }
 
 
 @router.get("/top-rules")
-async def top_rules():
-    events = _load_events_cached()
-    rule_counts: Counter = Counter()
-    rule_messages: dict[str, str] = {}
-
-    for e in events:
-        for m in e.get("matches", []):
-            rid = m.get("rule_id", "")
-            if rid:
-                rule_counts[rid] += 1
-                if rid not in rule_messages:
-                    rule_messages[rid] = m.get("rule_message", "")
-
-    top = rule_counts.most_common(10)
-    return [
-        {"rule_id": rid, "count": cnt, "rule_message": rule_messages.get(rid, "")}
-        for rid, cnt in top
-    ]
+async def top_rules(db: AsyncSession = Depends(get_db)):
+    matches = func.json_each(AuditEvent.raw_event, "$.matches").table_valued("value")
+    rule = func.json_extract(matches.c.value, "$.rule_id")
+    message = func.json_extract(matches.c.value, "$.rule_message")
+    count = func.count()
+    rows = (await db.execute(
+        select(rule, count, func.min(message)).select_from(AuditEvent).join(matches, true())
+        .where(rule.is_not(None), rule != "").group_by(rule).order_by(count.desc(), rule).limit(10)
+    )).all()
+    return [{"rule_id": rule_id, "count": n, "rule_message": text or ""} for rule_id, n, text in rows]
 
 
 @router.get("/top-uris")
-async def top_uris():
-    events = _load_events_cached()
-    uri_counts: Counter = Counter()
-
-    for e in events:
-        uri = e.get("uri", "").split("?")[0]
-        if uri:
-            uri_counts[uri] += 1
-
-    top = uri_counts.most_common(10)
-    return [{"uri": uri, "count": cnt} for uri, cnt in top]
+async def top_uris(db: AsyncSession = Depends(get_db)):
+    path = audit_path_column()
+    count = func.count()
+    rows = (await db.execute(
+        select(path, count).where(path.is_not(None), path != "")
+        .group_by(path).order_by(count.desc(), path).limit(10)
+    )).all()
+    return [{"uri": uri, "count": n} for uri, n in rows]
 
 
 @router.get("/timeline")
 async def timeline(
     interval: str = Query("hour", pattern="^(hour|day)$"),
-    date_from: Optional[str] = None,
-    date_to: Optional[str] = None,
+    date_from: Optional[datetime] = None,
+    date_to: Optional[datetime] = None,
+    db: AsyncSession = Depends(get_db),
 ):
-    events = _load_events_cached()
-    buckets: Counter = Counter()
-
-    for e in events:
-        ts_str = e.get("timestamp", "")
-        if not ts_str:
-            continue
-        try:
-            # Handle both Z and +00:00 suffixes
-            ts_str_clean = ts_str.replace("Z", "+00:00")
-            ts = datetime.fromisoformat(ts_str_clean)
-        except ValueError:
-            continue
-
-        if date_from and ts_str < date_from:
-            continue
-        if date_to and ts_str > date_to:
-            continue
-
-        if interval == "hour":
-            bucket = ts.strftime("%Y-%m-%dT%H:00:00")
-        else:
-            bucket = ts.strftime("%Y-%m-%d")
-
-        buckets[bucket] += 1
-
-    sorted_buckets = sorted(buckets.items())
-    return [{"time": t, "count": c} for t, c in sorted_buckets]
+    label = "%Y-%m-%dT%H:00:00Z" if interval == "hour" else "%Y-%m-%d"
+    bucket = func.strftime(label, AuditEvent.timestamp)
+    filters = [AuditEvent.timestamp.is_not(None)]
+    if date_from is not None:
+        filters.append(AuditEvent.timestamp >= _as_utc(date_from))
+    if date_to is not None:
+        filters.append(AuditEvent.timestamp <= _as_utc(date_to))
+    rows = (await db.execute(
+        select(bucket, func.count()).where(*filters).group_by(bucket).order_by(bucket.desc()).limit(366)
+    )).all()
+    return [{"time": time_bucket, "count": n} for time_bucket, n in reversed(rows) if time_bucket]

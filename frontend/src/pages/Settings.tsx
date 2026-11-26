@@ -173,7 +173,7 @@ export default function Settings() {
           <dl className="grid sm:grid-cols-2 gap-3 text-xs">
             <div><dt className="muted">Redaction coverage</dt><dd>{appMode.inference.redaction.scope}</dd></div>
             <div><dt className="muted">Sensitive-key policy</dt><dd>{appMode.inference.redaction.sensitive_keys}</dd></div>
-            <div><dt className="muted">Request settings</dt><dd>{appMode.inference.max_tokens} max tokens · temperature {appMode.inference.temperature}</dd></div>
+            <div><dt className="muted">Request settings</dt><dd>{appMode.inference.max_tokens} max output tokens · temperature {appMode.inference.temperature} · thinking {appMode.inference.thinking?.type ?? 'not sent'}{appMode.inference.reasoning_effort ? ` (${appMode.inference.reasoning_effort})` : ''}</dd></div>
             <div><dt className="muted">Local retention</dt><dd>{appMode.inference.retention}</dd></div>
           </dl>
         </section>

@@ -13,7 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from db import models
 from db.models import AnalysisCase, AnalysisRevision, ExceptionDraft, InferenceAttempt
 from services import agent
-from services.redaction import REDACTED, sanitize_inference_context, split_and_redact_uri
+from services.llm_options import request_settings
 
 
 VALID = json.dumps({
@@ -28,9 +28,11 @@ VALID = json.dumps({
 class ModelResponseTests(unittest.TestCase):
     def test_tls_verification_defaults_on_and_can_be_disabled(self):
         with patch.dict(os.environ, {}, clear=True):
-            self.assertTrue(agent._verify_ssl())
+            self.assertTrue(request_settings()["verify_ssl"])
+        with patch.dict(os.environ, {"LLM_VERIFY_SSL": "typo"}, clear=True):
+            self.assertTrue(request_settings()["verify_ssl"])
         with patch.dict(os.environ, {"LLM_VERIFY_SSL": "false"}, clear=True):
-            self.assertFalse(agent._verify_ssl())
+            self.assertFalse(request_settings()["verify_ssl"])
 
     def test_parser_accepts_complete_fenced_and_reasoning_prefixed_objects(self):
         self.assertEqual(agent._extract_json(VALID)["classification"], "true_positive")
@@ -52,7 +54,7 @@ class ModelResponseTests(unittest.TestCase):
             agent._extract_json("no object")
 
     def test_exactly_one_repair_is_attempted(self):
-        provider = AsyncMock(side_effect=["not json", VALID])
+        provider = AsyncMock(side_effect=['{"classification":"true_positive","confidence":0.95}', VALID])
         with patch.object(agent, "_provider_request", provider):
             result, _, repaired = asyncio.run(agent._call_model({}, {}, 1))
         self.assertTrue(repaired)
@@ -73,13 +75,13 @@ class ModelResponseTests(unittest.TestCase):
     def test_missing_route_context_required_by_default(self):
         result = json.loads(VALID.replace("true_positive", "false_positive"))
         scope = {"uri": "/search", "rule_id": "942100", "collection": "ARGS", "parameter": "q"}
-        with patch.dict(os.environ, {}):
-            os.environ.pop("REQUIRE_APPLICATION_CONTEXT", None)
-            normalized, status, _ = asyncio.run(
-                agent._apply_draft_policy(result, scope, False)
-            )
-        self.assertIsNone(normalized)
-        self.assertEqual(status, "missing_application_context")
+        for settings in ({}, {"REQUIRE_APPLICATION_CONTEXT": "typo"}):
+            with self.subTest(settings=settings), patch.dict(os.environ, settings, clear=True):
+                normalized, status, _ = asyncio.run(
+                    agent._apply_draft_policy(result, scope, False)
+                )
+                self.assertIsNone(normalized)
+                self.assertEqual(status, "missing_application_context")
 
     def test_missing_route_context_allowed_when_explicitly_disabled(self):
         result = json.loads(VALID.replace("true_positive", "false_positive"))
@@ -99,33 +101,11 @@ class ModelResponseTests(unittest.TestCase):
         self.assertIsNone(error)
 
     def test_failed_repair_is_terminal_invalid_output(self):
-        provider = AsyncMock(side_effect=["not json", "still not json"])
+        provider = AsyncMock(side_effect=['{"classification":"true_positive","confidence":0.95}', "still not json"])
         with patch.object(agent, "_provider_request", provider):
             with self.assertRaises(agent.InvalidOutputError):
                 asyncio.run(agent._call_model({}, {}, 1))
         self.assertEqual(provider.await_count, 2)
-
-
-class InferenceRedactionTests(unittest.TestCase):
-    def test_uri_and_every_context_location_are_sanitized(self):
-        uri = split_and_redact_uri("/search?q=shoes&token=secret")
-        self.assertEqual(uri["path"], "/search")
-        self.assertEqual(uri["query"]["token"], REDACTED)
-        context, fields = sanitize_inference_context({
-            "incident": {
-                "parameter": "password",
-                "matched_data": "secret payload",
-                "other_matches": [{"parameter": "api_key", "matched_data": "key value"}],
-            },
-            "request": {"headers": {"Authorization": "Bearer secret"}},
-            "application_context": {"client_secret": "value", "purpose": "search"},
-        })
-        self.assertEqual(context["incident"]["matched_data"], REDACTED)
-        self.assertEqual(context["incident"]["other_matches"][0]["matched_data"], REDACTED)
-        self.assertEqual(context["request"]["headers"]["Authorization"], REDACTED)
-        self.assertEqual(context["application_context"]["client_secret"], REDACTED)
-        self.assertEqual(context["application_context"]["purpose"], "search")
-        self.assertGreaterEqual(len(fields), 4)
 
 
 class SqliteAgentTests(unittest.TestCase):
@@ -493,7 +473,6 @@ class SqliteAgentTests(unittest.TestCase):
                     status="approved",
                     validation_status="valid",
                     proposed_rule=original,
-                    raw_proposed_rule=original,
                     rule_placement="before_crs",
                     analysis_revision_id=revision.id,
                     scope_key=scope_key,

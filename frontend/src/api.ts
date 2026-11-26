@@ -18,16 +18,23 @@ async function req<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json()
 }
 
-// ---- Events ----
-export const getEvents = (params: Record<string, string | number | undefined> = {}) => {
-  const qs = Object.entries(params)
-    .filter(([, v]) => v !== undefined && v !== '')
-    .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
-    .join('&')
-  return req<any>(`/api/events${qs ? '?' + qs : ''}`)
+type Params = Record<string, string | number | undefined>
+
+// "?a=1&b=2" from the defined, non-empty params, or "" when there are none.
+function query(params: Params = {}): string {
+  const qs = new URLSearchParams()
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== '') qs.set(k, String(v))
+  }
+  const text = qs.toString()
+  return text ? `?${text}` : ''
 }
 
-export const getEvent = (line: number) => req<any>(`/api/events/${line}`)
+// ---- Events ----
+export const getEvents = (params: Params = {}) =>
+  req<any>(`/api/events${query(params)}`)
+
+export const getEvent = (line: number, signal?: AbortSignal) => req<any>(`/api/events/${line}`, { signal })
 
 // ---- Application context ----
 export const getApplicationProfiles = () => req<any>('/api/application-profiles')
@@ -45,27 +52,21 @@ export const createApplicationProfileVersion = (id: number, body: any) =>
   })
 
 // ---- Deduplicated cases ----
-export const getCases = (params: Record<string, string | number | undefined> = {}) => {
-  const qs = Object.entries(params)
-    .filter(([, v]) => v !== undefined && v !== '')
-    .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
-    .join('&')
-  return req<any>(`/api/cases${qs ? '?' + qs : ''}`)
-}
+export const getCases = (params: Params = {}) =>
+  req<any>(`/api/cases${query(params)}`)
 
-export const getCase = (id: number) => req<any>(`/api/cases/${id}`)
+export const getCase = (id: number, params: Params = {}, signal?: AbortSignal) =>
+  req<any>(`/api/cases/${id}${query(params)}`, { signal })
 
 export const reanalyzeCase = (id: number) =>
   req<any>(`/api/cases/${id}/reanalyze`, { method: 'POST' })
 
 // ---- Exceptions ----
-export const getExceptions = (params: Record<string, string | number | undefined> = {}) => {
-  const qs = Object.entries(params)
-    .filter(([, v]) => v !== undefined && v !== '')
-    .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
-    .join('&')
-  return req<any>(`/api/exceptions${qs ? '?' + qs : ''}`)
-}
+export const getExceptions = (params: Params = {}) =>
+  req<any>(`/api/exceptions${query(params)}`)
+
+export const getException = (id: number, signal?: AbortSignal) =>
+  req<any>(`/api/exceptions/${id}`, { signal })
 
 export const approveException = (id: number) =>
   req<any>(`/api/exceptions/${id}/approve`, { method: 'POST' })
@@ -76,7 +77,7 @@ export const rejectException = (id: number, reason?: string) =>
     body: JSON.stringify({ reason }),
   })
 
-export const downloadFalsePositivesExcel = (status?: string) => {
+export const downloadFalsePositivesCsv = (status?: string) => {
   const qs = status ? `?status=${encodeURIComponent(status)}` : ''
   window.open(`${BASE}/api/exceptions/export/false-positives${qs}`, '_blank')
 }
@@ -85,12 +86,8 @@ export const downloadFalsePositivesExcel = (status?: string) => {
 export const getSummary = () => req<any>('/api/analytics/summary')
 export const getTopRules = () => req<any>('/api/analytics/top-rules')
 export const getTopUris = () => req<any>('/api/analytics/top-uris')
-export const getTimeline = (params: Record<string, string> = {}) => {
-  const qs = Object.entries(params)
-    .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
-    .join('&')
-  return req<any>(`/api/analytics/timeline${qs ? '?' + qs : ''}`)
-}
+export const getTimeline = (params: Params = {}) =>
+  req<any>(`/api/analytics/timeline${query(params)}`)
 export type AnalysisHealth = {
   worker_count: number
   hourly_budget: number
@@ -109,6 +106,10 @@ export type AnalysisHealth = {
   prompt_sha256: string
   structured_output: boolean
   paused_by_budget: boolean
+  budget_resumes_at?: string | null
+  stages_last_hour?: Record<string, { samples: number; p50: number; p95: number }>
+  configuration_error?: string | null
+  crs_rules?: { state: string; digest: string | null; rules: number }
 }
 export const getAnalysisHealth = () => req<AnalysisHealth>('/api/analytics/analysis-health')
 
@@ -148,7 +149,8 @@ export type AppModeInfo = {
     max_tokens: number
     temperature: number
     structured_output: boolean
-    reasoning_enabled: boolean
+    thinking?: { type: string }
+    reasoning_effort?: string
     verify_ssl: boolean
     egress_notice: string
     redaction: { sensitive_headers: string[]; sensitive_keys: string; scope: string }

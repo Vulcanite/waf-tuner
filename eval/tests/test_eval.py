@@ -1,5 +1,6 @@
 import json
 import sys
+import io
 from pathlib import Path
 
 EVAL = Path(__file__).resolve().parents[1]
@@ -11,6 +12,8 @@ from corpus import all_cases  # noqa: E402
 from evaluate import classify_recorded, load_recordings, oracle_response, recording_path  # noqa: E402
 from fixtures import case_to_fixture, load_fixtures, merge_fixtures  # noqa: E402
 from report import evaluate_recordings, matrix_markdown, write_reports  # noqa: E402
+import evaluate  # noqa: E402
+from services import crs_index  # noqa: E402
 
 
 def test_corpus_has_unique_ids_and_rule_citations():
@@ -80,3 +83,57 @@ def test_oracle_response_matches_expected_label():
 
 def test_audit_log_parser_handles_missing_file(tmp_path: Path):
     assert parse_audit_log(tmp_path / "missing.log") == []
+
+
+def test_live_eval_sends_the_backend_contract_and_records_provenance(tmp_path, monkeypatch):
+    for name in ("_index_dir", "_marker_key", "_status", "CRS_INDEX"):
+        monkeypatch.setattr(crs_index, name, getattr(crs_index, name))
+    (tmp_path / "LOCAL.conf").write_text('SecRule ARGS:q "@streq music" "id:10001,phase:2,log"\n')
+    crs_index.initialize_crs_index(tmp_path)
+    monkeypatch.setenv("LLM_API_BASE_URL", "http://localhost:12345/v1")
+    monkeypatch.setenv("LLM_API_KEY", "mock-key")
+    monkeypatch.setenv("LLM_STRUCTURED_OUTPUT", "true")
+    monkeypatch.setenv("LLM_ESCALATION_REASONING_EFFORT", "")
+    fixture = {
+        "id": "benign-catalog",
+        "expected": "false_positive",
+        "modsec_audit": {"transaction": {
+            "id": "local-fixture",
+            "time_stamp": "Mon Jan 01 12:00:00 2024",
+            "request": {"method": "GET", "uri": "/catalog?q=books&q=music&token=secret-fixture"},
+            "messages": [{"details": {
+                "ruleId": "10001",
+                "data": "Matched Data: music found within ARGS:q: music",
+            }}],
+        }},
+    }
+    sent = []
+
+    def fake_urlopen(request, **kwargs):
+        assert request.full_url == "http://localhost:12345/v1/chat/completions"
+        sent.append(json.loads(request.data))
+        return io.BytesIO(json.dumps({
+            "choices": [{
+                "finish_reason": "stop",
+                "message": {"content": json.dumps(oracle_response("false_positive"))},
+            }],
+        }).encode())
+
+    monkeypatch.setattr(evaluate.urllib.request, "urlopen", fake_urlopen)
+    result, recording = evaluate.classify_live(fixture, evaluate.request_settings(model="mock"))
+    assert result["classification"] == "false_positive"
+    assert len(sent) == 1 and sent[0]["response_format"]["type"] == "json_schema"
+    user_message = sent[0]["messages"][1]["content"]
+    context = json.loads(user_message)
+    assert context["crs_rule"]["operator"] == "@streq music"
+    assert "books" in user_message and "music" in user_message
+    assert "secret-fixture" not in user_message and "local-fixture" not in user_message
+    assert "api_key" not in recording["settings"]
+    assert recording["prompt_sha256"] == evaluate.PROMPT_SHA256
+    assert evaluate.classify_recorded({**fixture, "expected": "attack"}, recording)["finish_reason"] == "fixture_mismatch"
+
+
+def test_recorded_metadata_cannot_rescue_invalid_output():
+    fixture = {"id": "benign-catalog", "expected": "false_positive"}
+    result = evaluate.classify_recorded(fixture, {"classification": "false_positive", "raw": "not JSON"})
+    assert not result["valid"]

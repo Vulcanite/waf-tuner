@@ -37,4 +37,15 @@ set -a; . lab-data/.env; set +a
 python3 eval/evaluate.py --output eval/report.json --record
 ```
 
-`--record` writes `eval/recordings/<LLM_MODEL>.jsonl`. The dependency-free evaluator sends one case per request, tries one JSON repair when needed, and exits nonzero if any response remains invalid or any attack is classified as a false positive. Attack uncertainty is reported separately; benign accuracy is informational. Do not commit reports containing sensitive provider metadata.
+`--crs-rules-dir` selects the deployed CRS files or a published snapshot. Live eval builds the same compact request as the analysis worker, uses the same provider settings and validator, and records the prompt, fixture, and request digests. Recorded replay marks an altered fixture invalid when a digest was captured. Older recordings have unrecorded provenance.
+
+For a held-out test, supply operator-labeled, scrubbed JSONL with an `id`, `expected` (`attack` or `false_positive`), a `modsec_audit` object, and a zero-based `match_index`. An optional `application_context` gives the route and parameter semantics. Each line should use evidence you are allowed to send to the configured provider.
+
+Use `--record-as` and different outputs to compare models or reasoning settings on the same fixtures. Compare p50/p95 latency, invalid output, uncertain attack cases, and benign accuracy. With a provider that supports the configured reasoning controls, run:
+
+```bash
+LLM_REASONING_EFFORT=low LLM_ESCALATION_REASONING_EFFORT=high \
+  python3 eval/evaluate.py --record --record-as low-with-escalation --output /tmp/waf-eval-low.json
+```
+
+`--record` writes a JSONL next to other recordings. Treat model outputs as evidence that can contain sensitive text. The command exits nonzero if any response remains invalid or any attack is classified as a false positive.

@@ -1,5 +1,5 @@
 #!/bin/bash
-# verify_installation.sh - Verification script for local (non-docker) WAF Tuner setup.
+# verify_installation.sh - Checks a running WAF Tuner lab (Compose or bare metal).
 # Target OS: Linux (Ubuntu/Debian)
 
 # Color outputs
@@ -40,7 +40,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 DB_CANDIDATES=(
   "${DATABASE_PATH:-}"
-  "${SQLITE_PATH:-}"
   "$REPO_ROOT/lab-data/waf-tuner.db"
   "/shared/waf-tuner.db"
 )
@@ -68,35 +67,9 @@ else
 fi
 echo ""
 
-# 3. Verify Nginx + ModSecurity Configuration
-echo "3. Checking Nginx & ModSecurity Configuration..."
-if sudo nginx -t &> /dev/null; then
-  echo -e "[${GREEN} OK ${NC}] Nginx configuration test passed (nginx -t)."
-else
-  echo -e "[${RED}FAIL${NC}] Nginx configuration test failed!"
-  sudo nginx -t
-fi
-
-# Check if ModSecurity directives exist in Nginx virtual hosts
-if grep -q "modsecurity on" /etc/nginx/sites-enabled/default 2>/dev/null; then
-  echo -e "[${GREEN} OK ${NC}] ModSecurity is enabled ('modsecurity on') in Nginx default site config."
-else
-  echo -e "[${YELLOW}WARN${NC}] 'modsecurity on' directive not found in /etc/nginx/sites-enabled/default."
-fi
-
-# Check folders and placeholder
-if [ -d "/etc/nginx/modsecurity/exceptions" ]; then
-  echo -e "[${GREEN} OK ${NC}] Exceptions folder '/etc/nginx/modsecurity/exceptions/' exists."
-  if [ -f "/etc/nginx/modsecurity/exceptions/exception_00_placeholder.conf" ]; then
-    echo -e "[${GREEN} OK ${NC}] Placeholder exceptions file exists."
-  else
-    echo -e "[${YELLOW}WARN${NC}] Placeholder exceptions file is missing."
-  fi
-else
-  echo -e "[${RED}FAIL${NC}] Exceptions directory '/etc/nginx/modsecurity/exceptions/' is missing!"
-fi
-
-# Check audit log write permissions
+# 3. Verify the ModSecurity audit log directory
+# WAF Tuner never writes edge config, so there is no nginx -t or include check here.
+echo "3. Checking ModSecurity audit log directory..."
 if [ -d "/var/log/modsec" ]; then
   echo -e "[${GREEN} OK ${NC}] Audit log directory '/var/log/modsec/' exists."
   if [ -w "/var/log/modsec" ]; then

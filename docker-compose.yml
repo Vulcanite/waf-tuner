@@ -92,8 +92,6 @@ services:
       DATABASE_PATH: /shared/waf-tuner.db
       RUNTIME_CONFIG_PATH: /shared/runtime_config.json
       CRS_RULES_DIR: /shared/crs-rules/
-      # Structure-only validation (no edge nginx -t)
-      RULE_VALIDATION_MODE: skip
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

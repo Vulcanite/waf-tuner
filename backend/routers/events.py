@@ -1,113 +1,110 @@
-"""
-Events Router — Phase 5
-
-Serves events from events.jsonl. No database reads for event data.
-"""
+"""Paginated transaction summaries and on-demand audit evidence."""
 import json
-import os
-from typing import Optional
+from datetime import datetime, timezone
+from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
 
-from db.models import get_db, ExceptionDraft, AuditEvent
+from db.models import AuditEvent, ExceptionDraft, IncidentOccurrence, get_db
 
 router = APIRouter(prefix="/api/events", tags=["events"])
 
-EVENTS_JSONL_PATH = os.environ.get("EVENTS_JSONL_PATH", "/shared/events.jsonl")
+
+def audit_path_column():
+    raw_uri = AuditEvent.raw_event["uri"].as_string()
+    query_start = func.instr(raw_uri, "?")
+    legacy_path = case((query_start > 0, func.substr(raw_uri, 1, query_start - 1)), else_=raw_uri)
+    return func.coalesce(AuditEvent.path, legacy_path)
+
+
+def _as_utc(value: datetime):
+    return value.astimezone(timezone.utc) if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
 async def _get_event_by_line(db: AsyncSession, line_num: int) -> Optional[dict]:
-    """Return the event at the given 0-based line number."""
-    result = await db.execute(
+    return (await db.execute(
         select(AuditEvent.raw_event).where(AuditEvent.event_line == line_num)
-    )
-    return result.scalar_one_or_none()
+        .order_by(AuditEvent.id.desc()).limit(1)
+    )).scalar_one_or_none()
 
 
 @router.get("")
 async def list_events(
-    page: int = Query(1, ge=1),
-    limit: int = Query(50, ge=1, le=500),
+    page: Annotated[int, Query(ge=1)] = 1,
+    limit: Annotated[int, Query(ge=1, le=500)] = 50,
     rule_id: Optional[str] = None,
     uri: Optional[str] = None,
     min_score: Optional[int] = None,
     max_score: Optional[int] = None,
-    date_from: Optional[str] = None,
-    date_to: Optional[str] = None,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
     db: AsyncSession = Depends(get_db),
 ):
-    from db.models import IncidentOccurrence
-    stmt = select(AuditEvent)
-
+    filters = []
+    matches = func.json_each(AuditEvent.raw_event, "$.matches").table_valued("value", joins_implicitly=True)
+    match_rule = func.json_extract(matches.c.value, "$.rule_id")
     if rule_id:
-        stmt = stmt.where(
-            select(1)
-            .select_from(IncidentOccurrence)
-            .where(
-                (IncidentOccurrence.audit_event_id == AuditEvent.id)
-                & (IncidentOccurrence.rule_id == rule_id)
-            )
-            .exists()
-        )
+        occurrence = select(1).where(
+            IncidentOccurrence.audit_event_id == AuditEvent.id, IncidentOccurrence.rule_id == rule_id
+        ).exists()
+        # The audit entry also holds scoring rules intentionally excluded from the analysis queue.
+        unqueued_match = select(1).select_from(matches).where(match_rule == rule_id).correlate(AuditEvent).exists()
+        filters.append(occurrence | unqueued_match)
+    path = audit_path_column()
     if uri:
-        stmt = stmt.where(AuditEvent.raw_event["uri"].as_string().ilike(f"%{uri}%"))
+        filters.append(path.ilike(f"%{uri}%"))
+    score = func.coalesce(AuditEvent.anomaly_score, AuditEvent.raw_event["anomaly_score"].as_integer())
     if min_score is not None:
-        stmt = stmt.where(AuditEvent.raw_event["anomaly_score"].as_integer() >= min_score)
+        filters.append(score >= min_score)
     if max_score is not None:
-        stmt = stmt.where(AuditEvent.raw_event["anomaly_score"].as_integer() <= max_score)
+        filters.append(score <= max_score)
     if date_from:
-        stmt = stmt.where(AuditEvent.timestamp >= date_from)
+        filters.append(AuditEvent.timestamp >= _as_utc(date_from))
     if date_to:
-        stmt = stmt.where(AuditEvent.timestamp <= date_to)
+        filters.append(AuditEvent.timestamp <= _as_utc(date_to))
 
-    # Count query
-    count_stmt = select(func.count()).select_from(stmt.subquery())
-    total_result = await db.execute(count_stmt)
-    total = total_result.scalar() or 0
-
-    # Paginate
-    stmt = stmt.order_by(AuditEvent.event_line.asc())
-    stmt = stmt.offset((page - 1) * limit).limit(limit)
-    result = await db.execute(stmt)
-    events_rows = result.scalars().all()
-    page_events = [row.raw_event for row in events_rows]
-
-    # Enrich with draft_status
-    txn_ids = [e.get("transaction_id") for e in page_events if e.get("transaction_id")]
-    draft_map: dict[str, str] = {}
-    if txn_ids:
-        result = await db.execute(
-            select(ExceptionDraft.transaction_id, ExceptionDraft.status)
-            .where(ExceptionDraft.transaction_id.in_(txn_ids))
+    total = await db.scalar(select(func.count()).select_from(AuditEvent).where(*filters))
+    match_ids = (
+        select(func.json_group_array(func.json_object("rule_id", match_rule)))
+        .select_from(matches).correlate(AuditEvent).scalar_subquery()
+    )
+    draft_status = (
+        select(ExceptionDraft.status).where(ExceptionDraft.transaction_id == AuditEvent.transaction_id)
+        .order_by(ExceptionDraft.id.desc()).limit(1).correlate(AuditEvent).scalar_subquery()
+    )
+    rows = (await db.execute(
+        select(
+            AuditEvent.event_line, AuditEvent.transaction_id, AuditEvent.timestamp,
+            AuditEvent.raw_event["method"].as_string(), path, score, match_ids, draft_status,
         )
-        for txn_id, status in result:
-            draft_map[txn_id] = status
-
-    enriched = []
-    for e in page_events:
-        item = dict(e)
-        item["draft_status"] = draft_map.get(e.get("transaction_id", ""))
-        enriched.append(item)
-
-    return {"total": total, "page": page, "limit": limit, "items": enriched}
+        .where(*filters)
+        .order_by(AuditEvent.event_line, AuditEvent.id)
+        .offset((page - 1) * limit).limit(limit)
+    )).all()
+    items = [
+        {
+            "event_line": line, "transaction_id": transaction, "timestamp": _as_utc(timestamp).isoformat() if timestamp else None,
+            "method": method, "uri": uri_path, "anomaly_score": anomaly, "matches": json.loads(ids or "[]"),
+            "draft_status": status,
+        }
+        for line, transaction, timestamp, method, uri_path, anomaly, ids, status in rows
+    ]
+    return {"total": total, "page": page, "limit": limit, "items": items}
 
 
 @router.get("/{line}")
 async def get_event(line: int, db: AsyncSession = Depends(get_db)):
-    from fastapi import HTTPException
     event = await _get_event_by_line(db, line)
     if event is None:
         raise HTTPException(status_code=404, detail="Event not found")
 
     draft = None
-    txn_id = event.get("transaction_id")
-    if txn_id:
-        result = await db.execute(
-            select(ExceptionDraft).where(ExceptionDraft.transaction_id == txn_id)
-        )
-        draft_row = result.scalars().first()
+    if event.get("transaction_id"):
+        draft_row = await db.scalar(select(ExceptionDraft).where(
+            ExceptionDraft.transaction_id == event["transaction_id"]
+        ).order_by(ExceptionDraft.id.desc()).limit(1))
         if draft_row:
             draft = {
                 "id": draft_row.id,
@@ -115,7 +112,6 @@ async def get_event(line: int, db: AsyncSession = Depends(get_db)):
                 "confidence": draft_row.confidence,
                 "verdict": draft_row.verdict,
                 "status": draft_row.status,
-                "proposed_rule": draft_row.proposed_rule,
+                "proposed_rule": None,
             }
-
     return {"line": line, "event": event, "draft": draft}

@@ -14,6 +14,13 @@ Initial lab/evaluation release of the observe-and-recommend workflow:
 - Retire approve-time rule-ID conflicts as `stale` (no half-pending rows).
 - Opt-in CORS via `CORS_ALLOW_ORIGINS` (empty default for same-origin Compose UI proxy).
 - Backend runtime: **Python 3.13** (CI + container image).
+- Redaction: `matched_data` from cookie and auth-header matches is removed before inference (it previously carried session IDs such as `PHPSESSID`), and more secret field names (`pass`, `otp`, `pin`, `cvv`, card numbers) are redacted.
+- Exclusions are built only for plain parameter names; names such as `/.*/` that ModSecurity would read as a regex target are refused.
+- Audit-log ingest reads in 8 MB steps and skips entries that cannot be parsed (database errors are retried 3 times) instead of stalling on them.
+- False-positive export is CSV, with formula-like cells neutralized.
+- Model output cut off at the token cap is refused (no parse, no repair) and the case fails with a clear error. The cap is now `LLM_MAX_OUTPUT_TOKEN` (default 20000; it limits only what the model writes, reasoning included). The eval applies the same rules as the backend, including the 0.90 false-positive threshold.
+- Thinking controls use the DeepSeek/OpenAI format: `LLM_THINKING` (`enabled` by default, `disabled`, or `off` to send nothing) and `LLM_REASONING_EFFORT` (default `high`, sent only when thinking is enabled). They replace the OpenRouter-style `LLM_REASONING_ENABLED`.
+- Removed: the model-SecLang parser and no-op engine check (`RULE_VALIDATION_MODE`), the SQLite migration block and Postgres URL handling, `raw_proposed_rule`, the `AI_*`/`API_*` setting aliases (use `LLM_*`), the unused nginx include hook, and the `openpyxl` dependency.
 - v0.1 surface cleanup: SQLite checks in `verify_installation.sh`; remove no-op ingest helper, unused `mode_public_info` alias, unwired OpenAPI/SBOM import routes, unused `deployed_at` model field, and dead imports.
 - Bare-metal lab E2E: `scripts/e2e_baremetal.sh` runs unit tests + host uvicorn + synthetic (or external) audit ingest without Docker.
 - Never authenticate users, write edge configuration, or reload a WAF; loopback Compose is the supported default.

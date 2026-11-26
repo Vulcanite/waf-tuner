@@ -3,22 +3,21 @@ from __future__ import annotations
 
 import fnmatch
 import logging
-import os
 import re
 from datetime import datetime, timezone
-from urllib.parse import urlsplit
 
 from sqlalchemy import select
 
 from db.models import ApplicationProfile, get_session_factory
+from services.inference_context import application_host, split_request_uri
+from services.llm_options import env_bool
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_LAB_PROFILE_NAME = "default-lab"
 
-# Catch-all so first-run analysis can match a route before the operator writes
-# application-specific profiles. More specific operator routes still win because
-# `_route_score` ranks exact and templated paths above `/*`.
+# The catch-all supplies general lab context. Draft eligibility requires
+# documented semantics for the observed parameter on a specific route.
 DEFAULT_LAB_ROUTES = [
     {
         "path": "/login.php",
@@ -85,18 +84,9 @@ DEFAULT_LAB_ROUTES = [
         "path": "/*",
         "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"],
         "parameters": {},
-        "notes": "Catch-all so first-run exclusions are not blocked pending operator profiles.",
+        "notes": "General lab context for paths without a documented route.",
     },
 ]
-
-
-def _seed_default_profile_enabled() -> bool:
-    return os.environ.get("SEED_DEFAULT_PROFILE", "true").strip().lower() not in {
-        "0",
-        "false",
-        "no",
-        "off",
-    }
 
 
 async def ensure_default_application_profile() -> bool:
@@ -105,7 +95,7 @@ async def ensure_default_application_profile() -> bool:
     Returns True when a profile was created. Operator-authored profiles are
     never overwritten. Disable with SEED_DEFAULT_PROFILE=false.
     """
-    if not _seed_default_profile_enabled():
+    if not env_bool("SEED_DEFAULT_PROFILE", True):
         return False
     factory = get_session_factory()
     async with factory() as session:
@@ -142,16 +132,8 @@ async def ensure_default_application_profile() -> bool:
     return True
 
 
-def _header(headers: dict, name: str) -> str:
-    wanted = name.lower()
-    for key, value in (headers or {}).items():
-        if str(key).lower() == wanted:
-            return str(value).split(":", 1)[0].lower()
-    return ""
-
-
 def _route_score(route: dict, method: str, path: str) -> int:
-    methods = [str(item).upper() for item in route.get("methods", [])]
+    methods = [str(item).upper() for item in (route.get("methods") or [])]
     if methods and method.upper() not in methods:
         return -1
     pattern = str(route.get("path") or "")
@@ -168,36 +150,46 @@ def _route_score(route: dict, method: str, path: str) -> int:
     return 1000 + len(pattern) if pattern == path else -1
 
 
-async def select_application_context(session, event: dict) -> tuple[ApplicationProfile | None, dict]:
-    """Select the most specific active profile and route for an event."""
-    result = await session.execute(
-        select(ApplicationProfile)
-        .where(ApplicationProfile.active.is_(True))
-        .order_by(ApplicationProfile.version.desc(), ApplicationProfile.id.asc())
-    )
-    profiles = result.scalars().all()
-    request = event.get("raw_request") or {}
-    host = _header(request.get("headers") or {}, "host")
-    method = str(event.get("method") or "GET").upper()
-    path = urlsplit(str(event.get("uri") or "/")).path or "/"
+def _host_score(patterns: list[str], host: str) -> tuple[int, int]:
+    best = (-1, 0)
+    for pattern in patterns or ["*"]:
+        pattern = pattern.lower().rstrip(".")
+        if not fnmatch.fnmatchcase(host, pattern):
+            continue
+        if pattern == "*":
+            score = (0, 0)
+        elif any(character in pattern for character in "*?["):
+            score = (1, len(pattern))
+        else:
+            score = (2, len(pattern))
+        best = max(best, score)
+    return best
 
-    chosen = None
+
+def application_context_for(profiles, host: str, method: str, path: str):
+    """Rank host and route evidence together, with the lab profile as a fallback."""
+    chosen = best_route = best = None
     for profile in profiles:
-        patterns = profile.host_patterns or []
-        if not patterns or any(fnmatch.fnmatch(host, str(pattern).lower()) for pattern in patterns):
-            chosen = profile
-            break
+        host_score = _host_score(profile.host_patterns, host)
+        if host_score[0] < 0:
+            continue
+        route = None
+        route_score = -1
+        for candidate in profile.routes or []:
+            if not isinstance(candidate, dict):
+                continue
+            score = _route_score(candidate, method, path)
+            if score > route_score:
+                route, route_score = candidate, score
+        specific_route = route is not None and route.get("path") != "/*"
+        score = (
+            specific_route, host_score, route_score, profile.name != DEFAULT_LAB_PROFILE_NAME,
+            profile.version, -profile.id,
+        )
+        if best is None or score > best:
+            chosen, best_route, best = profile, route, score
     if chosen is None:
         return None, {}
-
-    best_route = None
-    best_score = -1
-    for route in chosen.routes or []:
-        score = _route_score(route, method, path)
-        if score > best_score:
-            best_score = score
-            best_route = route
-
     return chosen, {
         "application": chosen.context or {},
         "route": best_route,
@@ -205,3 +197,31 @@ async def select_application_context(session, event: dict) -> tuple[ApplicationP
         "profile_version": chosen.version,
         "fact_provenance": chosen.source_metadata or {},
     }
+
+
+async def active_application_profiles(session):
+    return (await session.scalars(select(ApplicationProfile).where(ApplicationProfile.active.is_(True)))).all()
+
+
+async def select_application_context(session, event: dict) -> tuple[ApplicationProfile | None, dict]:
+    profiles = await active_application_profiles(session)
+    method = str(event.get("method") or "GET").upper()
+    path = split_request_uri(str(event.get("uri") or "/")).path or "/"
+    return application_context_for(profiles, application_host(event), method, path)
+
+
+def route_supports_exception(application_context: dict, parameter: str | None) -> bool:
+    route = application_context.get("route") or {}
+    parameters = route.get("parameters")
+    if not parameter or route.get("path") in (None, "", "/*") or not isinstance(parameters, dict):
+        return False
+    semantics = parameters.get(parameter)
+    return bool(
+        (isinstance(semantics, str) and semantics.strip())
+        or (isinstance(semantics, dict) and semantics)
+    )
+
+
+async def profile_is_current(session, event: dict, profile_id: int | None, profile_version: int | None) -> bool:
+    profile, _ = await select_application_context(session, event)
+    return (profile.id, profile.version) == (profile_id, profile_version) if profile else profile_id is None
