@@ -11,18 +11,20 @@ from typing import BinaryIO
 from zoneinfo import ZoneInfoNotFoundError
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import OperationalError
 
 from db.models import AuditEvent, get_session_factory
 from services.audit_cursor import count_lines, load_cursor, save_cursor
 from services.audit_event import normalize_audit_event as _parse_modsec_json
-from services.incidents import InvalidAuditRecord, register_event, transaction_exists
+from services.incidents import register_event, transaction_exists
 
 logger = logging.getLogger(__name__)
 
 EVENTS_JSONL_PATH = os.environ.get('EVENTS_JSONL_PATH', '/shared/events.jsonl')
 READ_CHUNK_BYTES = 8 * 1024 * 1024
-# Only record-specific failures count toward this limit.
+# Storage errors are retried until they clear; any other failure skips the record after this many tries.
 MAX_INGEST_ATTEMPTS = 3
+STORAGE_ERRORS = (OperationalError, OSError)
 INGEST_STORAGE_RETRY_SECONDS = 2
 MAX_AUDIT_RECORD_BYTES = 96 * 1024 * 1024
 _AUDIT_RECORD_START = re.compile(r'(?m)^[ \t]*\{[ \t]*"transaction"\s*:')
@@ -267,18 +269,20 @@ async def log_tailer(queue_changed: asyncio.Event | None = None):
                                 queue_changed.set()
                         except Exception as exc:
                             await session.rollback()
-                            if isinstance(exc, InvalidAuditRecord):
+                            if isinstance(exc, STORAGE_ERRORS):
+                                # Disk full or database locked: keep the record and wait longer each time.
+                                invalid_attempts = 0
+                                storage_failures = min(storage_failures + 1, 6)
+                                retry_delay = min(60, INGEST_STORAGE_RETRY_SECONDS * 2 ** (storage_failures - 1))
+                            else:
+                                # Invalid data or a code bug: skip the record so it cannot block the ones after it.
                                 storage_failures = 0
                                 invalid_attempts += 1
                                 if invalid_attempts >= MAX_INGEST_ATTEMPTS:
                                     invalid_attempts = 0
-                                    logger.error('Skipped invalid audit transaction %s after %d attempts',
-                                                 transaction_id, MAX_INGEST_ATTEMPTS)
+                                    logger.error('Skipped audit transaction %s after %d attempts (%s)',
+                                                 transaction_id, MAX_INGEST_ATTEMPTS, type(exc).__name__)
                                     continue
-                            else:
-                                invalid_attempts = 0
-                                storage_failures = min(storage_failures + 1, 6)
-                                retry_delay = min(60, INGEST_STORAGE_RETRY_SECONDS * 2 ** (storage_failures - 1))
                             logger.warning('Audit ingest will retry transaction %s (%s)', transaction_id, type(exc).__name__)
                             retry = b''.join(
                                 json.dumps(item, ensure_ascii=True, separators=(',', ':')).encode('ascii') + b'\n'

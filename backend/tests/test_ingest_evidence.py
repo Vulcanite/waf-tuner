@@ -293,3 +293,43 @@ class DurableIngestTests(unittest.IsolatedAsyncioTestCase):
                     await models.get_async_engine().dispose()
                     models._async_engine = None
                     models._async_session_factory = None
+
+    async def test_a_code_error_skips_the_record_instead_of_blocking_ingest(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            audit = root / 'audit.log'
+            audit.write_text(json.dumps(audit_object('bad')) + '\n' + json.dumps(audit_object('good')) + '\n')
+            env = {
+                'MODSEC_AUDIT_LOG': str(audit),
+                'EVENTS_JSONL_PATH': str(root / 'events.jsonl'),
+                'AUDIT_CURSOR_PATH': str(root / 'cursor.json'),
+                'RUNTIME_CONFIG_PATH': str(root / 'runtime.json'),
+                'DATABASE_URL': f'sqlite+aiosqlite:///{root / "test.db"}',
+                'INCIDENT_FINGERPRINT_KEY': 'test-key',
+            }
+            models._async_engine = None
+            models._async_session_factory = None
+            with patch.dict(os.environ, env):
+                await models.init_db()
+                calls = []
+
+                async def bug_on_bad(session, event, line):
+                    calls.append(event['transaction_id'])
+                    if event['transaction_id'] == 'bad':
+                        raise KeyError('unexpected field')
+                    return await register_event(session, event, line)
+
+                wake = asyncio.Event()
+                try:
+                    with patch.object(log_tailer, 'register_event', bug_on_bad):
+                        worker = asyncio.create_task(log_tailer.log_tailer(wake))
+                        try:
+                            await asyncio.wait_for(wake.wait(), 15)
+                        finally:
+                            worker.cancel()
+                            await asyncio.gather(worker, return_exceptions=True)
+                    self.assertEqual(calls, ['bad', 'bad', 'bad', 'good'])
+                finally:
+                    await models.get_async_engine().dispose()
+                    models._async_engine = None
+                    models._async_session_factory = None
