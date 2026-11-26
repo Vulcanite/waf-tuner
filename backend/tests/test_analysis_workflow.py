@@ -10,11 +10,20 @@ from openai import AsyncOpenAI
 from sqlalchemy import select
 
 from db import models
-from services import agent, crs_index
+from services import agent, crs_index, log_tailer
 from services.inference_retention import prune_audit_evidence, prune_inference_artifacts
 
 
-@pytest.mark.parametrize("variant", ["normal", "missing_method", "rule_removed"])
+# Each non-normal variant must be stopped by the named gate, with no approvable draft.
+WITHHELD = {
+    "missing_method": "missing_application_context",
+    "rule_removed": "rule_changed_since_alert",
+    "data_file_changed": "rule_changed_since_alert",
+    "ruleset_uncertain": "ruleset_uncertain",
+}
+
+
+@pytest.mark.parametrize("variant", ["normal", *WITHHELD])
 def test_audited_match_becomes_a_reviewable_exception(tmp_path, monkeypatch, variant):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     paths = {
@@ -42,9 +51,10 @@ def test_audited_match_becomes_a_reviewable_exception(tmp_path, monkeypatch, var
     for name in ("_index_dir", "_marker_key", "_status", "CRS_INDEX"):
         monkeypatch.setattr(crs_index, name, getattr(crs_index, name))
     paths["CRS_RULES_DIR"].mkdir()
-    (paths["CRS_RULES_DIR"] / "LOCAL.conf").write_text(
-        'SecRule ARGS:q "@streq catalog-sample" "id:10001,phase:2,log"\n'
-    )
+    operator = "@pmFromFile phrases.data" if variant == "data_file_changed" else "@streq catalog-sample"
+    rule_text = f'SecRule ARGS:q "{operator}" "id:10001,phase:2,log"\n'
+    (paths["CRS_RULES_DIR"] / "LOCAL.conf").write_text(rule_text)
+    (paths["CRS_RULES_DIR"] / "phrases.data").write_text("catalog-sample\n")
     paths["MODSEC_AUDIT_LOG"].touch()
     sent = []
 
@@ -91,6 +101,18 @@ def test_audited_match_becomes_a_reviewable_exception(tmp_path, monkeypatch, var
             if variant == "rule_removed":
                 # The alert fired under the rule, but the current ruleset no longer has it.
                 monkeypatch.setattr(agent, "get_rule", lambda _: None)
+            if variant == "data_file_changed":
+                # Same directive text, but today's phrases.data differs from the one the alert fired under.
+                changed = tmp_path / "changed-rules"
+                changed.mkdir()
+                (changed / "LOCAL.conf").write_text(rule_text)
+                (changed / "phrases.data").write_text("other-phrase\n")
+                changed_rule = crs_index.build_crs_index(changed)["10001"]
+                assert changed_rule.raw == crs_index.get_rule("10001").raw
+                monkeypatch.setattr(agent, "get_rule", lambda _: changed_rule)
+            if variant == "ruleset_uncertain":
+                # A new snapshot went live around when this alert fired.
+                monkeypatch.setattr(log_tailer, "_ruleset_pin", lambda event: {"digest": None, "uncertain": True})
             paths["MODSEC_AUDIT_LOG"].write_text(json.dumps({"transaction": {
                 "id": "fixture-transaction",
                 "time_stamp": "Mon Jan 01 12:00:00 2024",
@@ -108,19 +130,26 @@ def test_audited_match_becomes_a_reviewable_exception(tmp_path, monkeypatch, var
             assert cases and cases[0]["state"] == "complete", cases
             assert len(sent) == 1
             evidence = sent[0]["messages"][1]["content"]
-            assert json.loads(evidence)["crs_rule"]["operator"] == "@streq catalog-sample"
+            assert json.loads(evidence)["crs_rule"]["operator"] == operator
             assert all(value not in evidence for value in ("private-value", "private-cookie", "fixture-transaction"))
 
             drafts = client.get("/api/exceptions?classification=false_positive").json()["items"]
             if variant != "normal":
-                # No method, or a rule that no longer exists: nothing may become approvable.
                 assert all(draft["validation_status"] != "valid" for draft in drafts)
                 assert all(client.post(f"/api/exceptions/{draft['id']}/approve").status_code != 200 for draft in drafts)
-                return
-            assert len(drafts) == 1
-            approved = client.post(f"/api/exceptions/{drafts[0]['id']}/approve")
-            assert approved.status_code == 200, approved.text
-            assert "ruleRemoveTargetById=10001;ARGS:q" in approved.json()["proposed_rule"]
+            else:
+                assert len(drafts) == 1
+                approved = client.post(f"/api/exceptions/{drafts[0]['id']}/approve")
+                assert approved.status_code == 200, approved.text
+                assert "ruleRemoveTargetById=10001;ARGS:q" in approved.json()["proposed_rule"]
+
+        if variant != "normal":
+            async def withheld_by():
+                async with models.get_session_factory()() as session:
+                    return (await session.scalars(select(models.AnalysisRevision.validation_status))).one()
+
+            assert asyncio.run(withheld_by()) == WITHHELD[variant]
+            return
 
         async def check_retention():
             cutoff = datetime.now(timezone.utc) + timedelta(days=1)

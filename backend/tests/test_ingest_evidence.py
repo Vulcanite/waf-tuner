@@ -142,9 +142,11 @@ class EvidenceTests(unittest.TestCase):
             plus, percent = raw_match('/catalog?q=red+book'), raw_match('/catalog?q=red%20book')
             self.assertNotEqual(incident_fingerprint(*plus)[0], incident_fingerprint(*percent)[0])
             sent = serialize_inference_context(build_inference_context(*percent))
-            hidden = serialize_inference_context(build_inference_context(*raw_match('/login?pass%77ord=hunter2')))
+            # The general sanitizer misses these encoded names; only the decoded-name check hides their values.
+            hidden = [serialize_inference_context(build_inference_context(*raw_match(f'/login?{name}=blue7')))
+                      for name in ('p%61ssword', 'api%5Fkey', 'to%6Ben', 'secr%65t')]
         self.assertIn('q=red%20book', sent)
-        self.assertNotIn('hunter2', hidden)
+        self.assertFalse([text for text in hidden if 'blue7' in text])
 
     def test_a_changed_rule_starts_a_new_case(self):
         from types import SimpleNamespace
