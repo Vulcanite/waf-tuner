@@ -6,7 +6,7 @@ import math
 import os
 import re
 from collections.abc import Mapping
-from urllib.parse import SplitResult, parse_qsl, unquote, urlsplit
+from urllib.parse import SplitResult, parse_qsl, unquote, unquote_plus, urlsplit
 
 from services.json_extract import extract_json
 from services.redaction import REDACTED, SENSITIVE_HEADERS, is_sensitive_name, sanitize_evidence_text
@@ -137,6 +137,8 @@ def prepare_request_evidence(event: dict) -> dict:
         'method': str(event.get('method') or '').upper(),
         'path': uri.path or '/',
         'query_items': parse_qsl(uri.query, keep_blank_values=True),
+        # REQUEST_URI_RAW inspects the query as sent, so keep its original encoding too.
+        'raw_query_items': [part.partition('=')[::2] for part in uri.query.split('&') if part],
         'body_items': body_items,
         'body_status': body_status,
         'headers': headers,
@@ -179,10 +181,11 @@ def match_evidence(request: dict, collection: str | None, parameter: str | None,
         path = request['path']
         if collection == 'REQUEST_BASENAME':
             path = path.rsplit('/', 1)[-1]
-        if collection in ('REQUEST_URI', 'REQUEST_URI_RAW') and request['query_items']:
+        items = request['raw_query_items'] if collection == 'REQUEST_URI_RAW' else request['query_items']
+        if collection in ('REQUEST_URI', 'REQUEST_URI_RAW') and items:
             # REQUEST_URI includes the query string; without it two different payloads look identical.
             # Raw pairs here keep the local fingerprint exact; the provider copy is redacted later.
-            return {'path': [path], 'uri_query': [[name, value] for name, value in request['query_items']]}
+            return {'path': [path], 'uri_query': [[name, value] for name, value in items]}
         return {'path': [path]}
     return {}
 
@@ -328,7 +331,9 @@ def build_inference_context(event, match, *, match_index=0, crs_rule=None, appli
     evidence = match_evidence(request, collection, parameter, match) if safe_target else {}
     if 'uri_query' in evidence:
         evidence['query'] = [
-            f'{name}={REDACTED if is_sensitive_name(name) else value}' for name, value in evidence.pop('uri_query')
+            # Check the decoded name, so an encoded name such as pass%77ord is still redacted.
+            f'{name}={REDACTED if is_sensitive_name(unquote_plus(name)) else value}'
+            for name, value in evidence.pop('uri_query')
         ]
     values = {key: _bounded_values(items, field_limit) for key, items in evidence.items() if items}
     values_truncated = any(

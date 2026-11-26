@@ -192,3 +192,39 @@ def test_live_eval_does_not_escalate_a_repaired_verdict(monkeypatch):
     fixture = {"id": "repaired", "expected": "attack", "context": {"incident": {"rule_id": "10001"}}}
     result, _ = evaluate.classify_live(fixture, settings)
     assert (result["classification"], sent) == ("uncertain", ["initial", "repair"])
+
+
+def test_eval_uses_the_alert_pinned_ruleset_like_the_worker(monkeypatch):
+    from types import SimpleNamespace
+
+    rules = {"a" * 64: "@streq first", None: "@streq second"}
+    lookups = []
+
+    def get_rule_at(rule_id, digest):
+        lookups.append(digest)
+        return SimpleNamespace(raw="SecRule ARGS:q", operator=rules[digest], message="", severity="", source_file="",
+                               ruleset_digest=digest, targets=[], tags=[], paranoia_level=0, phase=2, chain=False,
+                               chain_rules=[])
+
+    monkeypatch.setattr(evaluate, "get_rule_at", get_rule_at)
+    event = {"method": "GET", "uri": "/catalog?q=x", "crs_ruleset_digest": "a" * 64,
+             "raw_request": {"headers": {"Host": "catalog.test"}},
+             "matches": [{"rule_id": "10001", "collection": "ARGS", "parameter": "q"}]}
+    context = evaluate.fixture_context({"id": "pinned", "audit_event": event})
+    assert lookups == ["a" * 64] and context["crs_rule"]["operator"] == "@streq first"
+
+
+def test_gate_fails_a_model_that_never_commits_to_a_verdict(tmp_path):
+    fixtures = [record for record in load_fixtures() if record["expected"] == "attack"][:3]
+    fixtures_path = tmp_path / "fixtures.jsonl"
+    fixtures_path.write_text("".join(json.dumps(record) + "\n" for record in fixtures))
+    uncertain = {**oracle_response("attack"), "classification": "uncertain"}
+    evaluate.write_recordings(recording_path("hedger", tmp_path), [
+        {"id": record["id"], "raw": json.dumps(uncertain), "repaired": False, "finish_reason": "stop",
+         "classification": "uncertain", "latency_ms": 0, "token_usage": {}}
+        for record in fixtures
+    ])
+    argv = ["--mode", "recorded", "--model", "hedger", "--fixtures", str(fixtures_path),
+            "--recordings-dir", str(tmp_path), "--output", str(tmp_path / "report.json")]
+    assert evaluate.main(argv) == 1
+    assert evaluate.main([*argv, "--min-attack-detection", "0"]) == 0

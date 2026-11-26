@@ -3,6 +3,7 @@ import asyncio
 import codecs
 import json
 import logging
+import math
 import os
 import re
 import stat
@@ -15,7 +16,7 @@ from sqlalchemy.exc import DataError, DBAPIError, IntegrityError
 
 from db.models import AuditEvent, get_session_factory
 from services.audit_cursor import count_lines, load_cursor, save_cursor
-from services.audit_event import normalize_audit_event as _parse_modsec_json
+from services.audit_event import normalize_audit_event as _parse_modsec_json, parse_audit_timestamp
 from services.crs_index import index_status
 from services.incidents import register_event, transaction_exists
 
@@ -28,7 +29,7 @@ MAX_INGEST_ATTEMPTS = 3
 
 INGEST_STORAGE_RETRY_SECONDS = 2
 MAX_AUDIT_RECORD_BYTES = 96 * 1024 * 1024
-# Read by /health: 'starting', 'retrying' (startup failed, will retry) or 'running'.
+# Read by /health: 'starting', 'retrying' (startup or storage failed, will retry) or 'running'.
 INGEST_STATE = {'state': 'starting', 'error': None}
 _AUDIT_RECORD_START = re.compile(r'(?m)^[ \t]*\{[ \t]*"transaction"\s*:')
 
@@ -39,6 +40,16 @@ def is_storage_error(exc: Exception) -> bool:
         return True
     # Constraint and data errors are about this record; every other database error is about storage.
     return isinstance(exc, DBAPIError) and not isinstance(exc, (IntegrityError, DataError))
+
+
+def _ruleset_pin(event: dict) -> dict:
+    """The CRS snapshot live when the alert was read, and whether the alert may predate it."""
+    status = index_status()
+    since = status.get('active_since')
+    fired = parse_audit_timestamp(event.get('timestamp')) if event.get('timestamp_source') == 'audit_log' else None
+    # Audit timestamps have one-second resolution, so the same second as the switch is uncertain too.
+    uncertain = bool(since and fired and fired.timestamp() < math.floor(since) + 1)
+    return {'digest': status.get('digest'), 'uncertain': uncertain}
 
 
 def _decode_complete_objects(pending: bytes) -> tuple[list[dict], bytes]:
@@ -267,8 +278,10 @@ async def log_tailer(queue_changed: asyncio.Event | None = None):
                         if event is None:
                             continue
                         transaction_id = event['transaction_id']
-                        # Pin the ruleset that was live when the alert arrived, for analysis later.
-                        event['crs_ruleset_digest'] = index_status().get('digest')
+                        # Pin the ruleset once, on the raw record, so a retry keeps the same pin in the mirror and SQLite.
+                        pin = obj.setdefault('waf_tuner_crs', _ruleset_pin(event))
+                        event['crs_ruleset_digest'] = pin.get('digest')
+                        event['crs_ruleset_uncertain'] = bool(pin.get('uncertain'))
                         try:
                             transaction_id.encode('utf-8')
                         except UnicodeEncodeError:
@@ -289,6 +302,7 @@ async def log_tailer(queue_changed: asyncio.Event | None = None):
                             registered = await register_event(session, event, event_line)
                             await session.commit()
                             invalid_attempts = storage_failures = 0
+                            INGEST_STATE.update(state='running', error=None)
                             if registered and queue_changed is not None:
                                 queue_changed.set()
                         except Exception as exc:
@@ -297,6 +311,7 @@ async def log_tailer(queue_changed: asyncio.Event | None = None):
                                 # Disk full or database locked: keep the record and wait longer each time.
                                 invalid_attempts = 0
                                 storage_failures = min(storage_failures + 1, 6)
+                                INGEST_STATE.update(state='retrying', error=f'storage error ({type(exc).__name__})')
                                 retry_delay = min(60, INGEST_STORAGE_RETRY_SECONDS * 2 ** (storage_failures - 1))
                             else:
                                 # Invalid data or a code bug: skip the record so it cannot block the ones after it.

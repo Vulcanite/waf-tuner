@@ -181,6 +181,11 @@ def _elapsed_ms(started: datetime | None, completed: datetime) -> int | None:
     return max(0, round((completed - started).total_seconds() * 1000))
 
 
+# Raise when the evidence rules change in a way that makes older verdicts unsafe to approve.
+# 2: a missing HTTP method is no longer recorded as GET, and rules are compared by signature.
+EVIDENCE_POLICY_VERSION = 2
+
+
 def _analysis_generation(ruleset: dict) -> str:
     settings = _provider_settings or request_settings()
     inputs = {
@@ -196,6 +201,7 @@ def _analysis_generation(ruleset: dict) -> str:
             )
         },
         "require_application_context": env_bool("REQUIRE_APPLICATION_CONTEXT", True),
+        "evidence_policy": EVIDENCE_POLICY_VERSION,
     }
     return hashlib.sha256(json.dumps(inputs, sort_keys=True).encode()).hexdigest()
 
@@ -631,7 +637,8 @@ async def _analyze_claimed_case(case_id: int) -> None:
         )
         profile_id = profile.id if profile else None
         profile_version = profile.version if profile else None
-        crs_digest = hashlib.sha256(crs_raw.encode()).hexdigest() if crs_raw else None
+        # The rule's signature covers its text and the data files it reads.
+        crs_digest = crs_rule.signature if crs_rule else None
         ruleset = index_status()
         generation = _analysis_generation(ruleset)
         settings = {**public_model_settings(), "ruleset_digest": ruleset.get("digest")}
@@ -709,8 +716,13 @@ async def _analyze_claimed_case(case_id: int) -> None:
             normalized_rule, validation_status, validation_error = (
                 None, "missing_crs_rule", "Load the ruleset ModSecurity used for this alert and reanalyze.",
             )
-        elif validation_status == "valid" and (get_rule(case.rule_id) or crs_rule).raw != crs_rule.raw:
-            # The exclusion would be deployed against today's rule, which no longer matches the one that fired.
+        elif validation_status == "valid" and event.get("crs_ruleset_uncertain"):
+            normalized_rule, validation_status, validation_error = (
+                None, "ruleset_uncertain",
+                "A new CRS ruleset went live around when this alert fired. Review a new alert under the current ruleset.",
+            )
+        elif validation_status == "valid" and getattr(get_rule(case.rule_id), "signature", None) != crs_rule.signature:
+            # The exclusion would be deployed against today's rule. If it is gone or detects differently, withhold it.
             normalized_rule, validation_status, validation_error = (
                 None, "rule_changed_since_alert",
                 "This rule changed after the alert fired. Review a new alert under the current ruleset.",

@@ -12,6 +12,7 @@ from sqlalchemy import case, select
 from sqlalchemy.dialects.sqlite import insert
 
 from db.models import AnalysisCase, AuditEvent, IncidentOccurrence
+from services.crs_index import get_rule_at
 from services.audit_event import parse_audit_timestamp
 from services.inference_context import (
     is_aggregate_match,
@@ -96,13 +97,21 @@ def _fallback_identity(event: dict, request: dict) -> bytes:
     return hashlib.sha256(_encode_identity(fallback)).digest()
 
 
-def _incident_fingerprint(match: dict, target, values: dict, payload_identity: bytes, key: bytes) -> tuple[str, str | None, str | None]:
+def _rule_signature(event: dict, match: dict) -> str:
+    """Signature of the rule that fired; a changed rule makes a new case that gets a fresh analysis."""
+    rule = get_rule_at(str(match.get('rule_id') or ''), event.get('crs_ruleset_digest'))
+    return rule.signature if rule else ''
+
+
+def _incident_fingerprint(match: dict, target, values: dict, payload_identity: bytes, key: bytes,
+                          rule_signature: str = '') -> tuple[str, str | None, str | None]:
     collection, parameter = target
     identity = _encode_identity({
         'rule_id': str(match.get('rule_id') or ''),
         'target': [collection, parameter],
         'matched_data': _normalize_matched_data(match.get('matched_data', '')),
         'values': values,
+        'rule_signature': rule_signature,
     })
     return hmac.new(key, b'evidence-v2\0' + payload_identity + identity, hashlib.sha256).hexdigest(), collection, parameter
 
@@ -114,7 +123,7 @@ def incident_fingerprint(event: dict, match: dict) -> tuple[str, str | None, str
     identity = _transaction_identity(event, request)
     if not any(values.values()):
         identity += _fallback_identity(event, request)
-    return _incident_fingerprint(match, target, values, identity, _fingerprint_key())
+    return _incident_fingerprint(match, target, values, identity, _fingerprint_key(), _rule_signature(event, match))
 
 
 async def transaction_exists(session, transaction_id: str) -> bool:
@@ -172,7 +181,8 @@ async def register_event(session, event: dict, event_line: int) -> bool:
             if fallback_identity is None:
                 fallback_identity = shared_identity + _fallback_identity(event, request)
             payload_identity = fallback_identity
-        fingerprint, collection, parameter = _incident_fingerprint(match, target, values, payload_identity, fingerprint_key)
+        fingerprint, collection, parameter = _incident_fingerprint(
+            match, target, values, payload_identity, fingerprint_key, _rule_signature(event, match))
         statement = (
             insert(AnalysisCase)
             .values(

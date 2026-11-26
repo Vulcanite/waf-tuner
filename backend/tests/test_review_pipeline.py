@@ -126,7 +126,7 @@ def test_copy_and_export_require_approved_current_scoped_rule(sqlite, monkeypatc
     crs_rule = CRSRule(
         rule_id="10001", raw='SecRule ARGS:q "@streq music" "id:10001,phase:2,log"',
         targets=["ARGS:q"], operator="@streq music", message="Local test rule", tags=[],
-        paranoia_level=0, phase=2, severity="NOTICE", chain=False,
+        paranoia_level=0, phase=2, severity="NOTICE", chain=False, signature="signature-a",
     )
     monkeypatch.setattr(exceptions, "get_rule", lambda _: crs_rule)
     monkeypatch.setattr(exceptions, "current_analysis_generation", lambda: "fixture-generation")
@@ -156,7 +156,7 @@ def test_copy_and_export_require_approved_current_scoped_rule(sqlite, monkeypatc
             revision = models.AnalysisRevision(
                 analysis_case_id=case.id, state="complete", classification="false_positive", model="fixture",
                 prompt_version="test", profile_version=1, application_profile_id=profile.id,
-                crs_digest=hashlib.sha256(crs_rule.raw.encode()).hexdigest(), validation_status="valid",
+                crs_digest=crs_rule.signature, validation_status="valid",
                 normalized_rule=proposed_rule, proposed_rule_scope=scope,
             )
             db.add(revision)
@@ -189,6 +189,10 @@ def test_copy_and_export_require_approved_current_scoped_rule(sqlite, monkeypatc
             assert (await exceptions.get_exception(draft.id, db))["status"] == "stale"
             assert await exported_rule() == ""
             crs_rule.chain = False
+            crs_rule.signature = "signature-b"  # same directive text, edited .data file
+            assert (await exceptions.get_exception(draft.id, db))["status"] == "stale"
+            assert await exported_rule() == ""
+            crs_rule.signature = "signature-a"
             monkeypatch.setattr(exceptions, "get_rule", lambda _: None)
             assert (await exceptions.get_exception(draft.id, db))["status"] == "stale"
             assert await exported_rule() == ""
@@ -216,4 +220,47 @@ def test_expired_occurrence_blocks_reanalysis(sqlite):
             with pytest.raises(HTTPException, match="Audit evidence expired") as error:
                 await cases.reanalyze_case(case.id, db)
             assert error.value.status_code == 409 and case.state == "complete"
+    asyncio.run(run())
+
+
+def test_detection_without_a_method_blocks_an_overlapping_get_exclusion(sqlite):
+    from services.scope_conflicts import has_true_positive, invalidate_false_positive_drafts
+
+    scope = {"uri": "/catalog", "collection": "ARGS", "parameter": "q", "rule_id": "10001",
+             "host": "catalog.test", "method": "GET"}
+
+    async def run():
+        await models.init_db()
+        async with models.get_session_factory()() as db:
+            def case(name, method, classification):
+                row = models.AnalysisCase(
+                    fingerprint=name, method=method, path="/catalog", rule_id="10001", collection="ARGS",
+                    parameter="q", latest_event_line=1, state="complete", application_host="catalog.test",
+                )
+                db.add(row)
+                return row, classification
+
+            rows = [case("allowed", "GET", "false_positive"), case("detected", "", "true_positive")]
+            await db.flush()
+            for row, classification in rows:
+                db.add(models.AnalysisRevision(
+                    analysis_case_id=row.id, state="complete", classification=classification, model="fixture",
+                    prompt_version="test", validation_status="valid", proposed_rule_scope=scope,
+                    normalized_rule="rule" if classification == "false_positive" else None,
+                ))
+            await db.flush()
+            revision = (await db.scalars(select(models.AnalysisRevision).where(
+                models.AnalysisRevision.classification == "false_positive"))).one()
+            db.add(models.ExceptionDraft(
+                analysis_revision_id=revision.id, event_line=1, transaction_id="allowed",
+                classification="false_positive", confidence=0.95, verdict="Search term.", status="approved",
+                validation_status="valid", proposed_rule_scope=scope, proposed_rule="rule",
+                scope_key=canonical_scope_key(scope),
+            ))
+            await db.commit()
+            allowed, detected = rows[0][0], rows[1][0]
+            # Exclusion approved after the detection: the overlap check must see the method-less detection.
+            assert await has_true_positive(db, allowed, scope)
+            # Detection arriving after the exclusion: the approved GET draft must be invalidated.
+            assert await invalidate_false_positive_drafts(db, detected) == 1
     asyncio.run(run())

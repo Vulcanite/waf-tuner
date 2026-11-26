@@ -30,7 +30,8 @@ async def has_true_positive(session, case: AnalysisCase, scope: dict | None = No
                 AnalysisCase.application_host.is_(None),
                 AnalysisCase.application_host == "",
             ),
-            AnalysisCase.method == observed_scope["method"],
+            # A detection whose method was not logged could have used any method.
+            or_(AnalysisCase.method == observed_scope["method"], AnalysisCase.method.is_(None), AnalysisCase.method == ""),
         ))
     result = await session.execute(
         select(AnalysisRevision.id)
@@ -46,13 +47,15 @@ async def has_true_positive(session, case: AnalysisCase, scope: dict | None = No
 
 
 async def invalidate_false_positive_drafts(session, case: AnalysisCase) -> int:
-    scope = case_exception_scope(case)
     revision_scope = AnalysisRevision.proposed_rule_scope
     profile_method = revision_scope["method"].as_string()
     profile_host = revision_scope["host"].as_string()
-    filters = [or_(profile_method.is_(None), profile_method == scope.get("method", case.method))]
-    if scope.get("host"):
-        filters.append(or_(profile_host.is_(None), profile_host == scope["host"]))
+    filters = []
+    # An unknown method could be any method, so only a known one narrows the overlap; a known host still does.
+    if case.method:
+        filters.append(or_(profile_method.is_(None), profile_method == case.method))
+    if case.application_host:
+        filters.append(or_(profile_host.is_(None), profile_host == case.application_host))
     revision_ids = select(AnalysisRevision.id).join(
         AnalysisCase, AnalysisCase.id == AnalysisRevision.analysis_case_id
     ).where(

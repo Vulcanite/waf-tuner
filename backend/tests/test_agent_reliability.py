@@ -91,6 +91,13 @@ class ModelResponseTests(unittest.TestCase):
             result, _, repaired = asyncio.run(agent._call_model({}, {}, 1))
         self.assertEqual((result["classification"], repaired, provider.await_count), ("uncertain", True, 2))
 
+    def test_evidence_policy_change_makes_older_verdicts_stale(self):
+        # Drafts built under an older evidence policy (e.g. a guessed GET) must not stay approvable.
+        with patch.dict(os.environ, {"LLM_API_KEY": "test"}):
+            current = agent._analysis_generation({})
+            with patch.object(agent, "EVIDENCE_POLICY_VERSION", agent.EVIDENCE_POLICY_VERSION - 1):
+                self.assertNotEqual(agent._analysis_generation({}), current)
+
     def test_missing_route_context_prevents_copyable_rule_when_required(self):
         result = json.loads(VALID.replace("true_positive", "false_positive"))
         scope = {"uri": "/search", "rule_id": "942100", "collection": "ARGS", "parameter": "q"}

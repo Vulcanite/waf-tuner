@@ -14,8 +14,8 @@ from services import agent, crs_index
 from services.inference_retention import prune_audit_evidence, prune_inference_artifacts
 
 
-@pytest.mark.parametrize("missing_method", [False, True])
-def test_audited_match_becomes_a_reviewable_exception(tmp_path, monkeypatch, missing_method):
+@pytest.mark.parametrize("variant", ["normal", "missing_method", "rule_removed"])
+def test_audited_match_becomes_a_reviewable_exception(tmp_path, monkeypatch, variant):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     paths = {
         "DATABASE_PATH": tmp_path / "cases.db",
@@ -86,8 +86,11 @@ def test_audited_match_becomes_a_reviewable_exception(tmp_path, monkeypatch, mis
                 "method": "GET",
                 "headers": {"Host": "catalog.test", "Cookie": "session=private-cookie"},
             }
-            if missing_method:
+            if variant == "missing_method":
                 del audited_request["method"]
+            if variant == "rule_removed":
+                # The alert fired under the rule, but the current ruleset no longer has it.
+                monkeypatch.setattr(agent, "get_rule", lambda _: None)
             paths["MODSEC_AUDIT_LOG"].write_text(json.dumps({"transaction": {
                 "id": "fixture-transaction",
                 "time_stamp": "Mon Jan 01 12:00:00 2024",
@@ -109,8 +112,9 @@ def test_audited_match_becomes_a_reviewable_exception(tmp_path, monkeypatch, mis
             assert all(value not in evidence for value in ("private-value", "private-cookie", "fixture-transaction"))
 
             drafts = client.get("/api/exceptions?classification=false_positive").json()["items"]
-            if missing_method:
-                # The audit record has no method, so nothing may be approved with a guessed one.
+            if variant != "normal":
+                # No method, or a rule that no longer exists: nothing may become approvable.
+                assert all(draft["validation_status"] != "valid" for draft in drafts)
                 assert all(client.post(f"/api/exceptions/{draft['id']}/approve").status_code != 200 for draft in drafts)
                 return
             assert len(drafts) == 1

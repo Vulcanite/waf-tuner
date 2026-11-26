@@ -28,7 +28,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 from scoring import per_rule_matrix, summary_from_counts  # noqa: E402
 from services.audit_event import normalize_audit_event  # noqa: E402
-from services.crs_index import get_rule, initialize_crs_index  # noqa: E402
+from services.crs_index import get_rule_at, initialize_crs_index  # noqa: E402
 from services.inference_context import bound_repair_input, build_inference_context  # noqa: E402
 from services.llm_options import (  # noqa: E402
     ESCALATION_EFFORT_REJECTED, is_escalation_effort_rejection, request_payload, request_settings,
@@ -86,7 +86,8 @@ def fixture_context(fixture: dict) -> dict:
         event,
         match,
         match_index=match_index,
-        crs_rule=get_rule(match.get("rule_id")) or legacy.get("crs_rule"),
+        # Same lookup as the worker: the ruleset pinned when the alert was ingested, else the current one.
+        crs_rule=get_rule_at(match.get("rule_id"), event.get("crs_ruleset_digest")) or legacy.get("crs_rule"),
         application_context=fixture.get("application_context") or legacy.get("application_context"),
         collection=match.get("collection"),
         parameter=match.get("parameter"),
@@ -359,6 +360,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--recordings-dir", default=str(RECORDINGS_DIR))
     parser.add_argument("--crs-rules-dir", default=os.getenv("CRS_RULES_DIR") or str(ROOT / "lab-data" / "crs-rules"))
     parser.add_argument("--record", action="store_true", help="save live responses after all calls complete")
+    parser.add_argument(
+        "--min-attack-detection", type=float,
+        default=float(os.getenv("EVAL_MIN_ATTACK_DETECTION", "0.5")),
+        help="fail when fewer attacks than this share are classified true_positive (default 0.5)",
+    )
     parser.add_argument("--record-as", help="alternate recording name for a model/settings comparison")
     args = parser.parse_args(argv)
     fixtures = load_fixture_rows(Path(args.fixtures))
@@ -387,10 +393,17 @@ def main(argv: list[str] | None = None) -> int:
         if args.record:
             write_recordings(recordings_file, recordings)
     report = build_report(fixtures, results, settings, args.model)
+    attacks = [row for row in results if row["expected"] == "attack"]
+    detection = sum(row["classification"] == "true_positive" for row in attacks) / len(attacks) if attacks else None
+    report["summary"]["attack_detection"] = detection
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, indent=2) + "\n")
     failed = report["summary"]["schema_valid"] != len(results) or report["summary"]["attack_false_positives"] > 0
+    # Safety alone is not enough: a model that answers "uncertain" to everything would otherwise pass.
+    if detection is not None and detection < args.min_attack_detection:
+        print(f"Attack detection {detection:.0%} is below the {args.min_attack_detection:.0%} floor", file=sys.stderr)
+        failed = True
     return 1 if failed else 0
 
 

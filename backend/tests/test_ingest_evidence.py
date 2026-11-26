@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import DatabaseError, OperationalError
 
 from db import models
-from services.audit_event import normalize_audit_event
+from services.audit_event import normalize_audit_event, parse_audit_timestamp
 from services.inference_context import bound_repair_input, build_inference_context, serialize_inference_context
 from services.incidents import incident_fingerprint, register_event
 from services.redaction import sanitize_evidence_text
@@ -130,6 +130,38 @@ class EvidenceTests(unittest.TestCase):
         self.assertIn("q=1' OR 1=1--", sent)
         self.assertNotIn('hunter2', sent)
 
+    def test_request_uri_raw_keeps_the_original_encoding(self):
+        def raw_match(uri):
+            raw = audit_object()
+            raw['transaction']['request']['uri'] = uri
+            raw['transaction']['messages'] = [{'message': 'raw', 'details': {'ruleId': '920230', 'severity': '2'}}]
+            event = normalize_audit_event(raw)
+            return event, {**event['matches'][0], 'collection': 'REQUEST_URI_RAW', 'parameter': None}
+
+        with patch.dict(os.environ, {'INCIDENT_FINGERPRINT_KEY': 'test-key'}):
+            plus, percent = raw_match('/catalog?q=red+book'), raw_match('/catalog?q=red%20book')
+            self.assertNotEqual(incident_fingerprint(*plus)[0], incident_fingerprint(*percent)[0])
+            sent = serialize_inference_context(build_inference_context(*percent))
+            hidden = serialize_inference_context(build_inference_context(*raw_match('/login?pass%77ord=hunter2')))
+        self.assertIn('q=red%20book', sent)
+        self.assertNotIn('hunter2', hidden)
+
+    def test_a_changed_rule_starts_a_new_case(self):
+        from types import SimpleNamespace
+
+        from services import incidents
+
+        event = normalize_audit_event(audit_object())
+        match = event['matches'][0]
+
+        def fingerprint(signature):
+            with patch.object(incidents, 'get_rule_at', lambda *_: SimpleNamespace(signature=signature)):
+                return incident_fingerprint(event, match)[0]
+
+        with patch.dict(os.environ, {'INCIDENT_FINGERPRINT_KEY': 'test-key'}):
+            self.assertEqual(fingerprint('rule-v1'), fingerprint('rule-v1'))
+            self.assertNotEqual(fingerprint('rule-v1'), fingerprint('rule-v2'))
+
     def test_restart_reconciles_the_actual_mirror_tail(self):
         with tempfile.TemporaryDirectory() as directory:
             active = Path(directory, 'events.jsonl')
@@ -181,9 +213,12 @@ class DurableIngestTests(unittest.IsolatedAsyncioTestCase):
                         raise OSError(errno.ENOSPC, 'No space left on device')
                     return append_event(*args)
 
+                states = []
+
                 async def register_when_unlocked(session, event, line):
                     nonlocal db_attempts
                     db_attempts += 1
+                    states.append(log_tailer.INGEST_STATE['state'])
                     if db_attempts <= 3:
                         raise OperationalError('INSERT', {}, sqlite3.OperationalError('database is locked'))
                     if db_attempts <= 6:
@@ -205,6 +240,9 @@ class DurableIngestTests(unittest.IsolatedAsyncioTestCase):
                             worker.cancel()
                             await asyncio.gather(worker, return_exceptions=True)
                     self.assertEqual((archive_attempts, db_attempts), (4, 7))
+                    # /health must show 'retrying' while the record waits, and 'running' once it lands.
+                    self.assertEqual(states[1:], ['retrying'] * 6)
+                    self.assertEqual(log_tailer.INGEST_STATE['state'], 'running')
                     self.assertEqual(len(archive.read_text().splitlines()), 1)
                     async with models.get_session_factory()() as session:
                         events = (await session.execute(select(models.AuditEvent))).scalars().all()
@@ -409,3 +447,61 @@ class DurableIngestTests(unittest.IsolatedAsyncioTestCase):
                     await models.get_async_engine().dispose()
                     models._async_engine = None
                     models._async_session_factory = None
+
+    async def test_ruleset_pin_survives_a_retry_across_a_snapshot_switch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            audit = root / 'audit.log'
+            archive = root / 'events.jsonl'
+            audit.write_text(json.dumps(audit_object('pinned')) + '\n')
+            env = {
+                'MODSEC_AUDIT_LOG': str(audit),
+                'EVENTS_JSONL_PATH': str(archive),
+                'AUDIT_CURSOR_PATH': str(root / 'cursor.json'),
+                'RUNTIME_CONFIG_PATH': str(root / 'runtime.json'),
+                'DATABASE_URL': f'sqlite+aiosqlite:///{root / "test.db"}',
+                'INCIDENT_FINGERPRINT_KEY': 'test-key',
+            }
+            models._async_engine = None
+            models._async_session_factory = None
+            with patch.dict(os.environ, env):
+                await models.init_db()
+                live = {'digest': 'a' * 64, 'active_since': None}
+                attempts = 0
+
+                async def locked_once_then_switch(session, event, line):
+                    nonlocal attempts
+                    attempts += 1
+                    if attempts == 1:
+                        live['digest'] = 'b' * 64  # snapshot B goes live while the record waits
+                        raise OperationalError('INSERT', {}, sqlite3.OperationalError('database is locked'))
+                    return await register_event(session, event, line)
+
+                wake = asyncio.Event()
+                try:
+                    with (
+                        patch.object(log_tailer, 'INGEST_STORAGE_RETRY_SECONDS', 0.01),
+                        patch.object(log_tailer, 'index_status', lambda: dict(live)),
+                        patch.object(log_tailer, 'register_event', locked_once_then_switch),
+                    ):
+                        worker = asyncio.create_task(log_tailer.log_tailer(wake))
+                        try:
+                            await asyncio.wait_for(wake.wait(), 5)
+                        finally:
+                            worker.cancel()
+                            await asyncio.gather(worker, return_exceptions=True)
+                    mirrored = json.loads(archive.read_text())
+                    async with models.get_session_factory()() as session:
+                        stored = (await session.scalars(select(models.AuditEvent))).one().raw_event
+                    self.assertEqual((mirrored['crs_ruleset_digest'], stored['crs_ruleset_digest']), ('a' * 64, 'a' * 64))
+                finally:
+                    await models.get_async_engine().dispose()
+                    models._async_engine = None
+                    models._async_session_factory = None
+
+    def test_alert_older_than_the_live_snapshot_has_an_uncertain_ruleset(self):
+        event = normalize_audit_event(audit_object())  # fired Mon Jan 1 12:00:00 2024 UTC
+        fired = parse_audit_timestamp(event['timestamp']).timestamp()
+        for since, uncertain in ((fired + 5, True), (fired + 0.5, True), (fired - 5, False), (None, False)):
+            with patch.object(log_tailer, 'index_status', lambda: {'digest': 'a' * 64, 'active_since': since}):
+                self.assertEqual(log_tailer._ruleset_pin(event)['uncertain'], uncertain, since)

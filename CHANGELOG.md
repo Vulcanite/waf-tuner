@@ -25,6 +25,11 @@ Initial lab/evaluation release of the observe-and-recommend workflow:
 - A missing HTTP method is no longer recorded as `GET`; such alerts cannot produce an approvable exclusion.
 - Each alert records the CRS ruleset active when it arrived and is analysed against that rule. If the rule has changed since, the exclusion is withheld.
 - Eval no longer escalates a repaired verdict, matching the backend.
+- A detection whose HTTP method was not logged now counts as overlapping any method when approving or invalidating exclusions.
+- Each CRS rule has a signature covering its text and the `.data` files it reads. A draft is withheld when the current rule is missing or its signature differs from the rule that fired, and a changed rule opens a new case.
+- The ruleset pin is taken once per record and survives retries. Alerts whose timestamp is not later than the current snapshot's publish time are marked as having an uncertain ruleset, and their drafts are withheld. Older verdicts are marked stale by an evidence-policy version in the analysis generation.
+- `/health` also reports `retrying` during runtime storage faults. `REQUEST_URI_RAW` keeps the query's original encoding.
+- Eval uses the same pinned rule lookup as the worker, and fails when fewer than `--min-attack-detection` (default 0.5, `EVAL_MIN_ATTACK_DETECTION`) of attacks are classified `true_positive`.
 - Removed: the model-SecLang parser and no-op engine check (`RULE_VALIDATION_MODE`), the SQLite migration block and Postgres URL handling, `raw_proposed_rule`, the `AI_*`/`API_*` setting aliases (use `LLM_*`), the unused nginx include hook, and the `openpyxl` dependency.
 - v0.1 surface cleanup: SQLite checks in `verify_installation.sh`; remove no-op ingest helper, unused `mode_public_info` alias, unwired OpenAPI/SBOM import routes, unused `deployed_at` model field, and dead imports.
 - Bare-metal lab E2E: `scripts/e2e_baremetal.sh` runs unit tests + host uvicorn + synthetic (or external) audit ingest without Docker.

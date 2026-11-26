@@ -48,4 +48,4 @@ LLM_REASONING_EFFORT=low LLM_ESCALATION_REASONING_EFFORT=high \
   python3 eval/evaluate.py --record --record-as low-with-escalation --output /tmp/waf-eval-low.json
 ```
 
-`--record` writes a JSONL next to other recordings. Treat model outputs as evidence that can contain sensitive text. The command exits nonzero if any response remains invalid or any attack is classified as a false positive.
+`--record` writes a JSONL next to other recordings. Treat model outputs as evidence that can contain sensitive text. The command exits nonzero if any response remains invalid, any attack is classified as a false positive, or fewer than `--min-attack-detection` (default 0.5) of attacks are classified `true_positive`, so a model that answers "uncertain" to everything fails.

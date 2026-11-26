@@ -1,6 +1,5 @@
 """Review and export evidence-backed ModSecurity exception drafts."""
 import csv
-import hashlib
 import io
 import json
 from datetime import datetime, timezone
@@ -35,7 +34,7 @@ async def _get_draft_event(db: AsyncSession, draft: ExceptionDraft) -> Optional[
 
 def _current_crs_rule(case: AnalysisCase, revision: AnalysisRevision) -> bool:
     crs = get_rule(case.rule_id)
-    if crs is None or crs.chain or revision.crs_digest != hashlib.sha256(crs.raw.encode()).hexdigest():
+    if crs is None or crs.chain or revision.crs_digest != crs.signature:
         return False
     ruleset_digest = (revision.model_settings or {}).get("ruleset_digest")
     return ruleset_digest is None or ruleset_digest == getattr(crs, "ruleset_digest", None)

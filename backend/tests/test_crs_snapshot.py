@@ -33,6 +33,11 @@ def test_switches_to_published_ruleset_and_checks_its_digest(tmp_path, monkeypat
     assert crs_index.get_rule_at("10001", second.ruleset_digest).operator == "@streq second"
     assert crs_index.get_rule_at("10001", None).operator == "@streq second"
     assert crs_index.get_rule_at("10001", "b" * 64) is None
+    # If the active snapshot switches mid-lookup, a rule from the other snapshot is never returned.
+    get_rule = crs_index.get_rule
+    monkeypatch.setattr(crs_index, "get_rule", lambda _: first)
+    assert crs_index.get_rule_at("10001", second.ruleset_digest) is None
+    monkeypatch.setattr(crs_index, "get_rule", get_rule)
 
     marker = root / ".active-snapshot"
     fake_digest = "a" * 64

@@ -37,6 +37,24 @@ class CRSRule:
     chain_rules: list[str] = field(default_factory=list)
     source_file: str = ""
     ruleset_digest: str | None = None
+    # Digest of the directive text plus every data file it reads; equal signatures detect the same traffic.
+    signature: str = ""
+
+
+_FILE_OPERATOR = re.compile(r'"@(?:pmFromFile|pmf|ipMatchFromFile|ipMatchF)\s+((?:[^"\\]|\\.)*)"')
+
+
+def rule_signature(raw: str, rules_dir: str | Path) -> str:
+    """Hash a directive and the contents of the data files its operators load."""
+    digest = hashlib.sha256(raw.encode())
+    for names in _FILE_OPERATOR.findall(raw):
+        for name in names.split():
+            try:
+                content = (Path(rules_dir) / Path(name).name).read_bytes()
+            except OSError:
+                content = b"missing"
+            digest.update(b"\0" + name.encode() + b"\0" + hashlib.sha256(content).digest())
+    return digest.hexdigest()
 
 
 def build_crs_index(rules_dir: str | Path, *, digest: str | None = None) -> dict[str, CRSRule]:
@@ -144,6 +162,7 @@ def build_crs_index(rules_dir: str | Path, *, digest: str | None = None) -> dict
                 chain_rules=chain_rules,
                 source_file=filename,
                 ruleset_digest=digest,
+                signature=rule_signature(raw, rules_dir),
             )
 
     logger.info("CRS index built: %d rules from %d files", len(index), files_parsed)
@@ -205,7 +224,9 @@ def _refresh_index(*, force: bool = False) -> None:
             state = "mismatched" if key is not None else "missing"
         CRS_INDEX = index
         _marker_key = key
-        _status = {"state": state, "digest": digest if index else None, "rules": len(index)}
+        # When the published snapshot went live; alerts written before then may have fired under the previous one.
+        active_since = stat.st_mtime if key is not None else None
+        _status = {"state": state, "digest": digest if index else None, "rules": len(index), "active_since": active_since}
 
 
 def initialize_crs_index(rules_dir: str | Path) -> dict:
@@ -235,7 +256,9 @@ def get_rule_at(rule_id: str, digest: str | None) -> CRSRule | None:
     Events ingested before digests were recorded have no digest and use the current ruleset.
     """
     if not digest or digest == index_status().get("digest"):
-        return get_rule(rule_id)
+        rule = get_rule(rule_id)
+        # The active snapshot can change between the two calls; never return a rule from another one.
+        return rule if rule is None or not digest or rule.ruleset_digest == digest else None
     with _index_lock:
         index = _snapshot_indexes.get(digest)
         if index is None:
