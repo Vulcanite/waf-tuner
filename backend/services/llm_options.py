@@ -41,8 +41,6 @@ def request_settings(*, model: str | None = None) -> dict:
     if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.query or parsed.fragment:
         raise ValueError("LLM_API_BASE_URL must be an HTTP(S) endpoint without embedded credentials, query, or fragment")
     api_key = os.getenv("LLM_API_KEY", "").strip() or "local"
-    if api_key in {"sk-...", "sk-or-..."}:
-        raise ValueError("LLM API credentials are not configured")
     max_tokens = int(os.getenv("LLM_MAX_OUTPUT_TOKEN", "20000"))
     temperature = float(os.getenv("LLM_TEMPERATURE", "0.01"))
     timeout = float(os.getenv("LLM_TIMEOUT_SECONDS", "180"))
@@ -58,9 +56,6 @@ def request_settings(*, model: str | None = None) -> dict:
     headers = json.loads(raw_headers) if raw_headers else {}
     if not isinstance(headers, dict) or any(not isinstance(v, str) for v in headers.values()):
         raise ValueError("LLM_EXTRA_HEADERS must be a JSON object of string values")
-    gateway = os.getenv("CF_AIG_GATEWAY_ID", "").strip()
-    if gateway and "cf-aig-gateway-id" not in {name.lower() for name in headers}:
-        headers["cf-aig-gateway-id"] = gateway
     return {
         "base_url": base_url,
         "api_key": api_key,
