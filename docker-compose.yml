@@ -89,6 +89,8 @@ services:
     volumes:
       - ./lab-data:/shared
       - ./lab-data:/waf-data
+      # DVWA and Lab Shop application profiles, loaded at startup.
+      - ./lab/profiles:/profiles:ro
     networks:
       - waf-net
     ports:
@@ -105,6 +107,7 @@ services:
       DATABASE_PATH: /shared/waf-tuner.db
       RUNTIME_CONFIG_PATH: /shared/runtime_config.json
       CRS_RULES_DIR: /shared/crs-rules/
+      PROFILES_DIR: /profiles
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

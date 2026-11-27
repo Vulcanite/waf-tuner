@@ -1,0 +1,219 @@
+{
+  "name": "shop-lab",
+  "host_patterns": [
+    "shop.lab"
+  ],
+  "context": {
+    "purpose": "Lab Shop: small Flask storefront (second lab app) behind ModSecurity CRS",
+    "languages": [
+      "python"
+    ],
+    "frameworks": [
+      "flask",
+      "jinja2"
+    ],
+    "data_stores": [
+      "sqlite"
+    ]
+  },
+  "routes": [
+    {
+      "path": "/",
+      "methods": [
+        "GET"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:cart_id": "cookie: opaque cart identifier (hex)",
+        "REQUEST_COOKIES:currency": "cookie: display currency code such as USD",
+        "REQUEST_COOKIES:prefs": "cookie: JSON UI preferences written by front-end script",
+        "REQUEST_COOKIES:recent": "cookie: recent search phrases, |-separated, written by front-end script",
+        "REQUEST_COOKIES:cart_note": "cookie: draft gift-wrap note saved by front-end script",
+        "REQUEST_COOKIES:lang": "cookie: UI language code such as en or fr"
+      },
+      "notes": "Storefront home page."
+    },
+    {
+      "path": "/search",
+      "methods": [
+        "GET"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:cart_id": "cookie: opaque cart identifier (hex)",
+        "REQUEST_COOKIES:currency": "cookie: display currency code such as USD",
+        "REQUEST_COOKIES:prefs": "cookie: JSON UI preferences written by front-end script",
+        "REQUEST_COOKIES:recent": "cookie: recent search phrases, |-separated, written by front-end script",
+        "REQUEST_COOKIES:cart_note": "cookie: draft gift-wrap note saved by front-end script",
+        "REQUEST_COOKIES:lang": "cookie: UI language code such as en or fr",
+        "q": "free-text product search; shoppers type product names, phrases and punctuation",
+        "category": "category slug: bags, apparel, stationery or kitchen",
+        "sort": "sort key: relevance, price or name",
+        "page": "result page number"
+      },
+      "notes": "Product search. q is bound as a parameter of a LIKE query; sort picks from a fixed column list."
+    },
+    {
+      "path": "/products/{product_id}",
+      "methods": [
+        "GET"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:cart_id": "cookie: opaque cart identifier (hex)",
+        "REQUEST_COOKIES:currency": "cookie: display currency code such as USD",
+        "REQUEST_COOKIES:prefs": "cookie: JSON UI preferences written by front-end script",
+        "REQUEST_COOKIES:recent": "cookie: recent search phrases, |-separated, written by front-end script",
+        "REQUEST_COOKIES:cart_note": "cookie: draft gift-wrap note saved by front-end script",
+        "REQUEST_COOKIES:lang": "cookie: UI language code such as en or fr",
+        "product_id": "numeric product id (path segment)"
+      },
+      "notes": "Product detail page."
+    },
+    {
+      "path": "/reviews",
+      "methods": [
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:cart_id": "cookie: opaque cart identifier (hex)",
+        "REQUEST_COOKIES:currency": "cookie: display currency code such as USD",
+        "REQUEST_COOKIES:prefs": "cookie: JSON UI preferences written by front-end script",
+        "REQUEST_COOKIES:recent": "cookie: recent search phrases, |-separated, written by front-end script",
+        "REQUEST_COOKIES:cart_note": "cookie: draft gift-wrap note saved by front-end script",
+        "REQUEST_COOKIES:lang": "cookie: UI language code such as en or fr",
+        "product_id": "numeric product id",
+        "author": "reviewer display name",
+        "rating": "integer rating 1-5",
+        "body": "review text; Markdown and a small HTML subset (b, i, em, strong, code, pre, a, ul, li, blockquote) are allowed and sanitized on render; code samples are common"
+      },
+      "notes": "Product reviews form."
+    },
+    {
+      "path": "/api/cart",
+      "methods": [
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:cart_id": "cookie: opaque cart identifier (hex)",
+        "REQUEST_COOKIES:currency": "cookie: display currency code such as USD",
+        "REQUEST_COOKIES:prefs": "cookie: JSON UI preferences written by front-end script",
+        "REQUEST_COOKIES:recent": "cookie: recent search phrases, |-separated, written by front-end script",
+        "REQUEST_COOKIES:cart_note": "cookie: draft gift-wrap note saved by front-end script",
+        "REQUEST_COOKIES:lang": "cookie: UI language code such as en or fr",
+        "json.sku": "product SKU",
+        "json.quantity": "integer quantity",
+        "json.coupon": "promotion code, letters and digits",
+        "json.gift_message": "free-text gift message printed on the packing slip"
+      },
+      "notes": "JSON API (application/json) that adds an item to the cart."
+    },
+    {
+      "path": "/download",
+      "methods": [
+        "GET"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:cart_id": "cookie: opaque cart identifier (hex)",
+        "REQUEST_COOKIES:currency": "cookie: display currency code such as USD",
+        "REQUEST_COOKIES:prefs": "cookie: JSON UI preferences written by front-end script",
+        "REQUEST_COOKIES:recent": "cookie: recent search phrases, |-separated, written by front-end script",
+        "REQUEST_COOKIES:cart_note": "cookie: draft gift-wrap note saved by front-end script",
+        "REQUEST_COOKIES:lang": "cookie: UI language code such as en or fr",
+        "name": "download file name such as user-guide.v2.pdf; looked up in a fixed allowlist, never joined to a filesystem path"
+      },
+      "notes": "File downloads by name."
+    },
+    {
+      "path": "/preview",
+      "methods": [
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:cart_id": "cookie: opaque cart identifier (hex)",
+        "REQUEST_COOKIES:currency": "cookie: display currency code such as USD",
+        "REQUEST_COOKIES:prefs": "cookie: JSON UI preferences written by front-end script",
+        "REQUEST_COOKIES:recent": "cookie: recent search phrases, |-separated, written by front-end script",
+        "REQUEST_COOKIES:cart_note": "cookie: draft gift-wrap note saved by front-end script",
+        "REQUEST_COOKIES:lang": "cookie: UI language code such as en or fr",
+        "url": "http(s) URL the user wants a link card for; parsed, never fetched by the server"
+      },
+      "notes": "Link preview for a URL field."
+    },
+    {
+      "path": "/account/settings",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:cart_id": "cookie: opaque cart identifier (hex)",
+        "REQUEST_COOKIES:currency": "cookie: display currency code such as USD",
+        "REQUEST_COOKIES:prefs": "cookie: JSON UI preferences written by front-end script",
+        "REQUEST_COOKIES:recent": "cookie: recent search phrases, |-separated, written by front-end script",
+        "REQUEST_COOKIES:cart_note": "cookie: draft gift-wrap note saved by front-end script",
+        "REQUEST_COOKIES:lang": "cookie: UI language code such as en or fr",
+        "display_name": "public display name",
+        "email": "account email address",
+        "bio": "short profile bio; Markdown allowed",
+        "website": "personal homepage URL",
+        "timezone": "IANA timezone name such as Europe/London",
+        "signature": "signature shown under reviews; may contain quotes or a code snippet"
+      },
+      "notes": "Profile and settings form."
+    },
+    {
+      "path": "/login",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:cart_id": "cookie: opaque cart identifier (hex)",
+        "REQUEST_COOKIES:currency": "cookie: display currency code such as USD",
+        "REQUEST_COOKIES:prefs": "cookie: JSON UI preferences written by front-end script",
+        "REQUEST_COOKIES:recent": "cookie: recent search phrases, |-separated, written by front-end script",
+        "REQUEST_COOKIES:cart_note": "cookie: draft gift-wrap note saved by front-end script",
+        "REQUEST_COOKIES:lang": "cookie: UI language code such as en or fr",
+        "username": "account username",
+        "password": "account password",
+        "next": "relative path to return to after sign-in"
+      },
+      "notes": "Sign-in form. Credentials are compared in Python, not in SQL."
+    },
+    {
+      "path": "/support",
+      "methods": [
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:cart_id": "cookie: opaque cart identifier (hex)",
+        "REQUEST_COOKIES:currency": "cookie: display currency code such as USD",
+        "REQUEST_COOKIES:prefs": "cookie: JSON UI preferences written by front-end script",
+        "REQUEST_COOKIES:recent": "cookie: recent search phrases, |-separated, written by front-end script",
+        "REQUEST_COOKIES:cart_note": "cookie: draft gift-wrap note saved by front-end script",
+        "REQUEST_COOKIES:lang": "cookie: UI language code such as en or fr",
+        "subject": "support ticket subject",
+        "message": "free-text support message; customers paste error messages, file paths, shell output and code",
+        "order_id": "order reference such as ORD-2024-0042"
+      },
+      "notes": "Support ticket form."
+    },
+    {
+      "path": "/*",
+      "methods": [
+        "GET",
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "parameters": {},
+      "notes": "General Lab Shop context for paths without a documented route."
+    }
+  ],
+  "source_metadata": {
+    "seeded": true,
+    "seed": "shop-lab",
+    "replace_with_operator_profile": true
+  }
+}

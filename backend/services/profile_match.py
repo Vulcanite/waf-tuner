@@ -7,7 +7,8 @@ from __future__ import annotations
 import fnmatch
 import re
 
-from services.lab_profiles import DEFAULT_LAB_PROFILE_NAME
+# Ranking prefers any other profile over the DVWA lab's catch-all profile on a tie.
+DEFAULT_LAB_PROFILE_NAME = "default-lab"
 
 
 # A route documents a cookie or header under a collection-qualified key, so a cookie named

@@ -84,7 +84,7 @@ Lab checks are intentionally outside normal pull-request CI:
 ## Operator workflow
 
 1. Point the backend at a ModSecurity JSON Serial audit log.
-2. Create an application profile for the host, route, and parameters you want to tune. Copyable false-positive exclusions require parameter semantics on the matching route by default. Document an argument by its plain name, a cookie as `REQUEST_COOKIES:<name>` and a header as `REQUEST_HEADERS:<name>`; a cookie entry never covers an argument of the same name. The seeded `default-lab` profile describes DVWA routes and `shop-lab` describes the Flask app on `shop.lab`. Both are seeded only when no profiles exist. Set `SEED_DEFAULT_PROFILE=false` when starting with your own profile.
+2. Create an application profile for the host, route, and parameters you want to tune. Copyable false-positive exclusions require parameter semantics on the matching route by default. Document an argument by its plain name, a cookie as `REQUEST_COOKIES:<name>` and a header as `REQUEST_HEADERS:<name>`; a cookie entry never covers an argument of the same name. Write one JSON file per application in `PROFILES_DIR` (default `<DATA_DIR>/profiles`, loaded at startup), use the Application Profiles page, or import an OpenAPI 3.x JSON document; see [Application profiles](./docs/profiles.md). The lab's `default-lab` (DVWA) and `shop-lab` (the Flask app on `shop.lab`) profiles are files in `lab/profiles/`, which Compose mounts as `PROFILES_DIR`.
 3. Send traffic through the WAF and review Cases and Exceptions.
 4. Validate approved rules in your environment, copy them into your configuration, run `nginx -t` or the Apache equivalent, and reload the edge yourself.
 

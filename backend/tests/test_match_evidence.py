@@ -126,10 +126,10 @@ def test_a_referer_session_id_is_not_sent():
 
 
 def test_a_route_cookie_entry_vouches_only_for_that_cookie():
-    from services.lab_profiles import seeded_profiles
+    from services.profile_files import profiles_from_dir
     from services.profile_match import application_context_for, route_supports_exception
 
-    profiles = seeded_profiles()
+    profiles = profiles_from_dir()
     _, dvwa = application_context_for(profiles, "payments.example.com", "GET", "/login.php")
     assert route_supports_exception(dvwa, "REQUEST_COOKIES", "lang")
     assert route_supports_exception(dvwa, "REQUEST_COOKIES", "LANG")  # cookie names ignore case

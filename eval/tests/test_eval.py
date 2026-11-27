@@ -19,7 +19,7 @@ import report  # noqa: E402
 from services import crs_index  # noqa: E402
 from services.audit_event import normalize_audit_event  # noqa: E402
 from services.inference_context import is_aggregate_match  # noqa: E402
-from services.lab_profiles import SHOP_LAB_HOST, seeded_profiles  # noqa: E402
+from services.profile_files import profiles_from_dir  # noqa: E402
 from services.profile_match import application_context_for  # noqa: E402
 from services.redaction import is_credential_name  # noqa: E402
 
@@ -300,7 +300,7 @@ def test_request_set_schema_and_labels():
 
 
 def test_request_set_profile_matches_the_app():
-    profiles = seeded_profiles()
+    profiles = profiles_from_dir()
     expected = {"dvwa": ("default-lab", ["php"]), "flask": ("shop-lab", ["python"])}
     for record in load_requests():
         context = record["application_context"]
@@ -308,7 +308,7 @@ def test_request_set_profile_matches_the_app():
         assert (context["profile_name"], context["application"]["languages"]) == (name, languages)
         normalized = normalize_audit_event(record["modsec_audit"])
         host = normalized["raw_request"]["headers"].get("Host")
-        assert (host == SHOP_LAB_HOST) == (record["app"] == "flask")
+        assert (host == "shop.lab") == (record["app"] == "flask")
         path = normalized["uri"].split("?", 1)[0]
         live = application_context_for(profiles, host, normalized["method"], path)[1]
         assert live == context

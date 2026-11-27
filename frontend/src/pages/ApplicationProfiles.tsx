@@ -1,8 +1,9 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react'
 import {
   createApplicationProfile,
   createApplicationProfileVersion,
   getApplicationProfiles,
+  importOpenApiProfile,
 } from '../api'
 
 type Profile = {
@@ -34,6 +35,95 @@ const EMPTY_ROUTES = JSON.stringify([
     notes: 'Facts are advisory and should be verified by an operator.',
   },
 ], null, 2)
+
+const splitList = (text: string) => text.split(',').map((item) => item.trim()).filter(Boolean)
+
+function ImportOpenApi({ onImported }: { onImported: () => Promise<void> }) {
+  const [spec, setSpec] = useState('')
+  const [name, setName] = useState('')
+  const [hosts, setHosts] = useState('')
+  const [languages, setLanguages] = useState('')
+  const [frameworks, setFrameworks] = useState('')
+  const [dataStores, setDataStores] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const readFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) setSpec(await file.text())
+  }
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault()
+    setSaving(true)
+    setError(null)
+    setMessage(null)
+    try {
+      const profile = await importOpenApiProfile({
+        spec,
+        name: name.trim(),
+        host_patterns: splitList(hosts),
+        context: { languages: splitList(languages), frameworks: splitList(frameworks), data_stores: splitList(dataStores) },
+      })
+      setMessage(`Imported ${profile.name} version ${profile.version} with ${profile.routes.length} route(s).`)
+      setSpec('')
+      await onImported()
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <section aria-labelledby="openapi-import-heading" className="card p-5">
+      <h2 id="openapi-import-heading" className="text-sm font-semibold heading-text">Import OpenAPI</h2>
+      <p className="mt-1 text-xs muted">
+        OpenAPI 3.x JSON only. Routes and parameters come from the spec; add the stack yourself. Importing an existing name creates its next version.
+      </p>
+      <form onSubmit={submit} className="mt-4 space-y-3">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block text-xs muted">
+            Application name
+            <input required value={name} onChange={(event) => setName(event.target.value)} className="input-field mt-1 w-full py-2 outline-none focus:border-amber-600" />
+          </label>
+          <label className="block text-xs muted">
+            Host patterns
+            <input value={hosts} onChange={(event) => setHosts(event.target.value)} placeholder="api.example.com" className="input-field mt-1 w-full py-2 outline-none focus:border-amber-600" />
+          </label>
+          <label className="block text-xs muted">
+            Languages
+            <input value={languages} onChange={(event) => setLanguages(event.target.value)} placeholder="python" className="input-field mt-1 w-full py-2 outline-none focus:border-amber-600" />
+          </label>
+          <label className="block text-xs muted">
+            Frameworks
+            <input value={frameworks} onChange={(event) => setFrameworks(event.target.value)} placeholder="flask" className="input-field mt-1 w-full py-2 outline-none focus:border-amber-600" />
+          </label>
+          <label className="block text-xs muted sm:col-span-2">
+            Data stores
+            <input value={dataStores} onChange={(event) => setDataStores(event.target.value)} placeholder="postgresql, redis" className="input-field mt-1 w-full py-2 outline-none focus:border-amber-600" />
+          </label>
+        </div>
+        <label className="block text-xs muted">
+          Spec file
+          <input type="file" accept=".json,application/json" onChange={readFile} className="mt-1 block w-full text-xs" />
+        </label>
+        <label className="block text-xs muted">
+          Spec (JSON)
+          <textarea required value={spec} onChange={(event) => setSpec(event.target.value)} rows={8} spellCheck={false} placeholder='{"openapi": "3.0.3", "paths": {...}}' className="input-field mt-1 w-full resize-y p-3 font-mono text-xs leading-relaxed outline-none focus:border-amber-600" />
+        </label>
+        <div aria-live="polite" className="min-h-5 text-xs">
+          {error && <span className="text-red-700 dark:text-red-400">{error}</span>}
+          {message && <span className="text-emerald-700 dark:text-emerald-400">{message}</span>}
+        </div>
+        <button disabled={saving} className="btn-primary w-full py-2.5">
+          {saving ? 'Importing…' : 'Import profile'}
+        </button>
+      </form>
+    </section>
+  )
+}
 
 export default function ApplicationProfiles() {
   const [profiles, setProfiles] = useState<Profile[]>([])
@@ -89,7 +179,7 @@ export default function ApplicationProfiles() {
     try {
       const body = {
         name: name.trim(),
-        host_patterns: hosts.split(',').map((host) => host.trim()).filter(Boolean),
+        host_patterns: splitList(hosts),
         context: JSON.parse(context),
         routes: JSON.parse(routes),
         source_metadata: { type: 'manual', verified: true },
@@ -158,45 +248,48 @@ export default function ApplicationProfiles() {
           ))}
         </section>
 
-        <section aria-labelledby="profile-editor-heading" className="card p-5">
-          <div className="mb-5 flex items-center justify-between">
-            <div>
-              <p className="text-[10px] uppercase tracking-[0.24em] muted">{editing ? 'Immutable revision' : 'New inventory'}</p>
-              <h2 id="profile-editor-heading" className="mt-1 text-sm font-semibold heading-text">
-                {editing ? `Create ${editing.name} v${editing.version + 1}` : 'Define application context'}
-              </h2>
+        <div className="space-y-6">
+          <section aria-labelledby="profile-editor-heading" className="card p-5">
+            <div className="mb-5 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.24em] muted">{editing ? 'Immutable revision' : 'New inventory'}</p>
+                <h2 id="profile-editor-heading" className="mt-1 text-sm font-semibold heading-text">
+                  {editing ? `Create ${editing.name} v${editing.version + 1}` : 'Define application context'}
+                </h2>
+              </div>
+              {editing && <button onClick={reset} className="btn-ghost text-xs">Cancel</button>}
             </div>
-            {editing && <button onClick={reset} className="btn-ghost text-xs">Cancel</button>}
-          </div>
 
-          <form onSubmit={save} className="space-y-4">
-            <label className="block text-xs muted">
-              Application name
-              <input required disabled={Boolean(editing)} value={name} onChange={(event) => setName(event.target.value)} className="input-field mt-1 w-full py-2 outline-none focus:border-amber-600 disabled:opacity-50" />
-            </label>
-            <label className="block text-xs muted">
-              Host patterns <span className="muted">— comma separated, wildcards allowed</span>
-              <input value={hosts} onChange={(event) => setHosts(event.target.value)} placeholder="app.example.com, *.internal.example" className="input-field mt-1 w-full py-2 outline-none focus:border-amber-600" />
-            </label>
-            <div className="grid gap-4 xl:grid-cols-2">
+            <form onSubmit={save} className="space-y-4">
               <label className="block text-xs muted">
-                Application facts (JSON)
-                <textarea required value={context} onChange={(event) => setContext(event.target.value)} rows={15} spellCheck={false} className="input-field mt-1 w-full resize-y p-3 font-mono text-xs leading-relaxed outline-none focus:border-amber-600" />
+                Application name
+                <input required disabled={Boolean(editing)} value={name} onChange={(event) => setName(event.target.value)} className="input-field mt-1 w-full py-2 outline-none focus:border-amber-600 disabled:opacity-50" />
               </label>
               <label className="block text-xs muted">
-                Route facts (JSON)
-                <textarea required value={routes} onChange={(event) => setRoutes(event.target.value)} rows={15} spellCheck={false} className="input-field mt-1 w-full resize-y p-3 font-mono text-xs leading-relaxed outline-none focus:border-amber-600" />
+                Host patterns <span className="muted">— comma separated, wildcards allowed</span>
+                <input value={hosts} onChange={(event) => setHosts(event.target.value)} placeholder="app.example.com, *.internal.example" className="input-field mt-1 w-full py-2 outline-none focus:border-amber-600" />
               </label>
-            </div>
-            <div aria-live="polite" className="min-h-5 text-xs">
-              {error && <span className="text-red-700 dark:text-red-400">{error}</span>}
-              {message && <span className="text-emerald-700 dark:text-emerald-400">{message}</span>}
-            </div>
-            <button disabled={saving} className="btn-primary w-full py-2.5">
-              {saving ? 'Saving immutable version…' : editing ? 'Create new version' : 'Create profile'}
-            </button>
-          </form>
-        </section>
+              <div className="grid gap-4 xl:grid-cols-2">
+                <label className="block text-xs muted">
+                  Application facts (JSON)
+                  <textarea required value={context} onChange={(event) => setContext(event.target.value)} rows={15} spellCheck={false} className="input-field mt-1 w-full resize-y p-3 font-mono text-xs leading-relaxed outline-none focus:border-amber-600" />
+                </label>
+                <label className="block text-xs muted">
+                  Route facts (JSON)
+                  <textarea required value={routes} onChange={(event) => setRoutes(event.target.value)} rows={15} spellCheck={false} className="input-field mt-1 w-full resize-y p-3 font-mono text-xs leading-relaxed outline-none focus:border-amber-600" />
+                </label>
+              </div>
+              <div aria-live="polite" className="min-h-5 text-xs">
+                {error && <span className="text-red-700 dark:text-red-400">{error}</span>}
+                {message && <span className="text-emerald-700 dark:text-emerald-400">{message}</span>}
+              </div>
+              <button disabled={saving} className="btn-primary w-full py-2.5">
+                {saving ? 'Saving immutable version…' : editing ? 'Create new version' : 'Create profile'}
+              </button>
+            </form>
+          </section>
+          <ImportOpenApi onImported={load} />
+        </div>
       </div>
     </div>
   )

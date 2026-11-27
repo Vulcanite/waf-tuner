@@ -48,7 +48,7 @@ from services.inference_context import (  # noqa: E402
     is_aggregate_match,
     split_request_uri,
 )
-from services.lab_profiles import seeded_profiles  # noqa: E402
+from services.profile_files import profiles_from_dir  # noqa: E402
 from services.profile_match import application_context_for  # noqa: E402
 from fixtures import (  # noqa: E402
     FIXTURES_PATH,
@@ -459,7 +459,7 @@ def request_record(case: RequestCase, event: dict[str, Any]) -> dict[str, Any] |
     if not labels:
         return None
     path = split_request_uri(normalized["uri"]).path or "/"
-    _, context = application_context_for(seeded_profiles(), application_host(normalized), normalized["method"], path)
+    _, context = application_context_for(profiles_from_dir(), application_host(normalized), normalized["method"], path)
     stack = {"dvwa": "PHP", "flask": "Python/Flask"}[case.app]
     notes = case.notes or (f"wrong-stack {case.category} payload sent to the {stack} app" if case.wrong_stack else "")
     return {
