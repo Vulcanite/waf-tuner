@@ -146,3 +146,63 @@ def test_flask_spec_documents_the_same_inputs_as_the_hand_profile():
     hand, generated = _flask_profiles()
     assert {route["path"]: set(route["parameters"]) for route in generated.routes} == {
         route["path"]: set(route["parameters"]) for route in hand.routes}
+
+
+def test_import_endpoint_creates_versions_and_rejects_bad_specs(tmp_path, monkeypatch):
+    import asyncio
+
+    import httpx
+    from fastapi import FastAPI
+
+    from db import models
+    from routers import profiles
+
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "import.db"))
+    monkeypatch.setattr(models, "_async_engine", None)
+    monkeypatch.setattr(models, "_async_session_factory", None)
+    app = FastAPI()
+    app.include_router(profiles.router)
+    body = {"spec": FLASK_SPEC.read_text(), "name": "shop-openapi", "host_patterns": ["shop.lab"],
+            "context": {"languages": ["python"], "frameworks": ["flask"]}}
+
+    async def scenario():
+        await models.init_db()
+        try:
+            transport = httpx.ASGITransport(app=app)
+            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+                url = "/api/application-profiles/import-openapi"
+                return [await client.post(url, json=payload) for payload in (
+                    body, body, {**body, "spec": "openapi: 3.0.0"},
+                    {**body, "spec": json.dumps(spec({"/a": {"get": {"parameters": [
+                        {"name": "q", "in": "query", "schema": {"$ref": "http://evil.test/x"}}]}}}))},
+                    {**body, "spec": "x" * (MAX_DOCUMENT_BYTES + 1)},
+                )]
+        finally:
+            await models._async_engine.dispose()
+
+    first, second, yaml, remote_ref, too_big = asyncio.run(scenario())
+    assert first.status_code == 200, first.text
+    assert (first.json()["version"], second.json()["version"]) == (1, 2)
+    profile = first.json()
+    assert profile["context"]["frameworks"] == ["flask"] and profile["source_metadata"]["type"] == "openapi"
+    assert len(profile["routes"]) == 11 and profile["routes"][-1]["path"] == "/*"
+    assert yaml.status_code == 400 and "YAML" in yaml.json()["detail"]
+    assert remote_ref.status_code == 400 and "local $ref" in remote_ref.json()["detail"]
+    assert too_big.status_code == 422
+
+
+def test_cli_writes_a_loadable_profile_file(tmp_path):
+    import subprocess
+    import sys
+
+    output = tmp_path / "shop.json"
+    result = subprocess.run(
+        [sys.executable, "-I", str(ROOT / "scripts" / "openapi_to_profile.py"), str(FLASK_SPEC), "--name", "shop",
+         "--host", "shop.lab", "--language", "python", "--framework", "flask", "--output", str(output)],
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    [profile] = profiles_from_dir(tmp_path)
+    assert (profile.name, profile.host_patterns, profile.context["frameworks"]) == ("shop", ["shop.lab"], ["flask"])
+    ProfileBody.model_validate(json.loads(output.read_text()))
