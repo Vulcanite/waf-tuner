@@ -1,0 +1,11 @@
+Vendored, unmodified, from the OWASP CRS project.
+Repository: https://github.com/coreruleset/nextcloud-rule-exclusions-plugin
+Release:    v1.8.1
+Commit:     7a61167690fd69af95b64e34d39c8737f4ddca96
+Files:      plugins/nextcloud-rule-exclusions-config.conf
+            plugins/nextcloud-rule-exclusions-before.conf
+            LICENSE (Apache-2.0)
+
+sha256:
+  5961ff529dcd59fdd0faa3c34720e3ec735d0f8a74437e9d0fdc9361d8671049  nextcloud-rule-exclusions-before.conf
+  b29bff5dc90f9d7769c14806fcebb8de571dbe372bdf4b371c43bb564320f2f8  nextcloud-rule-exclusions-config.conf
