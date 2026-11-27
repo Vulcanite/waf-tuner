@@ -9,7 +9,7 @@ Initial lab/evaluation release of the observe-and-recommend workflow:
 - Ingest ModSecurity JSON audit data and group alerts into review cases.
 - Run bounded, off-path LLM classification and system-build parameter-scoped exception drafts.
 - Require a matching application route profile (`REQUIRE_APPLICATION_CONTEXT`, on by default; set `false` to disable), deterministic validation, and human approval before a rule is available to copy.
-- Seed a `default-lab` route profile (DVWA routes plus a `/*` catch-all) when no profiles exist, so the lab produces copyable rules under the default; disable with `SEED_DEFAULT_PROFILE=false`.
+- Application profiles can be JSON files: every `PROFILES_DIR/*.json` (default `<DATA_DIR>/profiles`) is loaded at startup and upserted by name, a changed file making a new version (see `docs/profiles.md`). The lab's `default-lab` (DVWA) and `shop-lab` profiles moved to `lab/profiles/`, which Compose mounts as `PROFILES_DIR`. `SEED_DEFAULT_PROFILE` is removed: outside the lab, no profile is created unless you add one. The profile API now bounds routes, parameters and text length.
 - Merge reanalysis into the active pending draft for a scope (upgrade missing context → valid rule; never rewrite approved drafts).
 - Retire approve-time rule-ID conflicts as `stale` (no half-pending rows).
 - Opt-in CORS via `CORS_ALLOW_ORIGINS` (empty default for same-origin Compose UI proxy).
@@ -37,7 +37,10 @@ Initial lab/evaluation release of the observe-and-recommend workflow:
 - Sanitize inference evidence, while disclosing that selected evidence may leave the host for the configured provider.
 - Retain raw audit events and provider responses locally until operators remove their data.
 - A match on a request header or cookie now sends that one header's or cookie's value to the model (for example `Referer`, `X-Forwarded-For` or a `prefs` cookie), so payloads there are no longer left `uncertain`. Credential and session names (`Authorization`, `Cookie`, names containing `sess`, `sid`, `token`, `auth`, `jwt`, `csrf`, ...) stay hidden, and cookie matches are fingerprinted by the matched cookie's value.
-- `ANALYSIS_UNIT=request` (default `match`) analyses all queued matches of one audited request in one model call, with one verdict per `match_index`, then applies every exclusion gate to each match separately. Repeated identical requests still deduplicate into existing cases. Switching the setting marks older verdicts stale.
+- Removed the write-only `events.jsonl` mirror (`EVENTS_JSONL_PATH`, `EVENTS_JSONL_MAX_BYTES`, `EVENTS_FSYNC`). Raw events live only in SQLite, and event line numbers continue from the highest stored line. The data directory is now `DATA_DIR` (default `/shared`); if you set `EVENTS_JSONL_PATH` to another directory, set `DATA_DIR` to that directory so the database, cursor and fingerprint key are found.
+- `CF_AIG_GATEWAY_ID` is removed; send the header with `LLM_EXTRA_HEADERS` instead. The placeholder-key check (`sk-...`) is gone too: an unconfigured key now fails at the provider with an authentication error.
+- Exclusions always carry the captured host and HTTP method; the path-only rule form and its ID scheme are removed, and `XML` is no longer an auto-excludable collection (its XPath targets never passed the plain-name check). Host and method rules and their IDs are unchanged.
+- Eval uses one dataset, the lab-captured `eval/requests.jsonl`, by default and in CI. The synthesized `fixtures.jsonl`, `corpus/requests.jsonl`, the MiniMax recordings and reports, and their generators are removed; `evaluate.py --write-oracle` rebuilds the oracle recording.
 - Verdicts include `applies_to_stack` (`yes`/`no`/`unknown`): whether the detected technique would work on the profiled stack. It is recorded in the revision's `model_settings` only; no gate uses it, and the stack is never a reason to call an attack a false positive. Outputs without it read as `unknown`.
 
 Known limitations include model/provider variability, classification errors, a single backend process per SQLite data directory, no automatic retention service, and no multi-version CRS compatibility guarantee.

@@ -61,8 +61,9 @@ def _fingerprint_key() -> bytes:
     configured = os.environ.get('INCIDENT_FINGERPRINT_KEY')
     if configured:
         return configured.encode('utf-8')
-    data_dir = Path(os.environ.get('EVENTS_JSONL_PATH', '/shared/events.jsonl')).parent
-    return _load_fingerprint_key(Path(os.environ.get('INCIDENT_FINGERPRINT_KEY_PATH', data_dir / 'fingerprint.key')))
+    from services.runtime_config import data_dir
+
+    return _load_fingerprint_key(Path(os.environ.get('INCIDENT_FINGERPRINT_KEY_PATH', data_dir() / 'fingerprint.key')))
 
 
 def _encode_identity(value) -> bytes:

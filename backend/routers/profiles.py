@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
@@ -11,6 +11,8 @@ from sqlalchemy.exc import IntegrityError
 from db.models import AnalysisCase, AnalysisRevision, ApplicationProfile, AuditEvent, ExceptionDraft, get_db
 from services.application_context import active_application_profiles, application_context_for
 from services.inference_context import application_host
+from services.openapi_profile import OpenAPIError, load_spec, openapi_to_profile
+from services.profile_files import MAX_DOCUMENT_BYTES, MAX_ROUTE_PARAMETERS, MAX_ROUTES, MAX_TEXT_CHARS
 
 
 router = APIRouter(prefix="/api/application-profiles", tags=["application-profiles"])
@@ -18,9 +20,9 @@ router = APIRouter(prefix="/api/application-profiles", tags=["application-profil
 
 class ProfileBody(BaseModel):
     name: str = Field(min_length=1, max_length=200)
-    host_patterns: list[str] = Field(default_factory=list)
+    host_patterns: list[str] = Field(default_factory=list, max_length=100)
     context: dict[str, Any] = Field(default_factory=dict)
-    routes: list[dict[str, Any]] = Field(default_factory=list)
+    routes: list[dict[str, Any]] = Field(default_factory=list, max_length=MAX_ROUTES)
     source_metadata: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("routes")
@@ -36,7 +38,21 @@ class ProfileBody(BaseModel):
                 raise ValueError("Route methods must be a list of HTTP method names")
             if "parameters" in route and not isinstance(route["parameters"], dict):
                 raise ValueError("Route parameters must map names to application semantics")
+            if len(route.get("parameters") or {}) > MAX_ROUTE_PARAMETERS:
+                raise ValueError(f"A route documents at most {MAX_ROUTE_PARAMETERS} parameters")
+            texts = [route.get("notes"), *(route.get("parameters") or {}).values()]
+            if any(isinstance(text, str) and len(text) > MAX_TEXT_CHARS for text in texts):
+                raise ValueError(f"Route notes and parameter meanings are at most {MAX_TEXT_CHARS} characters")
         return routes
+
+
+class OpenAPIImportBody(BaseModel):
+    spec: str = Field(min_length=1, max_length=MAX_DOCUMENT_BYTES)
+    name: str = Field(min_length=1, max_length=200)
+    host_patterns: list[str] = Field(default_factory=list, max_length=100)
+    context: dict[str, Any] = Field(default_factory=dict)
+    base_path: str | None = Field(default=None, max_length=200)
+    catch_all: bool = True
 
 
 def _serialize(profile: ApplicationProfile) -> dict:
@@ -171,3 +187,27 @@ async def create_profile_version(
         )
     ).scalar_one()
     return _serialize(await _create_version(db, body, highest + 1))
+
+
+@router.post("/import-openapi")
+async def import_openapi_profile(body: OpenAPIImportBody, db: AsyncSession = Depends(get_db)):
+    """Create a profile, or the next version of one, from an OpenAPI 3.x JSON document."""
+    try:
+        document = openapi_to_profile(
+            load_spec(body.spec), name=body.name, host_patterns=body.host_patterns, context=body.context,
+            base_path=body.base_path, catch_all=body.catch_all,
+        )
+        profile = ProfileBody.model_validate(document)
+    except OpenAPIError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors(include_url=False, include_context=False)) from exc
+    highest = (
+        await db.execute(
+            select(ApplicationProfile.version)
+            .where(ApplicationProfile.name == profile.name)
+            .order_by(ApplicationProfile.version.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    return _serialize(await _create_version(db, profile, (highest or 0) + 1))

@@ -26,10 +26,11 @@ WITHHELD = {
 @pytest.mark.parametrize("variant", ["normal", *WITHHELD])
 def test_audited_match_becomes_a_reviewable_exception(tmp_path, monkeypatch, variant):
     monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("PROFILES_DIR", raising=False)
     paths = {
         "DATABASE_PATH": tmp_path / "cases.db",
         "MODSEC_AUDIT_LOG": tmp_path / "audit.log",
-        "EVENTS_JSONL_PATH": tmp_path / "events.jsonl",
+        "DATA_DIR": tmp_path,
         "AUDIT_CURSOR_PATH": tmp_path / "cursor.json",
         "RUNTIME_CONFIG_PATH": tmp_path / "runtime.json",
         "CRS_RULES_DIR": tmp_path / "rules",
@@ -37,11 +38,11 @@ def test_audited_match_becomes_a_reviewable_exception(tmp_path, monkeypatch, var
     for key, path in paths.items():
         monkeypatch.setenv(key, str(path))
     for key, value in {
-        "SEED_DEFAULT_PROFILE": "false", "REQUIRE_APPLICATION_CONTEXT": "true",
+        "REQUIRE_APPLICATION_CONTEXT": "true",
         "LLM_API_KEY": "local", "LLM_API_BASE_URL": "http://classifier.test/v1",
         "LLM_MODEL": "test-classifier", "LLM_THINKING": "off",
         "AGENT_WORKER_CONCURRENCY": "1", "INFERENCE_ARTIFACT_RETENTION_DAYS": "0",
-        "AUDIT_EVIDENCE_RETENTION_DAYS": "0", "EVENTS_JSONL_MAX_BYTES": "0",
+        "AUDIT_EVIDENCE_RETENTION_DAYS": "0",
         "INCIDENT_FINGERPRINT_KEY": "test-only-key", "AI_MAX_CONTEXT_BYTES": "16384",
     }.items():
         monkeypatch.setenv(key, value)

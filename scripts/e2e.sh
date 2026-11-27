@@ -106,8 +106,8 @@ curl -sS http://localhost:8000/api/settings/product | tee "$OUT/settings-product
 curl -sS http://localhost:8000/api/analytics/analysis-health | tee "$OUT/analysis-health.json" || true
 
 # assertions
-if python3 -c "import json; d=json.load(open('$OUT/health.json')); assert d.get('status')=='ok'; assert d.get('deploy_enabled') is False" 2>/dev/null; then
-  ok "health status=ok deploy_enabled=false"
+if python3 -c "import json; d=json.load(open('$OUT/health.json')); assert d.get('status')=='ok'" 2>/dev/null; then
+  ok "health status=ok"
 else
   bad "health check failed"
 fi

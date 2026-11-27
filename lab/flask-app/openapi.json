@@ -1,0 +1,724 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Lab Shop",
+    "version": "1.2.0",
+    "description": "Small Flask storefront used as the second lab app behind ModSecurity CRS. SQL is parameterized, templates autoescape, downloads come from a fixed allowlist and the link preview never fetches."
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "paths": {
+    "/": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/cart_idCookie"
+        },
+        {
+          "$ref": "#/components/parameters/currencyCookie"
+        },
+        {
+          "$ref": "#/components/parameters/prefsCookie"
+        },
+        {
+          "$ref": "#/components/parameters/recentCookie"
+        },
+        {
+          "$ref": "#/components/parameters/cart_noteCookie"
+        },
+        {
+          "$ref": "#/components/parameters/langCookie"
+        }
+      ],
+      "get": {
+        "summary": "Storefront home page",
+        "responses": {
+          "200": {
+            "description": "HTML page",
+            "content": {
+              "text/html": {}
+            }
+          }
+        }
+      }
+    },
+    "/search": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/cart_idCookie"
+        },
+        {
+          "$ref": "#/components/parameters/currencyCookie"
+        },
+        {
+          "$ref": "#/components/parameters/prefsCookie"
+        },
+        {
+          "$ref": "#/components/parameters/recentCookie"
+        },
+        {
+          "$ref": "#/components/parameters/cart_noteCookie"
+        },
+        {
+          "$ref": "#/components/parameters/langCookie"
+        }
+      ],
+      "get": {
+        "summary": "Product search",
+        "description": "q is bound as a parameter of a LIKE query; sort picks from a fixed column list.",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "description": "free-text product search; shoppers type product names, phrases and punctuation",
+            "schema": {
+              "type": "string"
+            },
+            "example": "union station hoodie"
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "description": "category slug",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "bags",
+                "apparel",
+                "stationery",
+                "kitchen"
+              ]
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "sort key",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "relevance",
+                "price",
+                "name"
+              ],
+              "default": "relevance"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "result page number (accepted for links; the lab app shows one page)",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "HTML page",
+            "content": {
+              "text/html": {}
+            }
+          }
+        }
+      }
+    },
+    "/products/{product_id}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/cart_idCookie"
+        },
+        {
+          "$ref": "#/components/parameters/currencyCookie"
+        },
+        {
+          "$ref": "#/components/parameters/prefsCookie"
+        },
+        {
+          "$ref": "#/components/parameters/recentCookie"
+        },
+        {
+          "$ref": "#/components/parameters/cart_noteCookie"
+        },
+        {
+          "$ref": "#/components/parameters/langCookie"
+        }
+      ],
+      "get": {
+        "summary": "Product detail page",
+        "parameters": [
+          {
+            "name": "product_id",
+            "in": "path",
+            "required": true,
+            "description": "numeric product id",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "HTML page",
+            "content": {
+              "text/html": {}
+            }
+          },
+          "404": {
+            "description": "Unknown product"
+          }
+        }
+      }
+    },
+    "/reviews": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/cart_idCookie"
+        },
+        {
+          "$ref": "#/components/parameters/currencyCookie"
+        },
+        {
+          "$ref": "#/components/parameters/prefsCookie"
+        },
+        {
+          "$ref": "#/components/parameters/recentCookie"
+        },
+        {
+          "$ref": "#/components/parameters/cart_noteCookie"
+        },
+        {
+          "$ref": "#/components/parameters/langCookie"
+        }
+      ],
+      "post": {
+        "summary": "Post a product review",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewForm"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "HTML page",
+            "content": {
+              "text/html": {}
+            }
+          }
+        }
+      }
+    },
+    "/api/cart": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/cart_idCookie"
+        },
+        {
+          "$ref": "#/components/parameters/currencyCookie"
+        },
+        {
+          "$ref": "#/components/parameters/prefsCookie"
+        },
+        {
+          "$ref": "#/components/parameters/recentCookie"
+        },
+        {
+          "$ref": "#/components/parameters/cart_noteCookie"
+        },
+        {
+          "$ref": "#/components/parameters/langCookie"
+        }
+      ],
+      "post": {
+        "summary": "Add an item to the cart (JSON API)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CartItem"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Item added; sets the cart_id cookie on first use",
+            "content": {
+              "application/json": {}
+            }
+          },
+          "400": {
+            "description": "Body is not a JSON object or quantity is not an integer"
+          }
+        }
+      }
+    },
+    "/download": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/cart_idCookie"
+        },
+        {
+          "$ref": "#/components/parameters/currencyCookie"
+        },
+        {
+          "$ref": "#/components/parameters/prefsCookie"
+        },
+        {
+          "$ref": "#/components/parameters/recentCookie"
+        },
+        {
+          "$ref": "#/components/parameters/cart_noteCookie"
+        },
+        {
+          "$ref": "#/components/parameters/langCookie"
+        }
+      ],
+      "get": {
+        "summary": "Download a file by name",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "description": "download file name; looked up in a fixed allowlist, never joined to a filesystem path",
+            "schema": {
+              "type": "string"
+            },
+            "example": "user-guide.v2.pdf"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "File",
+            "content": {
+              "application/octet-stream": {}
+            }
+          },
+          "404": {
+            "description": "No such download"
+          }
+        }
+      }
+    },
+    "/preview": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/cart_idCookie"
+        },
+        {
+          "$ref": "#/components/parameters/currencyCookie"
+        },
+        {
+          "$ref": "#/components/parameters/prefsCookie"
+        },
+        {
+          "$ref": "#/components/parameters/recentCookie"
+        },
+        {
+          "$ref": "#/components/parameters/cart_noteCookie"
+        },
+        {
+          "$ref": "#/components/parameters/langCookie"
+        }
+      ],
+      "post": {
+        "summary": "Link preview card for a URL; the server parses the URL and never fetches it",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewForm"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Preview card",
+            "content": {
+              "application/json": {}
+            }
+          },
+          "400": {
+            "description": "Unsupported URL"
+          }
+        }
+      }
+    },
+    "/account/settings": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/cart_idCookie"
+        },
+        {
+          "$ref": "#/components/parameters/currencyCookie"
+        },
+        {
+          "$ref": "#/components/parameters/prefsCookie"
+        },
+        {
+          "$ref": "#/components/parameters/recentCookie"
+        },
+        {
+          "$ref": "#/components/parameters/cart_noteCookie"
+        },
+        {
+          "$ref": "#/components/parameters/langCookie"
+        }
+      ],
+      "get": {
+        "summary": "Profile and settings page",
+        "responses": {
+          "200": {
+            "description": "HTML page",
+            "content": {
+              "text/html": {}
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Save profile and settings",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsForm"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "HTML page",
+            "content": {
+              "text/html": {}
+            }
+          }
+        }
+      }
+    },
+    "/login": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/cart_idCookie"
+        },
+        {
+          "$ref": "#/components/parameters/currencyCookie"
+        },
+        {
+          "$ref": "#/components/parameters/prefsCookie"
+        },
+        {
+          "$ref": "#/components/parameters/recentCookie"
+        },
+        {
+          "$ref": "#/components/parameters/cart_noteCookie"
+        },
+        {
+          "$ref": "#/components/parameters/langCookie"
+        }
+      ],
+      "get": {
+        "summary": "Sign-in page",
+        "responses": {
+          "200": {
+            "description": "HTML page",
+            "content": {
+              "text/html": {}
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Sign in; credentials are compared in Python, not in SQL",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginForm"
+              }
+            }
+          }
+        },
+        "responses": {
+          "302": {
+            "description": "Signed in; redirect to next"
+          },
+          "401": {
+            "description": "Sign-in failed"
+          }
+        }
+      }
+    },
+    "/support": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/cart_idCookie"
+        },
+        {
+          "$ref": "#/components/parameters/currencyCookie"
+        },
+        {
+          "$ref": "#/components/parameters/prefsCookie"
+        },
+        {
+          "$ref": "#/components/parameters/recentCookie"
+        },
+        {
+          "$ref": "#/components/parameters/cart_noteCookie"
+        },
+        {
+          "$ref": "#/components/parameters/langCookie"
+        }
+      ],
+      "post": {
+        "summary": "Open a support ticket",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/SupportForm"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "HTML page",
+            "content": {
+              "text/html": {}
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "cart_idCookie": {
+        "name": "cart_id",
+        "in": "cookie",
+        "description": "opaque cart identifier (hex), set by /api/cart",
+        "schema": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{16}$"
+        }
+      },
+      "currencyCookie": {
+        "name": "currency",
+        "in": "cookie",
+        "description": "display currency code",
+        "schema": {
+          "type": "string",
+          "example": "USD"
+        }
+      },
+      "prefsCookie": {
+        "name": "prefs",
+        "in": "cookie",
+        "description": "JSON UI preferences written by front-end script",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "recentCookie": {
+        "name": "recent",
+        "in": "cookie",
+        "description": "recent search phrases, |-separated, written by front-end script",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "cart_noteCookie": {
+        "name": "cart_note",
+        "in": "cookie",
+        "description": "draft gift-wrap note saved by front-end script",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "langCookie": {
+        "name": "lang",
+        "in": "cookie",
+        "description": "UI language code",
+        "schema": {
+          "type": "string",
+          "example": "en"
+        }
+      }
+    },
+    "schemas": {
+      "ProductId": {
+        "type": "integer",
+        "description": "numeric product id"
+      },
+      "ReviewForm": {
+        "type": "object",
+        "required": [
+          "product_id",
+          "body"
+        ],
+        "properties": {
+          "product_id": {
+            "$ref": "#/components/schemas/ProductId"
+          },
+          "author": {
+            "type": "string",
+            "description": "reviewer display name"
+          },
+          "rating": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5,
+            "description": "rating 1-5"
+          },
+          "body": {
+            "type": "string",
+            "description": "review text; Markdown and a small HTML subset (b, i, em, strong, code, pre, a, ul, li, blockquote) are allowed and sanitized on render; code samples are common"
+          }
+        }
+      },
+      "CartItem": {
+        "type": "object",
+        "required": [
+          "sku"
+        ],
+        "properties": {
+          "sku": {
+            "type": "string",
+            "description": "product SKU"
+          },
+          "quantity": {
+            "type": "integer",
+            "default": 1,
+            "description": "quantity"
+          },
+          "coupon": {
+            "type": "string",
+            "description": "promotion code, letters and digits"
+          },
+          "gift_message": {
+            "type": "string",
+            "description": "free-text gift message printed on the packing slip"
+          }
+        }
+      },
+      "PreviewForm": {
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "http(s) URL the user wants a link card for; parsed, never fetched by the server"
+          }
+        }
+      },
+      "ProfileFields": {
+        "type": "object",
+        "properties": {
+          "display_name": {
+            "type": "string",
+            "description": "public display name"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "description": "account email address"
+          },
+          "bio": {
+            "type": "string",
+            "description": "short profile bio; Markdown allowed"
+          },
+          "website": {
+            "type": "string",
+            "format": "uri",
+            "description": "personal homepage URL"
+          }
+        }
+      },
+      "SettingsForm": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ProfileFields"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "timezone": {
+                "type": "string",
+                "description": "IANA timezone name",
+                "example": "Europe/London"
+              },
+              "signature": {
+                "type": "string",
+                "description": "signature shown under reviews; may contain quotes or a code snippet"
+              }
+            }
+          }
+        ]
+      },
+      "LoginForm": {
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "properties": {
+          "username": {
+            "type": "string",
+            "description": "account username"
+          },
+          "password": {
+            "type": "string",
+            "format": "password",
+            "description": "account password"
+          },
+          "next": {
+            "type": "string",
+            "description": "relative path to return to after sign-in",
+            "example": "/account/settings"
+          }
+        }
+      },
+      "SupportForm": {
+        "type": "object",
+        "required": [
+          "subject",
+          "message"
+        ],
+        "properties": {
+          "subject": {
+            "type": "string",
+            "description": "support ticket subject"
+          },
+          "message": {
+            "type": "string",
+            "description": "free-text support message; customers paste error messages, file paths, shell output and code"
+          },
+          "order_id": {
+            "type": "string",
+            "description": "order reference",
+            "example": "ORD-2024-0042"
+          }
+        }
+      }
+    }
+  }
+}

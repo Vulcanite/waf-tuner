@@ -8,7 +8,7 @@ from services.crs_index import build_crs_index
 from services.exception_builder import build_exception_rule, can_build_exception
 from services.incidents import incident_fingerprint, normalized_path
 from services.inference_context import extract_match_target
-from services.log_tailer import _archive_tail, _decode_complete_objects
+from services.log_tailer import _decode_complete_objects
 
 
 class AuditFramingTests(unittest.TestCase):
@@ -26,18 +26,6 @@ class AuditFramingTests(unittest.TestCase):
         objects, pending = _decode_complete_objects(pending + second[10:])
         self.assertEqual(objects[0]["transaction"]["id"], "two")
         self.assertEqual(pending, b"")
-
-    def test_archive_tail_supports_large_records(self):
-        with tempfile.TemporaryDirectory() as directory:
-            archive = Path(directory, "events.jsonl")
-            archive.write_text(
-                '{"transaction_id":"one"}\n'
-                + '{"transaction_id":"two","body":"'
-                + ("x" * 70000)
-                + '"}\n'
-            )
-            self.assertEqual(_archive_tail(str(archive))[0], "two")
-
 
     def test_many_objects_with_noise_decode_in_order(self):
         records = "".join(f'{{"n": {i}, "s": "}}"}}\n' for i in range(20000))
@@ -64,11 +52,10 @@ class AuditFramingTests(unittest.TestCase):
             audit = root / "audit.log"
             audit.write_text(entry("bad", "not-an-object") + "\n" + entry("good", {"method": "GET", "uri": "/s?q=1"}) + "\n")
             env = {
-                "DATABASE_PATH": str(root / "t.db"), "EVENTS_JSONL_PATH": str(root / "events.jsonl"),
+                "DATABASE_PATH": str(root / "t.db"), "DATA_DIR": str(root),
                 "AUDIT_CURSOR_PATH": str(root / "cursor.json"), "RUNTIME_CONFIG_PATH": str(root / "rc.json"),
                 "MODSEC_AUDIT_LOG": str(audit), "INCIDENT_FINGERPRINT_KEY": "test",
             }
-            (root / "events.jsonl").touch()
             db_models._async_engine = None
             db_models._async_session_factory = None
             try:
@@ -152,6 +139,8 @@ class ExceptionBuilderTests(unittest.TestCase):
             "collection": "ARGS",
             "parameter": "q",
             "rule_id": "942100",
+            "host": "shop.example",
+            "method": "GET",
         }
 
     def test_builds_request_filename_rule(self):
@@ -168,6 +157,12 @@ class ExceptionBuilderTests(unittest.TestCase):
         ok, _ = can_build_exception({**self.scope, "uri": "/search?q=1"})
         self.assertFalse(ok)
 
+    def test_rejects_a_scope_without_host_or_method(self):
+        for key in ("host", "method"):
+            ok, err = can_build_exception({**self.scope, key: None})
+            self.assertFalse(ok)
+            self.assertIn("host and HTTP method", err)
+
     def test_rejects_missing_parameter(self):
         ok, err = can_build_exception({**self.scope, "parameter": None})
         self.assertFalse(ok)
@@ -178,7 +173,8 @@ class RulePolicyTests(unittest.TestCase):
     """The server builds the only rule shape; these are the scopes it must refuse."""
 
     def setUp(self):
-        self.scope = {"uri": "/search", "collection": "ARGS", "parameter": "q", "rule_id": "942100"}
+        self.scope = {"uri": "/search", "collection": "ARGS", "parameter": "q", "rule_id": "942100",
+                      "host": "shop.example", "method": "GET"}
 
     def test_rule_removes_only_the_observed_target(self):
         rule = build_exception_rule(self.scope)
@@ -200,7 +196,7 @@ class RulePolicyTests(unittest.TestCase):
         self.assertFalse(can_build_exception({**self.scope, "rule_id": "942100,ctl:ruleEngine=Off"})[0])
 
     def test_transaction_collection_is_rejected(self):
-        scope = {"uri": "/search", "collection": "TX", "parameter": "inbound_anomaly_score", "rule_id": "949110"}
+        scope = {**self.scope, "collection": "TX", "parameter": "inbound_anomaly_score", "rule_id": "949110"}
         ok, err = can_build_exception(scope)
         self.assertFalse(ok)
         self.assertIn("cannot be auto-excluded", err)
@@ -246,7 +242,7 @@ class RuntimeConfigTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             old = {
                 "RUNTIME_CONFIG_PATH": os.environ.get("RUNTIME_CONFIG_PATH"),
-                "EVENTS_JSONL_PATH": os.environ.get("EVENTS_JSONL_PATH"),
+                "DATA_DIR": os.environ.get("DATA_DIR"),
                 "MODSEC_AUDIT_LOG": os.environ.get("MODSEC_AUDIT_LOG"),
             }
             cfg = Path(directory) / "runtime_config.json"
@@ -254,7 +250,7 @@ class RuntimeConfigTests(unittest.TestCase):
             log_path.parent.mkdir(parents=True)
             log_path.write_text("")
             os.environ["RUNTIME_CONFIG_PATH"] = str(cfg)
-            os.environ["EVENTS_JSONL_PATH"] = str(Path(directory) / "events.jsonl")
+            os.environ["DATA_DIR"] = directory
             os.environ.pop("MODSEC_AUDIT_LOG", None)
             rc._cache = None
             try:
@@ -318,131 +314,11 @@ class SqliteDbTests(unittest.TestCase):
                     os.environ["DATABASE_PATH"] = old_path
 
 
-class DefaultProfileSeedTests(unittest.TestCase):
-    def _isolate_db(self, directory: str):
-        from db import models as db_models
-
-        self._db_models = db_models
-        self._old_url = os.environ.get("DATABASE_URL")
-        self._old_path = os.environ.get("DATABASE_PATH")
-        self._old_seed = os.environ.get("SEED_DEFAULT_PROFILE")
-        os.environ.pop("DATABASE_URL", None)
-        os.environ["DATABASE_PATH"] = str(Path(directory) / "seed.db")
-        db_models._async_engine = None
-        db_models._async_session_factory = None
-
-    def _restore_db(self):
-        db_models = self._db_models
-        if db_models._async_engine is not None:
-            import asyncio
-
-            asyncio.run(db_models._async_engine.dispose())
-        db_models._async_engine = None
-        db_models._async_session_factory = None
-        if self._old_url is None:
-            os.environ.pop("DATABASE_URL", None)
-        else:
-            os.environ["DATABASE_URL"] = self._old_url
-        if self._old_path is None:
-            os.environ.pop("DATABASE_PATH", None)
-        else:
-            os.environ["DATABASE_PATH"] = self._old_path
-        if self._old_seed is None:
-            os.environ.pop("SEED_DEFAULT_PROFILE", None)
-        else:
-            os.environ["SEED_DEFAULT_PROFILE"] = self._old_seed
-
-    def test_first_run_creates_catch_all_profile(self):
-        import asyncio
-        from db.models import ApplicationProfile
-        from services.application_context import ensure_default_application_profile, select_application_context
-        from services.lab_profiles import DEFAULT_LAB_PROFILE_NAME, SHOP_LAB_PROFILE_NAME
-        from sqlalchemy import func, select
-
-        with tempfile.TemporaryDirectory() as directory:
-            self._isolate_db(directory)
-            try:
-                async def _run():
-                    await self._db_models.init_db()
-                    created = await ensure_default_application_profile()
-                    again = await ensure_default_application_profile()
-                    factory = self._db_models.get_session_factory()
-                    async with factory() as session:
-                        count = (
-                            await session.execute(select(func.count()).select_from(ApplicationProfile))
-                        ).scalar_one()
-                        profile, context = await select_application_context(
-                            session,
-                            {
-                                "method": "GET",
-                                "uri": "/vulnerabilities/sqli/?id=select+all",
-                                "raw_request": {"headers": {"Host": "localhost"}},
-                            },
-                        )
-                        _, fallback = await select_application_context(
-                            session,
-                            {"method": "POST", "uri": "/some/other/app/path", "raw_request": {}},
-                        )
-                        shop, shop_context = await select_application_context(
-                            session,
-                            {
-                                "method": "GET",
-                                "uri": "/download?name=user-guide.v2.pdf",
-                                "raw_request": {"headers": {"Host": "shop.lab:8080"}},
-                            },
-                        )
-                        _, shop_fallback = await select_application_context(
-                            session,
-                            {"method": "GET", "uri": "/unknown", "raw_request": {"headers": {"Host": "shop.lab"}}},
-                        )
-                    return created, again, count, profile, context, fallback, shop, shop_context, shop_fallback
-
-                created, again, count, profile, context, fallback, shop, shop_context, shop_fallback = asyncio.run(_run())
-                self.assertTrue(created)
-                self.assertFalse(again)
-                self.assertEqual(count, 2)
-                # The Flask lab app has its own seeded profile, selected by Host.
-                self.assertEqual(shop.name, SHOP_LAB_PROFILE_NAME)
-                self.assertEqual(shop_context["application"]["languages"], ["python"])
-                self.assertEqual(shop_context["route"]["path"], "/download")
-                self.assertIn("name", shop_context["route"]["parameters"])
-                self.assertEqual(shop_fallback["profile_name"], SHOP_LAB_PROFILE_NAME)
-                self.assertEqual(shop_fallback["route"]["path"], "/*")
-                self.assertEqual(profile.name, DEFAULT_LAB_PROFILE_NAME)
-                self.assertEqual(context["route"]["path"], "/vulnerabilities/sqli/")
-                # Catch-all keeps REQUIRE_APPLICATION_CONTEXT (default on) satisfied
-                # for any lab path, even without a Host header.
-                self.assertEqual(fallback["route"]["path"], "/*")
-            finally:
-                self._restore_db()
-
-    def test_seed_skipped_when_disabled(self):
-        import asyncio
-
-        from services.application_context import ensure_default_application_profile
-
-        with tempfile.TemporaryDirectory() as directory:
-            self._isolate_db(directory)
-            os.environ["SEED_DEFAULT_PROFILE"] = "false"
-            try:
-                async def _run():
-                    await self._db_models.init_db()
-                    return await ensure_default_application_profile()
-
-                self.assertFalse(asyncio.run(_run()))
-            finally:
-                self._restore_db()
-
-
 class ProductInfoTests(unittest.TestCase):
-    def test_no_edge_writes(self):
+    def test_audit_log_contract(self):
         from services.app_mode import product_info
 
-        info = product_info()
-        self.assertFalse(info["deploy_enabled"])
-        self.assertFalse(info["config_writes_enabled"])
-        self.assertFalse(info["engine_mode_control_enabled"])
-        self.assertIn("JSON", info["audit_log_contract"]["format"])
+        self.assertIn("JSON", product_info()["audit_log_contract"]["format"])
 
 
 if __name__ == "__main__":

@@ -4,21 +4,14 @@ import json
 import os
 from pathlib import Path
 
+from services.runtime_config import data_dir
+
 
 def cursor_path() -> Path:
-    default = Path(os.environ.get("EVENTS_JSONL_PATH", "/shared/events.jsonl")).parent / "audit_cursor.json"
-    return Path(os.environ.get("AUDIT_CURSOR_PATH", default))
+    return Path(os.environ.get("AUDIT_CURSOR_PATH") or data_dir() / "audit_cursor.json")
 
 
-def count_lines(path: str) -> int:
-    try:
-        with open(path, "rb") as handle:
-            return sum(chunk.count(b"\n") for chunk in iter(lambda: handle.read(1024 * 1024), b""))
-    except FileNotFoundError:
-        return 0
-
-
-def load_cursor(events_path: str) -> dict:
+def load_cursor() -> dict:
     path = cursor_path()
     try:
         data = json.loads(path.read_text())
@@ -27,8 +20,8 @@ def load_cursor(events_path: str) -> dict:
         data["pending"] = base64.b64decode(data.pop("pending_b64", ""), validate=True)
         # Older cursors used the same buffer for EOF retries and partial input.
         data.setdefault("retry_pending", bool(data["pending"]))
-        if "next_event_line" not in data:
-            data["next_event_line"] = count_lines(events_path)
+        # Event lines now come from the database.
+        data.pop("next_event_line", None)
         return data
     except (FileNotFoundError, json.JSONDecodeError, ValueError):
         return {
@@ -36,7 +29,6 @@ def load_cursor(events_path: str) -> dict:
             "inode": None,
             "offset": 0,
             "pending": b"",
-            "next_event_line": count_lines(events_path),
         }
 
 

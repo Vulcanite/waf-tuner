@@ -79,7 +79,6 @@ ok "curl"
 # --- data + env ---
 note "Prepare isolated data dir"
 touch "$DATA/modsec/audit.log"
-touch "$DATA/events.jsonl"
 if [[ -d lab-data/crs-rules ]] && [[ -n "$(ls -A lab-data/crs-rules 2>/dev/null || true)" ]]; then
   cp -a lab-data/crs-rules/. "$DATA/crs-rules/" 2>/dev/null || true
   ok "copied lab-data/crs-rules"
@@ -107,11 +106,12 @@ else
 fi
 
 export MODSEC_AUDIT_LOG="${BAREMETAL_AUDIT_LOG:-$DATA/modsec/audit.log}"
-export EVENTS_JSONL_PATH="$DATA/events.jsonl"
+export DATA_DIR="$DATA"
 export AUDIT_CURSOR_PATH="$DATA/audit_cursor.json"
 export DATABASE_PATH="$DATA/waf-tuner.db"
 export RUNTIME_CONFIG_PATH="$DATA/runtime_config.json"
 export CRS_RULES_DIR="${CRS_RULES_DIR:-$DATA/crs-rules/}"
+export PROFILES_DIR="${PROFILES_DIR:-$ROOT/lab/profiles}"
 export AGENT_WORKER_CONCURRENCY="${AGENT_WORKER_CONCURRENCY:-2}"
 export AGENT_MAX_REQUESTS_PER_HOUR="${AGENT_MAX_REQUESTS_PER_HOUR:-60}"
 export INCIDENT_FINGERPRINT_KEY="${INCIDENT_FINGERPRINT_KEY:-baremetal-lab-fingerprint-key}"
@@ -123,7 +123,7 @@ export LLM_MODEL="${LLM_MODEL:-baremetal-placeholder}"
 # Persist resolved env for debugging
 {
   echo "MODSEC_AUDIT_LOG=$MODSEC_AUDIT_LOG"
-  echo "EVENTS_JSONL_PATH=$EVENTS_JSONL_PATH"
+  echo "DATA_DIR=$DATA_DIR"
   echo "DATABASE_PATH=$DATABASE_PATH"
   echo "CRS_RULES_DIR=$CRS_RULES_DIR"
   echo "LLM_API_BASE_URL=$LLM_API_BASE_URL"
@@ -179,11 +179,12 @@ BACKEND_LOG="$OUT/backend.log"
   # Process env wins over dotenv for paths; load LLM secrets via shell env only.
   exec env \
     MODSEC_AUDIT_LOG="$MODSEC_AUDIT_LOG" \
-    EVENTS_JSONL_PATH="$EVENTS_JSONL_PATH" \
+    DATA_DIR="$DATA_DIR" \
     AUDIT_CURSOR_PATH="$AUDIT_CURSOR_PATH" \
     DATABASE_PATH="$DATABASE_PATH" \
     RUNTIME_CONFIG_PATH="$RUNTIME_CONFIG_PATH" \
     CRS_RULES_DIR="$CRS_RULES_DIR" \
+    PROFILES_DIR="$PROFILES_DIR" \
     AGENT_WORKER_CONCURRENCY="$AGENT_WORKER_CONCURRENCY" \
     AGENT_MAX_REQUESTS_PER_HOUR="$AGENT_MAX_REQUESTS_PER_HOUR" \
     INCIDENT_FINGERPRINT_KEY="$INCIDENT_FINGERPRINT_KEY" \
@@ -221,8 +222,8 @@ curl -sS "${API_BASE}/health" | tee "$OUT/health.json" || true
 curl -sS "${API_BASE}/api/settings/product" | tee "$OUT/settings-product.json" || true
 curl -sS "${API_BASE}/api/analytics/analysis-health" | tee "$OUT/analysis-health.json" || true
 
-if "$VENV/bin/python" -c "import json; d=json.load(open('$OUT/health.json')); assert d.get('status')=='ok'; assert d.get('deploy_enabled') is False"; then
-  ok "health status=ok deploy_enabled=false"
+if "$VENV/bin/python" -c "import json; d=json.load(open('$OUT/health.json')); assert d.get('status')=='ok'"; then
+  ok "health status=ok"
 else
   bad "health check failed"
 fi
@@ -233,9 +234,7 @@ import json
 p=json.load(open('$OUT/settings-product.json'))
 env=p.get('env') or {}
 db=env.get('DATABASE_PATH') or ''
-events=env.get('EVENTS_JSONL_PATH') or ''
 assert db == '$DATABASE_PATH', (db, '$DATABASE_PATH')
-assert events == '$EVENTS_JSONL_PATH', (events, '$EVENTS_JSONL_PATH')
 print('db', db)
 "; then
   ok "product env points at isolated bare-metal data dir"

@@ -2,19 +2,14 @@
 """Live or recorded classifier gate for sanitized JSONL fixtures.
 
 Two fixture shapes are accepted, one per line:
-- match-level (eval/fixtures.jsonl): one match per fixture with `expected`/`label`;
-- request-level (eval/requests.jsonl): a raw `modsec_audit` record plus `labels`, a list of
-  {match_index, expected}. Only labeled matches are scored.
+- request-level (eval/requests.jsonl, the default): a raw `modsec_audit` record plus `labels`,
+  a list of {match_index, expected}. Only labeled matches are scored;
+- match-level: one match per fixture with `expected`/`label` and an optional `match_index`.
 
-`--unit match` sends one model call per labeled match (backend ANALYSIS_UNIT=match);
-`--unit request` sends one call per request that analyses every non-aggregate detection, as
-the worker does (ANALYSIS_UNIT=request); verdicts for unlabeled detections are recorded but
-not scored. A match-level fixture under `--unit request` is a one-match request.
-Both units produce the same per-match result rows, so scoring is identical.
+Each labeled match gets one model call, built exactly as the backend worker builds it.
 
-Recorded mode reads eval/recordings/<name>__<unit>.jsonl (for the match unit it falls back
-to the legacy <name>.jsonl) and never contacts a provider. Use --record during a live run to
-write responses for later replay.
+Recorded mode reads eval/recordings/<name>.jsonl and never contacts a provider. Use --record
+during a live run to write responses for later replay.
 """
 from __future__ import annotations
 
@@ -42,38 +37,29 @@ from scoring import expected_class, per_rule_matrix, run_metrics, summary_from_c
 from services.audit_event import normalize_audit_event  # noqa: E402
 from services.crs_index import get_rule_at, initialize_crs_index  # noqa: E402
 from services.inference_context import (  # noqa: E402
-    bound_repair_input, bound_request_repair_input, build_inference_context, build_request_context,
-    is_aggregate_match, match_evidence_withheld, match_target, request_match_view,
+    bound_repair_input, build_inference_context, is_aggregate_match, match_evidence_withheld, match_target,
 )
 from services.llm_options import (  # noqa: E402
-    ESCALATION_EFFORT_REJECTED, analysis_unit, is_escalation_effort_rejection, request_payload, request_settings,
+    ESCALATION_EFFORT_REJECTED, is_escalation_effort_rejection, request_payload, request_settings,
 )
 from services.model_contract import (  # noqa: E402
     CompletionOutputError,
     PROMPT_SHA256,
     PROMPT_VERSION,
-    REQUEST_PROMPT_SHA256,
-    REQUEST_PROMPT_VERSION,
-    REQUEST_RESPONSE_FORMAT,
     classify_repair_response,
-    classify_request_repair_response,
-    classify_request_response,
     classify_response,
     completion_text,
     false_positive_threshold,
     repair_messages,
-    request_repair_messages,
-    request_response_messages,
     response_messages,
 )
 from services.profile_match import route_supports_exception  # noqa: E402
 
 
 RECORDINGS_DIR = ROOT / "eval" / "recordings"
-UNITS = ("match", "request")
-PROMPTS = {"match": (PROMPT_VERSION, PROMPT_SHA256), "request": (REQUEST_PROMPT_VERSION, REQUEST_PROMPT_SHA256)}
+DEFAULT_FIXTURES = ROOT / "eval" / "requests.jsonl"
 PROVENANCE_KEYS = (
-    "unit", "prompt_version", "prompt_sha256", "settings", "fixture_sha256", "input_sha256", "false_positive_threshold",
+    "prompt_version", "prompt_sha256", "settings", "fixture_sha256", "input_sha256", "false_positive_threshold",
 )
 
 
@@ -142,18 +128,6 @@ def fixture_labels(fixture: dict) -> list[dict]:
     return sorted(labels, key=lambda label: label["match_index"])
 
 
-def analysed_indexes(fixture: dict, event: dict | None, labeled: list[int]) -> list[int]:
-    """The request unit's analysed matches: every non-aggregate detection, as the worker queues
-    them (incidents.register_event), plus the labeled ones. A match-level fixture is a one-match request."""
-    if not is_request_fixture(fixture) or event is None:
-        return sorted(labeled)
-    detections = {
-        index for index, match in enumerate(event.get("matches") or [])
-        if match.get("rule_id") and not is_aggregate_match(match)
-    }
-    return sorted(detections | set(labeled))
-
-
 def check_match_indexes(fixture: dict, event: dict, indexes: list[int]) -> None:
     matches = event.get("matches") or []
     for index in indexes:
@@ -162,7 +136,7 @@ def check_match_indexes(fixture: dict, event: dict, indexes: list[int]) -> None:
     if is_request_fixture(fixture):
         aggregate = [index for index in indexes if is_aggregate_match(matches[index])]
         if aggregate:
-            # The worker never queues anomaly-score matches; request mode drops them from analysis.
+            # The worker never queues anomaly-score matches.
             raise ValueError(f"fixture {fixture['id']} labels aggregate (anomaly-score) match {aggregate[0]}")
 
 
@@ -176,7 +150,7 @@ def _application_context(fixture: dict, legacy: dict):
 
 
 def match_context(fixture: dict, event: dict, legacy: dict, match_index: int) -> dict:
-    """Match unit: exactly the worker's build_inference_context call for one match."""
+    """Exactly the worker's build_inference_context call for one match."""
     match = event["matches"][match_index]
     return build_inference_context(
         event,
@@ -189,16 +163,6 @@ def match_context(fixture: dict, event: dict, legacy: dict, match_index: int) ->
     )
 
 
-def request_context(fixture: dict, event: dict, legacy: dict, match_indexes: list[int]) -> tuple[dict, dict]:
-    """Request unit: the worker's build_request_context call with `match_indexes` as the analysed set."""
-    crs_rules = {index: _crs_rule(event, event["matches"][index], legacy) for index in match_indexes}
-    context = build_request_context(event, match_indexes, crs_rules, _application_context(fixture, legacy))
-    analysed = sorted(entry["match_index"] for entry in context.get("matches") or [])
-    if analysed != sorted(match_indexes):
-        raise ValueError(f"fixture {fixture['id']}: request context does not analyse every listed match")
-    return context, crs_rules
-
-
 def gate_inputs(view: dict) -> dict:
     """The worker's per-match evidence gate (agent._finalize_case) on a per-match context."""
     redaction = view.get("redaction") or {}
@@ -209,8 +173,8 @@ def gate_inputs(view: dict) -> dict:
     }
 
 
-def request(messages, settings, attempt_type="initial", response_format=None):
-    body = json.dumps(request_payload(settings, messages, attempt_type, response_format), ensure_ascii=False).encode()
+def request(messages, settings, attempt_type="initial"):
+    body = json.dumps(request_payload(settings, messages, attempt_type), ensure_ascii=False).encode()
     req = urllib.request.Request(
         settings["base_url"].rstrip("/") + "/chat/completions",
         data=body,
@@ -248,28 +212,8 @@ def _safe_name(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", name).strip("_") or "model"
 
 
-def recording_path(model: str, recordings_dir: Path | None = None, unit: str | None = None) -> Path:
-    """<model>.jsonl (legacy, match unit) or <model>__<unit>.jsonl."""
-    suffix = f"__{unit}" if unit else ""
-    return (recordings_dir or RECORDINGS_DIR) / f"{_safe_name(model)}{suffix}.jsonl"
-
-
-def resolve_recording_path(model: str, recordings_dir: Path | None, unit: str) -> Path:
-    """The file to replay: <model>__<unit>.jsonl, else the legacy <model>.jsonl for the match unit."""
-    path = recording_path(model, recordings_dir, unit)
-    if unit == "match" and not path.exists():
-        legacy = recording_path(model, recordings_dir)
-        if legacy.exists():
-            return legacy
-    return path
-
-
-def split_run_name(name: str) -> tuple[str, str | None]:
-    """'small__request' -> ('small', 'request'); 'oracle' -> ('oracle', None)."""
-    for unit in UNITS:
-        if name.endswith(f"__{unit}"):
-            return name[: -len(unit) - 2], unit
-    return name, None
+def recording_path(model: str, recordings_dir: Path | None = None) -> Path:
+    return (recordings_dir or RECORDINGS_DIR) / f"{_safe_name(model)}.jsonl"
 
 
 def load_recordings(path: Path) -> dict[str, dict]:
@@ -300,60 +244,38 @@ def oracle_response(expected: str) -> dict:
     }
 
 
-def call_ids(fixture: dict, unit: str) -> list[str]:
-    """Recording keys: one per scored match in the match unit, one per request in the request unit."""
-    if unit == "request":
-        return [fixture["id"]]
-    return [label["row_id"] for label in fixture_labels(fixture)]
+def oracle_recordings(fixtures: list[dict]) -> list[dict]:
+    """One recording per labeled match that answers with the label, so CI can replay without a provider."""
+    records = []
+    for fixture in fixtures:
+        digest = fingerprint(fixture)
+        for label in fixture_labels(fixture):
+            parsed = oracle_response(label["expected"])
+            records.append({
+                "id": label["row_id"], "raw": json.dumps(parsed), "repaired": False, "latency_ms": 0,
+                "token_usage": {}, "finish_reason": "stop", "classification": parsed["classification"],
+                "fixture_sha256": digest, "source": "oracle",
+            })
+    return records
 
 
-def merge_escalation(first: dict[int, dict], escalated: dict[int, dict]) -> dict[int, dict]:
-    """Same rule as the worker: escalation replaces only the verdicts that were uncertain on the first pass."""
-    return {
-        index: escalated[index] if verdict["classification"] == "uncertain" else verdict
-        for index, verdict in first.items()
-    }
+def parse_recording(recording: dict, digest: str):
+    """Validate a stored response exactly as the worker would: (verdict or None, finish_reason).
 
-
-def recorded_indexes(recording: dict | None, default: list[int]) -> list[int]:
-    """The matches a recorded call analysed. Recordings made before every detection was analysed
-    list only the labeled ones, and still replay."""
-    stored = (recording or {}).get("match_indexes")
-    if isinstance(stored, list) and stored and all(type(index) is int for index in stored):
-        return sorted(stored)
-    return default
-
-
-def parse_recording(recording: dict, digest: str, unit: str, match_indexes: list[int]):
-    """Validate a stored response exactly as the worker would: ({match_index: verdict} or None, finish)."""
+    An escalated recording stores the escalation in `raw`, which is final, as in the worker.
+    """
     finish = recording.get("finish_reason")
     expected_digest = recording.get("fixture_sha256")
     if expected_digest and expected_digest != digest:
         return None, "fixture_mismatch"
     threshold = recording.get("false_positive_threshold")
     repair_input = recording.get("repair_input")
-
-    def parse(text):
-        if unit == "request":
-            return classify_request_response(text, match_indexes, threshold=threshold)
-        return {match_indexes[0]: classify_response(text, threshold=threshold)}
-
     try:
         # A cut-off, refused, or empty completion is never parsed.
         text = completion_text({"finish_reason": finish, "message": {"content": recording.get("raw") or ""}})
         if repair_input:
-            if unit == "request":
-                parsed = classify_request_repair_response(text, repair_input, threshold=threshold)
-            else:
-                parsed = {match_indexes[0]: classify_repair_response(text, repair_input, threshold=threshold)}
-        else:
-            parsed = parse(text)
-            if recording.get("initial_raw"):
-                # `raw` is the escalation; the first pass keeps every verdict that was not uncertain.
-                parsed = merge_escalation(parse(recording["initial_raw"]), parsed)
-        if set(parsed) != set(match_indexes):
-            return None, finish
-        return parsed, finish
+            return classify_repair_response(text, repair_input, threshold=threshold), finish
+        return classify_response(text, threshold=threshold), finish
     except (ValueError, TypeError, KeyError):
         return None, finish
 
@@ -362,29 +284,15 @@ def _finish_code(exc: CompletionOutputError) -> str:
     return "length" if exc.code == "truncated_output" else exc.code
 
 
-def _send(messages, settings, attempt_type, response_format):
-    # Match-unit calls keep the historical signature so existing request mocks stay valid.
-    if response_format is None:
-        return request(messages, settings, attempt_type)
-    return request(messages, settings, attempt_type, response_format)
-
-
-def call_live(messages, settings: dict, unit: str, context: dict, match_indexes: list[int]) -> dict:
-    """One analysis unit against the provider with the worker's rules (agent._call_model and
-    agent._call_request_model): at most one repair, a repair keeps every classification, escalation
-    only for an unrepaired valid first pass with an uncertain verdict, cut-off output never parsed."""
-    request_unit = unit == "request"
-    response_format = REQUEST_RESPONSE_FORMAT if request_unit else None
+def call_live(messages, settings: dict, context: dict) -> dict:
+    """One match against the provider with the worker's rules (agent._call_model): at most one
+    repair, a repair keeps the classification, escalation only for an unrepaired valid uncertain
+    first pass, cut-off output never parsed."""
     state = {"calls": 0, "latency": 0, "usage": {}}
-
-    def parse(raw):
-        if request_unit:
-            return classify_request_response(raw, match_indexes)
-        return {match_indexes[0]: classify_response(raw)}
 
     def send(msgs, attempt_type):
         state["calls"] += 1
-        choice, latency, usage = _send(msgs, settings, attempt_type, response_format)
+        choice, latency, usage = request(msgs, settings, attempt_type)
         state["latency"] += latency
         state["usage"] = merge_usage(state["usage"], usage)
         return choice
@@ -403,39 +311,31 @@ def call_live(messages, settings: dict, unit: str, context: dict, match_indexes:
         raw, finish = exc.raw_response, _finish_code(exc)
     else:
         try:
-            parsed = parse(raw)
+            parsed = classify_response(raw)
         except (ValueError, TypeError):
-            repair_input = (
-                bound_request_repair_input(raw, context, match_indexes) if request_unit
-                else bound_repair_input(raw, context)
-            )
+            repair_input = bound_repair_input(raw, context)
             if repair_input:
                 repaired = True
-                choice = send(
-                    request_repair_messages(repair_input) if request_unit else repair_messages(repair_input), "repair",
-                )
+                choice = send(repair_messages(repair_input), "repair")
                 finish = choice.get("finish_reason")
                 try:
                     raw = completion_text(choice)
                     final_repair_input = repair_input
-                    parsed = (
-                        classify_request_repair_response(raw, repair_input) if request_unit
-                        else {match_indexes[0]: classify_repair_response(raw, repair_input)}
-                    )
+                    parsed = classify_repair_response(raw, repair_input)
                 except CompletionOutputError as exc:
                     raw, finish = exc.raw_response, _finish_code(exc)
                 except (ValueError, TypeError, KeyError):
                     pass
     # Same rule as the backend worker: a repaired verdict is final, so only a first-pass "uncertain" escalates.
     if (
-        parsed and not repaired and any(item["classification"] == "uncertain" for item in parsed.values())
+        parsed and not repaired and parsed["classification"] == "uncertain"
         and settings.get("escalation_effort") and not settings.get("escalation_error")
     ):
         escalated = True
         try:
             choice = send(messages, "escalation")
             escalated_raw = completion_text(choice)
-            escalated_verdicts = parse(escalated_raw)
+            escalated_verdict = classify_response(escalated_raw)
         except urllib.error.HTTPError as exc:
             details = ""
             try:
@@ -450,10 +350,9 @@ def call_live(messages, settings: dict, unit: str, context: dict, match_indexes:
         except (ValueError, TypeError, urllib.error.URLError, TimeoutError):
             pass
         else:
-            parsed = merge_escalation(parsed, escalated_verdicts)
+            parsed = escalated_verdict
             initial_raw, raw, finish = raw, escalated_raw, choice.get("finish_reason")
             final_repair_input = None
-    prompt_version, prompt_sha256 = PROMPTS[unit]
     recording = {
         "raw": raw,
         **({"initial_raw": initial_raw} if initial_raw is not None else {}),
@@ -464,30 +363,18 @@ def call_live(messages, settings: dict, unit: str, context: dict, match_indexes:
         "token_usage": state["usage"],
         "finish_reason": finish,
         "input_sha256": fingerprint(messages),
-        "unit": unit,
-        "prompt_version": prompt_version,
-        "prompt_sha256": prompt_sha256,
+        "prompt_version": PROMPT_VERSION,
+        "prompt_sha256": PROMPT_SHA256,
         "settings": public_settings(settings),
         "false_positive_threshold": false_positive_threshold(),
     }
-    if parsed:
-        if request_unit:
-            recording["classifications"] = {str(index): item["classification"] for index, item in parsed.items()}
-        else:
-            recording["classification"] = parsed[match_indexes[0]]["classification"]
-    else:
-        recording["classification"] = None
+    recording["classification"] = parsed["classification"] if parsed else None
     if final_repair_input:
-        # Keep only the candidate labels the repair was bound to, never the evidence.
+        # Keep only the candidate label the repair was bound to, never the evidence.
         candidate = json.loads(final_repair_input)
-        if request_unit:
-            summary = {"verdicts": [
-                {key: item[key] for key in ("match_index", "classification", "confidence") if key in item}
-                for item in candidate["verdicts"]
-            ]}
-        else:
-            summary = {key: candidate[key] for key in ("classification", "confidence") if key in candidate}
-        recording["repair_input"] = json.dumps(summary)
+        recording["repair_input"] = json.dumps(
+            {key: candidate[key] for key in ("classification", "confidence") if key in candidate}
+        )
     return recording
 
 
@@ -508,15 +395,12 @@ def _route_supported(fixture: dict, legacy: dict, event: dict | None, match: dic
     return route_supports_exception(_application_context(fixture, legacy) or {}, collection, parameter)
 
 
-def _row(fixture, label, event, legacy, recording, verdicts, finish, call_id, unit) -> dict:
+def _row(fixture, label, event, legacy, recording, verdict, finish) -> dict:
     index = label["match_index"]
     matches = (event or {}).get("matches") or []
     match = matches[index] if type(index) is int and 0 <= index < len(matches) else {}
     rule_ids = [str(match["rule_id"])] if match.get("rule_id") else list((recording or {}).get("crs_rule_ids") or [])
-    verdict = (verdicts or {}).get(index)
     available = (recording or {}).get("crs_rule_available")
-    if isinstance(available, dict):
-        available = available.get(str(index))
     # Recorded at live time from the exact context sent; absent in older recordings.
     gate = ((recording or {}).get("gate_inputs") or {}).get(str(index)) or {}
     row = {
@@ -533,8 +417,6 @@ def _row(fixture, label, event, legacy, recording, verdicts, finish, call_id, un
         "classification": verdict["classification"] if verdict else None,
         "applies_to_stack": verdict.get("applies_to_stack") if verdict else None,
         "finish_reason": finish,
-        "unit": unit,
-        "call_id": call_id,
         "crs_rule_ids": rule_ids,
         "crs_rule_available": available,
         "evidence_withheld": gate.get("evidence_withheld"),
@@ -547,15 +429,12 @@ def _row(fixture, label, event, legacy, recording, verdicts, finish, call_id, un
     return row
 
 
-def evaluate_fixture(fixture: dict, unit: str, *, stored: dict | None = None, settings: dict | None = None):
-    """Score one fixture in one unit. Live when `settings` is given, else replay from `stored`.
+def evaluate_fixture(fixture: dict, *, stored: dict | None = None, settings: dict | None = None):
+    """Score one fixture. Live when `settings` is given, else replay from `stored`.
 
-    Returns (rows, calls, recordings): one row per labeled match; one call entry per analysis
-    unit carrying its token usage, so request-mode tokens are counted once per request. The
-    request unit analyses every non-aggregate detection, but only labeled matches get rows.
+    Returns (rows, calls, recordings): per labeled match one row, one call entry with its token
+    usage and, when live, one recording.
     """
-    if unit not in UNITS:
-        raise ValueError("--unit must be match or request")
     live = settings is not None
     labels = fixture_labels(fixture)
     indexes = [label["match_index"] for label in labels]
@@ -565,45 +444,28 @@ def evaluate_fixture(fixture: dict, unit: str, *, stored: dict | None = None, se
     else:
         event, _, legacy = _event_or_none(fixture)
     digest = fingerprint(fixture)
-    if unit == "request":
-        groups = [(fixture["id"], labels, analysed_indexes(fixture, event, indexes))]
-    else:
-        groups = [(label["row_id"], [label], [label["match_index"]]) for label in labels]
     rows, calls, recordings = [], [], []
-    for call_id, group, group_indexes in groups:
+    for label in labels:
+        call_id, index = label["row_id"], label["match_index"]
         if live:
-            if unit == "request":
-                context, crs_rules = request_context(fixture, event, legacy, group_indexes)
-                messages = request_response_messages(context)
-                available = {str(index): bool(crs_rules[index]) for index in group_indexes}
-                gates = {str(index): gate_inputs(request_match_view(context, index)) for index in group_indexes}
-            else:
-                context = match_context(fixture, event, legacy, group_indexes[0])
-                messages = response_messages(context)
-                available = bool(context.get("crs_rule"))
-                gates = {str(group_indexes[0]): gate_inputs(context)}
-            recording = {"id": call_id, "request_id": fixture["id"], "match_indexes": group_indexes,
-                         **call_live(messages, settings, unit, context, group_indexes),
-                         "fixture_sha256": digest, "crs_rule_available": available, "gate_inputs": gates,
-                         "crs_rule_ids": [str(event["matches"][index]["rule_id"]) for index in group_indexes
-                                          if event["matches"][index].get("rule_id")]}
+            context = match_context(fixture, event, legacy, index)
+            rule_id = event["matches"][index].get("rule_id")
+            recording = {"id": call_id, "request_id": fixture["id"],
+                         **call_live(response_messages(context), settings, context),
+                         "fixture_sha256": digest, "crs_rule_available": bool(context.get("crs_rule")),
+                         "gate_inputs": {str(index): gate_inputs(context)},
+                         "crs_rule_ids": [str(rule_id)] if rule_id else []}
             recordings.append(recording)
         else:
             recording = (stored or {}).get(call_id)
-            if unit == "request":
-                group_indexes = recorded_indexes(recording, analysed_indexes(fixture, event, indexes))
         if recording is None:
-            verdicts, finish = None, "missing_recording"
+            verdict, finish = None, "missing_recording"
         else:
-            verdicts, finish = parse_recording(recording, digest, unit, group_indexes)
-        group_rows = [_row(fixture, label, event, legacy, recording, verdicts, finish, call_id, unit) for label in group]
-        rows.extend(group_rows)
+            verdict, finish = parse_recording(recording, digest)
+        rows.append(_row(fixture, label, event, legacy, recording, verdict, finish))
         calls.append({
             "id": call_id,
             "request_id": fixture["id"],
-            "unit": unit,
-            "match_ids": [row["id"] for row in group_rows],
-            "analysed_match_indexes": group_indexes,
             "model_calls": _model_calls(recording),
             "latency_ms": (recording or {}).get("latency_ms") or 0,
             "token_usage": (recording or {}).get("token_usage") or {},
@@ -616,12 +478,11 @@ def public_settings(settings):
     return {
         key: value for key, value in settings.items()
         if key in {"model", "max_tokens", "temperature", "timeout", "structured_output", "verify_ssl",
-                   "escalation_effort", "escalation_error", "thinking", "reasoning_effort", "mode", "crs_ruleset_digest",
-                   "analysis_unit"}
+                   "escalation_effort", "escalation_error", "thinking", "reasoning_effort", "mode", "crs_ruleset_digest"}
     }
 
 
-def build_report(fixtures, results, settings, model: str, calls: list[dict], unit: str | None = None) -> dict:
+def build_report(fixtures, results, settings, model: str, calls: list[dict]) -> dict:
     matrix = per_rule_matrix(fixtures, results)
     counts = matrix["overall"]["counts"]
     latencies = sorted(call["latency_ms"] for call in calls if call.get("latency_ms"))
@@ -643,7 +504,6 @@ def build_report(fixtures, results, settings, model: str, calls: list[dict], uni
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "model": model,
-        "unit": unit or (results[0].get("unit") if results else None) or "match",
         "prompt_version": prompt_version,
         "prompt_sha256": prompt_sha256,
         "settings": public_settings(settings),
@@ -692,14 +552,10 @@ def load_fixture_rows(path: Path) -> list[dict]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--fixtures", default=str(ROOT / "eval/fixtures.jsonl"))
+    parser.add_argument("--fixtures", default=str(DEFAULT_FIXTURES))
     parser.add_argument("--output", default=str(ROOT / "eval/report.json"))
     parser.add_argument("--mode", choices=["live", "recorded"], default="live")
     parser.add_argument("--model", default=os.getenv("LLM_MODEL", "Foundation-Sec-1.1-8B-Instruct"))
-    parser.add_argument(
-        "--unit", choices=list(UNITS), default=None,
-        help="analysis unit: one call per match or per request (default: ANALYSIS_UNIT, else match)",
-    )
     parser.add_argument("--recordings-dir", default=str(RECORDINGS_DIR))
     parser.add_argument("--crs-rules-dir", default=os.getenv("CRS_RULES_DIR") or str(ROOT / "lab-data" / "crs-rules"))
     parser.add_argument("--record", action="store_true", help="save live responses after all calls complete")
@@ -708,41 +564,44 @@ def main(argv: list[str] | None = None) -> int:
         default=float(os.getenv("EVAL_MIN_ATTACK_DETECTION", "0.5")),
         help="fail when fewer attacks than this share are classified true_positive (default 0.5)",
     )
-    parser.add_argument("--record-as", help="recording name instead of the model (file <name>__<unit>.jsonl)")
+    parser.add_argument("--record-as", help="recording name instead of the model (file <name>.jsonl)")
+    parser.add_argument("--write-oracle", action="store_true",
+                        help="write recordings/oracle.jsonl from the fixture labels and exit")
     args = parser.parse_args(argv)
-    unit = args.unit or analysis_unit()
     fixtures = load_fixture_rows(Path(args.fixtures))
     if not fixtures:
         raise ValueError("evaluation requires at least one fixture")
     name = args.record_as or args.model
     recordings_dir = Path(args.recordings_dir)
+    if args.write_oracle:
+        write_recordings(recording_path("oracle", recordings_dir), oracle_recordings(fixtures))
+        return 0
     results, calls, recordings = [], [], []
     if args.mode == "recorded":
-        settings = {"model": args.model, "mode": "recorded", "analysis_unit": unit}
-        path = resolve_recording_path(name, recordings_dir, unit)
+        settings = {"model": args.model, "mode": "recorded"}
+        path = recording_path(name, recordings_dir)
         if not path.exists():
-            raise ValueError(f"no recordings for {name} in the {unit} unit at {path}")
+            raise ValueError(f"no recordings for {name} at {path}")
         stored = load_recordings(path)
     else:
         ruleset = initialize_crs_index(args.crs_rules_dir)
         if not ruleset["rules"]:
             raise ValueError("live eval requires CRS .conf files or a verified snapshot via --crs-rules-dir")
-        settings = {**request_settings(model=args.model), "mode": "live", "crs_ruleset_digest": ruleset["digest"],
-                    "analysis_unit": unit}
+        settings = {**request_settings(model=args.model), "mode": "live", "crs_ruleset_digest": ruleset["digest"]}
         stored = None
     for fixture in fixtures:
         if stored is None:
-            rows, fixture_calls, fixture_recordings = evaluate_fixture(fixture, unit, settings=settings)
+            rows, fixture_calls, fixture_recordings = evaluate_fixture(fixture, settings=settings)
         else:
-            rows, fixture_calls, fixture_recordings = evaluate_fixture(fixture, unit, stored=stored)
+            rows, fixture_calls, fixture_recordings = evaluate_fixture(fixture, stored=stored)
         results.extend(rows)
         calls.extend(fixture_calls)
         recordings.extend(fixture_recordings)
         for row in rows:
             print(f"{row['id']}: {row['classification'] or 'INVALID'}{' (repaired)' if row['repaired'] else ''}")
     if args.mode == "live" and args.record:
-        write_recordings(recording_path(name, recordings_dir, unit), recordings)
-    report = build_report(fixtures, results, settings, args.model, calls, unit)
+        write_recordings(recording_path(name, recordings_dir), recordings)
+    report = build_report(fixtures, results, settings, args.model, calls)
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, indent=2) + "\n")

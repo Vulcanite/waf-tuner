@@ -138,7 +138,7 @@ def is_copyable_exclusion(row: dict[str, Any]) -> bool:
 
 
 def run_metrics(rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
-    """Per-run headline metrics over scored match rows (identical for the match and request units)."""
+    """Per-run headline metrics over scored match rows."""
     rows = list(rows)
     attacks = [row for row in rows if expected_class(row) == "attack"]
     harmless = [row for row in rows if expected_class(row) != "attack"]
@@ -203,7 +203,7 @@ TOKEN_FIELDS = ("prompt_tokens", "cached_prompt_tokens", "completion_tokens", "r
 
 
 def token_totals(calls: Iterable[dict[str, Any]], requests: int, scored_matches: int) -> dict[str, Any]:
-    """Token totals over analysis-unit calls. A request-mode call is one entry for its whole request."""
+    """Token totals over model calls, one entry per scored match."""
     totals = {field: 0 for field in TOKEN_FIELDS}
     model_calls = 0
     for call in calls:

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Iterable
 from urllib.parse import parse_qs, urlsplit
 
-from corpus import CorpusCase, all_cases, route_profile, to_request_record
+from corpus import CorpusCase, route_profile
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -152,15 +152,3 @@ def merge_fixtures(
         if "incident" in context:
             context["application_context"] = route_profile(context["incident"].get("path") or "")
     return list(by_id.values())
-
-
-def synthesize_fixtures() -> list[dict[str, Any]]:
-    return [case_to_fixture(case) for case in all_cases()]
-
-
-def write_request_jsonl(path: Path | None = None) -> Path:
-    target = path or (ROOT / "eval" / "corpus" / "requests.jsonl")
-    target.parent.mkdir(parents=True, exist_ok=True)
-    lines = [json.dumps(to_request_record(case), ensure_ascii=False) for case in all_cases()]
-    target.write_text("\n".join(lines) + "\n")
-    return target

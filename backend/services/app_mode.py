@@ -8,9 +8,6 @@ def product_info() -> dict:
     from services.runtime_config import audit_log_status
 
     return {
-        "config_writes_enabled": False,
-        "deploy_enabled": False,
-        "engine_mode_control_enabled": False,
         "description": (
             "Read ModSecurity JSON audit logs (Nginx or Apache), classify FP/TP, "
             "and generate exclusion SecRules for you to copy into your own WAF config. "
@@ -52,7 +49,6 @@ def product_info() -> dict:
         "env": {
             "MODSEC_AUDIT_LOG": os.environ.get("MODSEC_AUDIT_LOG", ""),
             "CRS_RULES_DIR": os.environ.get("CRS_RULES_DIR", ""),
-            "EVENTS_JSONL_PATH": os.environ.get("EVENTS_JSONL_PATH", ""),
             "DATABASE_PATH": os.environ.get(
                 "DATABASE_PATH", ""
             ),

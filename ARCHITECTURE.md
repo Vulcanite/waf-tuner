@@ -7,7 +7,7 @@ Traffic → Nginx/Apache + ModSecurity + CRS
  │ JSON Serial audit log
  ▼
  waf-tuner-backend
- ├── log tailer → events.jsonl + SQLite cases
+ ├── log tailer → SQLite events + cases
  ├── redaction + LLM classify (off-path workers)
  ├── exception_builder (server builds the only rule shape)
  └── REST API
@@ -28,8 +28,7 @@ Traffic → Nginx/Apache + ModSecurity + CRS
 | Store | Role |
 |-------|------|
 | Audit log file | Source of truth for ModSecurity hits |
-| `events.jsonl` | Append-only archive of parsed transactions |
-| SQLite (`waf-tuner.db`) | Cases, revisions, drafts, application profiles |
+| SQLite (`waf-tuner.db`) | Parsed audit events, cases, revisions, drafts, application profiles |
 | `runtime_config.json` | Operator-set audit log path |
 
 ## Lab topology

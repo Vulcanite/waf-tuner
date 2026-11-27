@@ -41,11 +41,10 @@ Compose publishes the UI, API, and lab WAF only on `127.0.0.1`. For remote acces
 | `lab-data/.env` | Provider credentials and runtime settings |
 | `lab-data/modsec/audit.log` | ModSecurity audit log |
 | `lab-data/waf-tuner.db` | SQLite workflow, audit, and inference data |
-| `lab-data/events.jsonl` | Local event archive |
 | `lab-data/runtime_config.json` | Selected audit-log path |
 | `lab-data/crs-rules/` | CRS index used by the UI |
 
-The backend sends bounded, match-specific evidence to the configured provider. Raw events stay in the local workspace. Optional age limits use `AUDIT_EVIDENCE_RETENTION_DAYS` and `INFERENCE_ARTIFACT_RETENTION_DAYS`. To bound the JSONL mirror, set `EVENTS_JSONL_MAX_BYTES`. See [SECURITY.md](./SECURITY.md) before using real traffic.
+The backend sends bounded, match-specific evidence to the configured provider. Raw events stay in the local workspace. Optional age limits use `AUDIT_EVIDENCE_RETENTION_DAYS` and `INFERENCE_ARTIFACT_RETENTION_DAYS`. See [SECURITY.md](./SECURITY.md) before using real traffic.
 
 ## Verify a change
 
@@ -67,7 +66,7 @@ npm ci
 npm run build
 ```
 
-The eval corpus has 280 cases: the original 19 hand-built fixtures plus 261 synthesized ones. Application profiles follow the route, not the label, and include attacks on profiled routes. The `oracle` recording is derived from the fixture labels, so the recorded eval in CI tests the harness and scoring, not model quality. The only real model run committed so far covers the original 19 fixtures. See [eval/README.md](./eval/README.md).
+The eval set is `eval/requests.jsonl`: 245 requests (868 labeled matches) captured through the lab's ModSecurity in front of DVWA and the Flask Lab Shop. The `oracle` recording is derived from the labels, so the recorded eval in CI tests the harness and scoring, not model quality. No real model run is committed. See [eval/README.md](./eval/README.md).
 
 Lab checks are intentionally outside normal pull-request CI:
 
@@ -85,7 +84,7 @@ Lab checks are intentionally outside normal pull-request CI:
 ## Operator workflow
 
 1. Point the backend at a ModSecurity JSON Serial audit log.
-2. Create an application profile for the host, route, and parameters you want to tune. Copyable false-positive exclusions require parameter semantics on the matching route by default. Document an argument by its plain name, a cookie as `REQUEST_COOKIES:<name>` and a header as `REQUEST_HEADERS:<name>`; a cookie entry never covers an argument of the same name. The seeded `default-lab` profile describes DVWA routes and `shop-lab` describes the Flask app on `shop.lab`. Both are seeded only when no profiles exist. Set `SEED_DEFAULT_PROFILE=false` when starting with your own profile.
+2. Create an application profile for the host, route, and parameters you want to tune. Copyable false-positive exclusions require parameter semantics on the matching route by default. Document an argument by its plain name, a cookie as `REQUEST_COOKIES:<name>` and a header as `REQUEST_HEADERS:<name>`; a cookie entry never covers an argument of the same name. Write one JSON file per application in `PROFILES_DIR` (default `<DATA_DIR>/profiles`, loaded at startup), use the Application Profiles page, or import an OpenAPI 3.x JSON document; see [Application profiles](./docs/profiles.md). The lab's `default-lab` (DVWA) and `shop-lab` (the Flask app on `shop.lab`) profiles are files in `lab/profiles/`, which Compose mounts as `PROFILES_DIR`.
 3. Send traffic through the WAF and review Cases and Exceptions.
 4. Validate approved rules in your environment, copy them into your configuration, run `nginx -t` or the Apache equivalent, and reload the edge yourself.
 
