@@ -30,6 +30,21 @@ python3 eval/generate_recordings.py
 
 The request set is `eval/corpus/requests.jsonl`. Attack requests are grouped by CRS category (SQLi 942xxx, XSS 941xxx, RCE 932xxx, LFI 930xxx, RFI 931xxx, protocol 920xxx) with cited rule IDs.
 
+## Request-level set (`requests.jsonl`)
+
+`requests.jsonl` has 245 requests captured through the real ModSecurity (CRS 4.30, PL2) in front of both lab apps: DVWA (PHP/MySQL, any Host) and the Flask Lab Shop (`lab/flask-app`, Python/SQLite, Host `shop.lab`). The cases are `request_cases()` in `corpus.py`. Each one is a complete form submission with one payload in a query/form/JSON field, header, cookie or the path. They include harmless input that trips CRS (SQL words in search, Markdown/HTML reviews, code in support messages, URLs, file names), attacks, and wrong-stack attacks (PHP to Flask, Jinja/Java/Node to DVWA), which are still labeled `attack`.
+
+Each record holds the raw audit record (`modsec_audit`), `expected_request`, `labels` (`match_index` into `normalize_audit_event(modsec_audit)["matches"]`), the `application_context` the seeded profiles give for that host/method/path, `payload_target`, `category` and `wrong_stack`. A match is labeled when it inspected the payload's input (same collection/parameter, including CRS's `MATCHED_VARS:`/`TX:` copies of it, or a URI/body collection holding it). Score rules (949/959/980) and matches on other inputs, such as response-body rules or the raw `Cookie` header, are left unlabeled. Requests with no labeled match are dropped. The request unit still analyses unlabeled detections, as the worker does, but scores only labeled matches ([MODES.md](./MODES.md)).
+
+Capture into an isolated lab. This does not touch `lab-data/` or the main Compose lab:
+
+```bash
+export CAPTURE_DIR=/some/scratch/dir
+docker compose -p waftuner-capture -f lab/docker-compose.capture.yml up -d --build
+python3 eval/capture_lab.py --requests   # :18080, $CAPTURE_DIR/modsec/audit.log
+docker compose -p waftuner-capture -f lab/docker-compose.capture.yml down
+```
+
 ## Live provider eval
 
 ```bash

@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from services.application_context import _route_score
+from services.profile_match import _route_score
 from services.crs_index import build_crs_index
 from services.exception_builder import build_exception_rule, can_build_exception
 from services.incidents import incident_fingerprint, normalized_path
@@ -355,11 +355,8 @@ class DefaultProfileSeedTests(unittest.TestCase):
     def test_first_run_creates_catch_all_profile(self):
         import asyncio
         from db.models import ApplicationProfile
-        from services.application_context import (
-            DEFAULT_LAB_PROFILE_NAME,
-            ensure_default_application_profile,
-            select_application_context,
-        )
+        from services.application_context import ensure_default_application_profile, select_application_context
+        from services.lab_profiles import DEFAULT_LAB_PROFILE_NAME, SHOP_LAB_PROFILE_NAME
         from sqlalchemy import func, select
 
         with tempfile.TemporaryDirectory() as directory:
@@ -386,12 +383,31 @@ class DefaultProfileSeedTests(unittest.TestCase):
                             session,
                             {"method": "POST", "uri": "/some/other/app/path", "raw_request": {}},
                         )
-                    return created, again, count, profile, context, fallback
+                        shop, shop_context = await select_application_context(
+                            session,
+                            {
+                                "method": "GET",
+                                "uri": "/download?name=user-guide.v2.pdf",
+                                "raw_request": {"headers": {"Host": "shop.lab:8080"}},
+                            },
+                        )
+                        _, shop_fallback = await select_application_context(
+                            session,
+                            {"method": "GET", "uri": "/unknown", "raw_request": {"headers": {"Host": "shop.lab"}}},
+                        )
+                    return created, again, count, profile, context, fallback, shop, shop_context, shop_fallback
 
-                created, again, count, profile, context, fallback = asyncio.run(_run())
+                created, again, count, profile, context, fallback, shop, shop_context, shop_fallback = asyncio.run(_run())
                 self.assertTrue(created)
                 self.assertFalse(again)
-                self.assertEqual(count, 1)
+                self.assertEqual(count, 2)
+                # The Flask lab app has its own seeded profile, selected by Host.
+                self.assertEqual(shop.name, SHOP_LAB_PROFILE_NAME)
+                self.assertEqual(shop_context["application"]["languages"], ["python"])
+                self.assertEqual(shop_context["route"]["path"], "/download")
+                self.assertIn("name", shop_context["route"]["parameters"])
+                self.assertEqual(shop_fallback["profile_name"], SHOP_LAB_PROFILE_NAME)
+                self.assertEqual(shop_fallback["route"]["path"], "/*")
                 self.assertEqual(profile.name, DEFAULT_LAB_PROFILE_NAME)
                 self.assertEqual(context["route"]["path"], "/vulnerabilities/sqli/")
                 # Catch-all keeps REQUIRE_APPLICATION_CONTEXT (default on) satisfied

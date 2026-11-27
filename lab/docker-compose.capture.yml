@@ -1,0 +1,55 @@
+# Isolated capture lab for eval/capture_lab.py --requests.
+#
+# Only nginx+ModSecurity, DVWA and the Flask "Lab Shop". No waf-tuner backend
+# or frontend, a separate project name, its own network, port 18080 and an
+# audit-log directory you choose, so it never touches lab-data/ or the main lab.
+#
+#   export CAPTURE_DIR=/some/scratch/dir
+#   docker compose -p waftuner-capture -f lab/docker-compose.capture.yml up -d --build
+#   python3 eval/capture_lab.py --requests --base-url http://127.0.0.1:18080 \
+#       --audit-log "$CAPTURE_DIR/modsec/audit.log"
+#   docker compose -p waftuner-capture -f lab/docker-compose.capture.yml down
+
+services:
+  nginx:
+    build:
+      context: ../nginx
+      dockerfile: Dockerfile
+    container_name: waf-lab-nginx-capture
+    volumes:
+      - ${CAPTURE_DIR:?set CAPTURE_DIR to a scratch directory}:/shared
+      - ${CAPTURE_DIR}/modsec:/var/log/modsec
+    ports:
+      - "127.0.0.1:18080:8080"
+    environment:
+      BACKEND: "http://dvwa:80"
+      FLASK_BACKEND: "http://flask-app:5000"
+      SHOP_SERVER_NAME: "shop.lab"
+      PORT: "8080"
+      SSL_PORT: "8443"
+      MODSEC_RULE_ENGINE: "DetectionOnly"
+      PARANOIA: "2"
+      EXECUTING_PARANOIA: "2"
+      ANOMALY_INBOUND: "10"
+      ANOMALY_OUTBOUND: "4"
+      MODSEC_AUDIT_ENGINE: "On"
+      MODSEC_AUDIT_LOG: "/var/log/modsec/audit.log"
+      MODSEC_AUDIT_LOG_FORMAT: "JSON"
+      MODSEC_AUDIT_LOG_TYPE: "Serial"
+      MODSEC_AUDIT_LOG_PARTS: "ABCFHIJKZ"
+      MODSEC_REQ_BODY_ACCESS: "On"
+      MODSEC_RESP_BODY_ACCESS: "On"
+      WAF_SHARED_DIR: "/shared"
+    depends_on:
+      - dvwa
+      - flask-app
+
+  dvwa:
+    image: vulnerables/web-dvwa:latest
+    container_name: waf-lab-dvwa-capture
+
+  flask-app:
+    build:
+      context: ./flask-app
+      dockerfile: Dockerfile
+    container_name: waf-lab-flask-capture

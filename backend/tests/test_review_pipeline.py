@@ -13,7 +13,7 @@ from sqlalchemy import select
 from db import models
 from routers import analytics, cases, events, exceptions, profiles
 from services import agent
-from services.application_context import application_context_for, route_supports_exception
+from services.profile_match import application_context_for, route_supports_exception
 from services.crs_index import CRSRule
 from services.draft_scope import canonical_scope_key, rule_numeric_id
 from services.exception_builder import build_exception_rule
@@ -26,11 +26,11 @@ def test_specific_route_with_named_evidence_wins_over_a_catchall():
                               routes=[{"path": "/catalog", "methods": ["GET"], "parameters": {"q": "product search"}}])
     chosen, context = application_context_for([catchall, specific], "catalog.test", "GET", "/catalog")
     assert chosen is specific
-    assert route_supports_exception(context, "q")
-    assert not route_supports_exception(context, "other")
+    assert route_supports_exception(context, "ARGS", "q")
+    assert not route_supports_exception(context, "ARGS", "other")
     chosen, context = application_context_for([catchall, specific], "catalog.test", "POST", "/catalog")
     assert chosen is catchall
-    assert not route_supports_exception(context, "q")
+    assert not route_supports_exception(context, "ARGS", "q")
 
 
 def test_exclusion_identity_matches_exact_scoped_rule():
@@ -123,6 +123,10 @@ def test_profile_addition_and_reanalysis_only_change_affected_cases(sqlite, monk
 
 
 def test_copy_and_export_require_approved_current_scoped_rule(sqlite, monkeypatch):
+    from services.incidents import matched_input_keys
+    from services.inference_context import prepare_request_evidence
+
+    monkeypatch.setenv("INCIDENT_FINGERPRINT_KEY", "test-only-key")
     crs_rule = CRSRule(
         rule_id="10001", raw='SecRule ARGS:q "@streq music" "id:10001,phase:2,log"',
         targets=["ARGS:q"], operator="@streq music", message="Local test rule", tags=[],
@@ -149,13 +153,24 @@ def test_copy_and_export_require_approved_current_scoped_rule(sqlite, monkeypatc
             event = models.AuditEvent(transaction_id="catalog-test", event_line=17, timestamp=now, raw_event={
                 "transaction_id": "catalog-test", "method": "GET", "uri": "/catalog?q=music",
                 "raw_request": {"headers": {"Host": "catalog.test"}},
-                "matches": [{"rule_id": "10001", "matched_data": "music"}],
+                "matches": [{"rule_id": rule_id, "matched_data": "music", "collection": "ARGS", "parameter": "q"}
+                            for rule_id in ("10001", "10002")],
             })
             db.add_all([case, event, profile])
             await db.flush()
+            occurrence = models.IncidentOccurrence(
+                audit_event_id=event.id, analysis_case_id=case.id, transaction_id=event.transaction_id,
+                event_line=event.event_line, match_index=0, rule_id=case.rule_id, fingerprint=case.fingerprint,
+            )
+            db.add(occurrence)
+            await db.flush()
+            input_keys = matched_input_keys(
+                event.raw_event, prepare_request_evidence(event.raw_event), event.raw_event["matches"][0],
+            )
             revision = models.AnalysisRevision(
                 analysis_case_id=case.id, state="complete", classification="false_positive", model="fixture",
                 prompt_version="test", profile_version=1, application_profile_id=profile.id,
+                occurrence_id=occurrence.id, input_keys=input_keys,
                 crs_digest=crs_rule.signature, validation_status="valid",
                 normalized_rule=proposed_rule, proposed_rule_scope=scope,
             )
@@ -196,6 +211,39 @@ def test_copy_and_export_require_approved_current_scoped_rule(sqlite, monkeypatc
             monkeypatch.setattr(exceptions, "get_rule", lambda _: None)
             assert (await exceptions.get_exception(draft.id, db))["status"] == "stale"
             assert await exported_rule() == ""
+            monkeypatch.setattr(exceptions, "get_rule", lambda _: crs_rule)
+
+            # The read APIs must check for conflicts even if the draft is still stored as approved.
+            other_case = models.AnalysisCase(
+                fingerprint="other-rule", method="GET", path="/catalog", rule_id="10002",
+                collection="ARGS", parameter="q", latest_event_line=17, state="complete",
+            )
+            db.add(other_case)
+            await db.flush()
+            other_occurrence = models.IncidentOccurrence(
+                audit_event_id=event.id, analysis_case_id=other_case.id, transaction_id=event.transaction_id,
+                event_line=event.event_line, match_index=1, rule_id=other_case.rule_id, fingerprint=other_case.fingerprint,
+            )
+            db.add(other_occurrence)
+            await db.flush()
+            true_positive = models.AnalysisRevision(
+                analysis_case_id=other_case.id, occurrence_id=other_occurrence.id, input_keys=input_keys,
+                state="complete", classification="true_positive", model="fixture", prompt_version="test",
+            )
+            db.add(true_positive)
+            await db.commit()
+            assert (await exceptions.get_exception(draft.id, db))["proposed_rule"] is None
+            assert await exported_rule() == ""
+            # Upgraded databases still contain verdicts without an occurrence link.
+            true_positive.occurrence_id = None
+            true_positive.input_keys = None
+            await db.commit()
+            assert await exported_rule() == ""
+            draft.status = "pending"
+            await db.commit()
+            with pytest.raises(HTTPException) as error:
+                await exceptions.approve_exception(draft.id, db)
+            assert error.value.status_code == 409
     asyncio.run(run())
 
 

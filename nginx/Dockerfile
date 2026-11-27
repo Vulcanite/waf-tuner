@@ -11,4 +11,9 @@ RUN mkdir -p /var/log/modsec /waf-data/exceptions /waf-data/crs-rules \
 COPY docker-entrypoint.d/09-seed-crs.sh /docker-entrypoint.d/09-seed-crs.sh
 RUN chmod +x /docker-entrypoint.d/09-seed-crs.sh
 
+# Host-based routing for the second lab app (Flask "Lab Shop" on Host shop.lab).
+ENV FLASK_BACKEND=http://flask-app:5000 \
+    SHOP_SERVER_NAME=shop.lab
+COPY templates/conf.d/shop-lab.conf.template /etc/nginx/templates/conf.d/shop-lab.conf.template
+
 EXPOSE 80

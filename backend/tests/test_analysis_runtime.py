@@ -19,6 +19,7 @@ from services.model_contract import classify_repair_response
 def isolated_database(tmp_path, monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "test.db"))
+    monkeypatch.setenv("INCIDENT_FINGERPRINT_KEY", "test-only-key")
     monkeypatch.setattr(models, "_async_engine", None)
     monkeypatch.setattr(models, "_async_session_factory", None)
 
@@ -208,7 +209,7 @@ def test_only_effort_rejection_pauses_escalation(provider_error, blocked, monkey
                 patch.object(agent, "_finish_attempt", AsyncMock()) as finish,
             ):
                 for revision_id in (1, 2):
-                    verdict, _, _ = await agent._call_model({}, {}, revision_id)
+                    verdict, _ = await agent._call_model({}, {}, revision_id)
                     assert verdict["classification"] == "uncertain"
                 settings = agent.public_model_settings()
                 assert settings["configuration_error"] is None

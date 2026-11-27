@@ -1,0 +1,526 @@
+{
+  "name": "bench-wordpress",
+  "version": 1,
+  "host_patterns": [
+    "wp.bench"
+  ],
+  "context": {
+    "purpose": "WordPress 7.1 blog (technical posts) with the block and classic editors, behind ModSecurity CRS",
+    "languages": [
+      "php"
+    ],
+    "frameworks": [
+      "wordpress"
+    ],
+    "data_stores": [
+      "mariadb"
+    ]
+  },
+  "routes": [
+    {
+      "path": "/",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:wp-settings-1": "cookie: admin UI preferences written by WordPress JavaScript (URL-encoded key=value list)",
+        "REQUEST_COOKIES:wp-settings-time-1": "cookie: timestamp of the UI preferences",
+        "REQUEST_COOKIES:wordpress_test_cookie": "cookie: login cookie test",
+        "s": "front-end site search; visitors type free text, punctuation and code fragments",
+        "p": "numeric post id",
+        "wp_customize": "customizer preview flag ('on')",
+        "customized": "customizer preview: JSON object of setting id -> value, includes the admin's custom CSS and site text",
+        "nonce": "customizer preview nonce",
+        "customize_changeset_uuid": "customizer changeset UUID",
+        "customize_theme": "theme slug",
+        "customize_messenger_channel": "customizer preview channel name"
+      },
+      "notes": "Front page, site search and Customizer live preview. Search terms are bound as WP_Query parameters."
+    },
+    {
+      "path": "/wp-login.php",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:wp-settings-1": "cookie: admin UI preferences written by WordPress JavaScript (URL-encoded key=value list)",
+        "REQUEST_COOKIES:wp-settings-time-1": "cookie: timestamp of the UI preferences",
+        "REQUEST_COOKIES:wordpress_test_cookie": "cookie: login cookie test",
+        "log": "username or email",
+        "pwd": "password (never used in SQL)",
+        "rememberme": "remember-me checkbox",
+        "wp-submit": "submit button label",
+        "redirect_to": "absolute URL on this site to return to after login",
+        "testcookie": "cookie test flag",
+        "action": "login action: login, lostpassword, resetpass, logout"
+      },
+      "notes": "Login form. Credentials are checked with prepared statements and password hashing."
+    },
+    {
+      "path": "/wp-comments-post.php",
+      "methods": [
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:wp-settings-1": "cookie: admin UI preferences written by WordPress JavaScript (URL-encoded key=value list)",
+        "REQUEST_COOKIES:wp-settings-time-1": "cookie: timestamp of the UI preferences",
+        "REQUEST_COOKIES:wordpress_test_cookie": "cookie: login cookie test",
+        "comment": "visitor comment text; plain text with a small HTML subset allowed by kses, often contains code snippets",
+        "author": "commenter display name",
+        "email": "commenter email",
+        "url": "commenter website URL",
+        "submit": "submit button label ('Post Comment')",
+        "comment_post_ID": "numeric post id",
+        "comment_parent": "numeric parent comment id"
+      },
+      "notes": "Public, unauthenticated comment form. Comment HTML is filtered by kses on save; anyone can post."
+    },
+    {
+      "path": "/wp-admin/post.php",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:wp-settings-1": "cookie: admin UI preferences written by WordPress JavaScript (URL-encoded key=value list)",
+        "REQUEST_COOKIES:wp-settings-time-1": "cookie: timestamp of the UI preferences",
+        "REQUEST_COOKIES:wordpress_test_cookie": "cookie: login cookie test",
+        "content": "post body from the classic editor: author-written HTML, may contain code samples, scripts and embeds (admins and editors have unfiltered_html)",
+        "post_title": "post title",
+        "excerpt": "post excerpt",
+        "post_name": "slug",
+        "tax_input[post_tag]": "comma separated tags",
+        "post_ID": "numeric post id",
+        "_wpnonce": "nonce",
+        "action": "editpost or edit",
+        "post_status": "draft or publish",
+        "_wp_http_referer": "admin page path to return to",
+        "_wp_original_http_referer": "admin page URL to return to",
+        "referredby": "admin page URL",
+        "classic-editor": "classic editor flag"
+      },
+      "notes": "Classic editor save. Only logged-in authors; content is stored, rendered as the author wrote it."
+    },
+    {
+      "path": "/wp-admin/post-new.php",
+      "methods": [
+        "GET"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:wp-settings-1": "cookie: admin UI preferences written by WordPress JavaScript (URL-encoded key=value list)",
+        "REQUEST_COOKIES:wp-settings-time-1": "cookie: timestamp of the UI preferences",
+        "REQUEST_COOKIES:wordpress_test_cookie": "cookie: login cookie test",
+        "classic-editor": "editor switch flag",
+        "classic-editor__forget": "editor switch flag"
+      },
+      "notes": "New post screen."
+    },
+    {
+      "path": "/wp-admin/admin-ajax.php",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:wp-settings-1": "cookie: admin UI preferences written by WordPress JavaScript (URL-encoded key=value list)",
+        "REQUEST_COOKIES:wp-settings-time-1": "cookie: timestamp of the UI preferences",
+        "REQUEST_COOKIES:wordpress_test_cookie": "cookie: login cookie test",
+        "action": "ajax action name (heartbeat, replyto-comment, customize_save, add-menu-item, save-attachment, rest-nonce)",
+        "data[wp_autosave][content]": "classic editor autosave of the post body (author HTML, code samples)",
+        "data[wp_autosave][post_title]": "autosave post title",
+        "data[wp_autosave][_wpnonce]": "nonce",
+        "_nonce": "heartbeat nonce",
+        "screen_id": "admin screen id",
+        "has_focus": "boolean",
+        "interval": "heartbeat seconds",
+        "content": "admin reply to a comment (HTML)",
+        "comment_ID": "numeric",
+        "comment_post_ID": "numeric",
+        "_ajax_nonce-replyto-comment": "nonce",
+        "wp_customize": "'on'",
+        "customize_changeset_data": "JSON object of customizer settings, includes custom CSS and site text",
+        "customize_changeset_uuid": "UUID",
+        "customize_theme": "theme slug",
+        "customize_changeset_status": "publish or draft",
+        "nonce": "nonce",
+        "menu": "numeric menu id",
+        "menu-settings-column-nonce": "nonce",
+        "menu-item[-1][menu-item-url]": "custom menu link URL",
+        "menu-item[-1][menu-item-title]": "menu link label",
+        "menu-item[-1][menu-item-type]": "menu item type",
+        "id": "numeric attachment id",
+        "changes[caption]": "media caption text",
+        "changes[alt]": "image alt text",
+        "post_id": "numeric"
+      },
+      "notes": "Admin AJAX endpoint. All actions here need a logged-in user and a nonce."
+    },
+    {
+      "path": "/wp-admin/options.php",
+      "methods": [
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:wp-settings-1": "cookie: admin UI preferences written by WordPress JavaScript (URL-encoded key=value list)",
+        "REQUEST_COOKIES:wp-settings-time-1": "cookie: timestamp of the UI preferences",
+        "REQUEST_COOKIES:wordpress_test_cookie": "cookie: login cookie test",
+        "option_page": "settings group",
+        "_wpnonce": "nonce",
+        "_wp_http_referer": "admin page path",
+        "blogname": "site title",
+        "blogdescription": "site tagline, free text",
+        "date_format_custom": "PHP date format string",
+        "time_format_custom": "PHP time format string",
+        "timezone_string": "IANA timezone",
+        "siteurl": "site URL",
+        "home": "home URL",
+        "moderation_keys": "newline separated words/URLs that hold a comment for moderation (often attack strings)",
+        "disallowed_keys": "newline separated words/URLs that trash a comment (often attack strings)",
+        "comment_max_links": "integer"
+      },
+      "notes": "Settings forms (General, Discussion). Admin only; values are stored as options."
+    },
+    {
+      "path": "/wp-admin/options-permalink.php",
+      "methods": [
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:wp-settings-1": "cookie: admin UI preferences written by WordPress JavaScript (URL-encoded key=value list)",
+        "REQUEST_COOKIES:wp-settings-time-1": "cookie: timestamp of the UI preferences",
+        "REQUEST_COOKIES:wordpress_test_cookie": "cookie: login cookie test",
+        "permalink_structure": "URL structure with %tags% such as /%year%/%postname%/",
+        "selection": "chosen structure",
+        "category_base": "URL prefix",
+        "tag_base": "URL prefix",
+        "_wpnonce": "nonce"
+      },
+      "notes": "Permalink settings. Admin only."
+    },
+    {
+      "path": "/wp-admin/profile.php",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:wp-settings-1": "cookie: admin UI preferences written by WordPress JavaScript (URL-encoded key=value list)",
+        "REQUEST_COOKIES:wp-settings-time-1": "cookie: timestamp of the UI preferences",
+        "REQUEST_COOKIES:wordpress_test_cookie": "cookie: login cookie test",
+        "description": "biographical info, HTML allowed",
+        "url": "website URL",
+        "first_name": "name",
+        "last_name": "name",
+        "nickname": "name",
+        "display_name": "name",
+        "email": "email",
+        "_wpnonce": "nonce"
+      },
+      "notes": "User profile form."
+    },
+    {
+      "path": "/wp-admin/nav-menus.php",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:wp-settings-1": "cookie: admin UI preferences written by WordPress JavaScript (URL-encoded key=value list)",
+        "REQUEST_COOKIES:wp-settings-time-1": "cookie: timestamp of the UI preferences",
+        "REQUEST_COOKIES:wordpress_test_cookie": "cookie: login cookie test",
+        "nav-menu-data": "JSON array of {name, value} menu item fields serialized by the menu screen (titles, URLs, classes)",
+        "menu-name": "menu name",
+        "menu-locations[primary]": "numeric menu id",
+        "update-nav-menu-nonce": "nonce",
+        "menu": "numeric menu id",
+        "action": "update or edit",
+        "save_menu": "button label",
+        "auto-add-pages": "checkbox"
+      },
+      "notes": "Appearance > Menus. Admin only."
+    },
+    {
+      "path": "/wp-admin/async-upload.php",
+      "methods": [
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:wp-settings-1": "cookie: admin UI preferences written by WordPress JavaScript (URL-encoded key=value list)",
+        "REQUEST_COOKIES:wp-settings-time-1": "cookie: timestamp of the UI preferences",
+        "REQUEST_COOKIES:wordpress_test_cookie": "cookie: login cookie test",
+        "FILES:async-upload": "uploaded media file; WordPress checks extension and MIME type against an allowlist",
+        "name": "original file name",
+        "action": "upload-attachment",
+        "_wpnonce": "nonce"
+      },
+      "notes": "Media library upload."
+    },
+    {
+      "path": "/wp-admin/edit.php",
+      "methods": [
+        "GET"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:wp-settings-1": "cookie: admin UI preferences written by WordPress JavaScript (URL-encoded key=value list)",
+        "REQUEST_COOKIES:wp-settings-time-1": "cookie: timestamp of the UI preferences",
+        "REQUEST_COOKIES:wordpress_test_cookie": "cookie: login cookie test",
+        "s": "admin post search text",
+        "post_type": "post type",
+        "post_status": "status filter"
+      },
+      "notes": "Posts list."
+    },
+    {
+      "path": "/wp-admin/upload.php",
+      "methods": [
+        "GET"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:wp-settings-1": "cookie: admin UI preferences written by WordPress JavaScript (URL-encoded key=value list)",
+        "REQUEST_COOKIES:wp-settings-time-1": "cookie: timestamp of the UI preferences",
+        "REQUEST_COOKIES:wordpress_test_cookie": "cookie: login cookie test",
+        "s": "media search text",
+        "mode": "list or grid"
+      },
+      "notes": "Media library."
+    },
+    {
+      "path": "/wp-json/wp/v2/posts",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:wp-settings-1": "cookie: admin UI preferences written by WordPress JavaScript (URL-encoded key=value list)",
+        "REQUEST_COOKIES:wp-settings-time-1": "cookie: timestamp of the UI preferences",
+        "REQUEST_COOKIES:wordpress_test_cookie": "cookie: login cookie test",
+        "_locale": "editor locale flag, always 'user'",
+        "REQUEST_HEADERS:X-WP-Nonce": "REST API nonce (CSRF token)",
+        "search": "post search text",
+        "per_page": "integer",
+        "_embed": "flag"
+      },
+      "notes": "REST posts collection."
+    },
+    {
+      "path": "/wp-json/wp/v2/posts/{id}",
+      "methods": [
+        "GET",
+        "POST",
+        "PUT"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:wp-settings-1": "cookie: admin UI preferences written by WordPress JavaScript (URL-encoded key=value list)",
+        "REQUEST_COOKIES:wp-settings-time-1": "cookie: timestamp of the UI preferences",
+        "REQUEST_COOKIES:wordpress_test_cookie": "cookie: login cookie test",
+        "_locale": "editor locale flag, always 'user'",
+        "REQUEST_HEADERS:X-WP-Nonce": "REST API nonce (CSRF token)",
+        "json.content": "block editor post body: serialized block markup (HTML comments + HTML), may contain code blocks, custom HTML and scripts from trusted authors",
+        "json.title": "post title",
+        "json.excerpt": "excerpt",
+        "json.status": "publish/draft",
+        "json.id": "numeric",
+        "REQUEST_HEADERS:X-HTTP-Method-Override": "PUT or DELETE, sent by the block editor"
+      },
+      "notes": "Block editor save (logged-in authors with a REST nonce)."
+    },
+    {
+      "path": "/wp-json/wp/v2/posts/{id}/autosaves",
+      "methods": [
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:wp-settings-1": "cookie: admin UI preferences written by WordPress JavaScript (URL-encoded key=value list)",
+        "REQUEST_COOKIES:wp-settings-time-1": "cookie: timestamp of the UI preferences",
+        "REQUEST_COOKIES:wordpress_test_cookie": "cookie: login cookie test",
+        "_locale": "editor locale flag, always 'user'",
+        "REQUEST_HEADERS:X-WP-Nonce": "REST API nonce (CSRF token)",
+        "json.content": "block editor autosave of the post body (block markup)",
+        "json.title": "title",
+        "json.id": "numeric"
+      },
+      "notes": "Block editor autosave."
+    },
+    {
+      "path": "/wp-json/wp/v2/media",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:wp-settings-1": "cookie: admin UI preferences written by WordPress JavaScript (URL-encoded key=value list)",
+        "REQUEST_COOKIES:wp-settings-time-1": "cookie: timestamp of the UI preferences",
+        "REQUEST_COOKIES:wordpress_test_cookie": "cookie: login cookie test",
+        "_locale": "editor locale flag, always 'user'",
+        "REQUEST_HEADERS:X-WP-Nonce": "REST API nonce (CSRF token)",
+        "FILES:file": "uploaded media file, checked against the MIME allowlist",
+        "post": "numeric parent post id"
+      },
+      "notes": "Block editor media upload."
+    },
+    {
+      "path": "/wp-json/wp/v2/media/{id}",
+      "methods": [
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:wp-settings-1": "cookie: admin UI preferences written by WordPress JavaScript (URL-encoded key=value list)",
+        "REQUEST_COOKIES:wp-settings-time-1": "cookie: timestamp of the UI preferences",
+        "REQUEST_COOKIES:wordpress_test_cookie": "cookie: login cookie test",
+        "_locale": "editor locale flag, always 'user'",
+        "REQUEST_HEADERS:X-WP-Nonce": "REST API nonce (CSRF token)",
+        "json.alt_text": "alt text",
+        "json.caption": "caption, HTML allowed",
+        "json.title": "title"
+      },
+      "notes": "Media metadata update."
+    },
+    {
+      "path": "/wp-json/batch/v1",
+      "methods": [
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:wp-settings-1": "cookie: admin UI preferences written by WordPress JavaScript (URL-encoded key=value list)",
+        "REQUEST_COOKIES:wp-settings-time-1": "cookie: timestamp of the UI preferences",
+        "REQUEST_COOKIES:wordpress_test_cookie": "cookie: login cookie test",
+        "_locale": "editor locale flag, always 'user'",
+        "REQUEST_HEADERS:X-WP-Nonce": "REST API nonce (CSRF token)",
+        "json.requests.array_0.body.instance.raw.content": "block widget content (block markup / custom HTML)",
+        "json.validation": "batch validation mode"
+      },
+      "notes": "REST batch used by the block widgets editor."
+    },
+    {
+      "path": "/wp-json/wp/v2/search",
+      "methods": [
+        "GET"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:wp-settings-1": "cookie: admin UI preferences written by WordPress JavaScript (URL-encoded key=value list)",
+        "REQUEST_COOKIES:wp-settings-time-1": "cookie: timestamp of the UI preferences",
+        "REQUEST_COOKIES:wordpress_test_cookie": "cookie: login cookie test",
+        "_locale": "editor locale flag, always 'user'",
+        "REQUEST_HEADERS:X-WP-Nonce": "REST API nonce (CSRF token)",
+        "search": "link search text in the editor",
+        "type": "post",
+        "subtype": "any",
+        "per_page": "integer"
+      },
+      "notes": "Editor link search."
+    },
+    {
+      "path": "/wp-json/wp/v2/categories",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:wp-settings-1": "cookie: admin UI preferences written by WordPress JavaScript (URL-encoded key=value list)",
+        "REQUEST_COOKIES:wp-settings-time-1": "cookie: timestamp of the UI preferences",
+        "REQUEST_COOKIES:wordpress_test_cookie": "cookie: login cookie test",
+        "_locale": "editor locale flag, always 'user'",
+        "REQUEST_HEADERS:X-WP-Nonce": "REST API nonce (CSRF token)",
+        "json.name": "category name",
+        "json.description": "category description",
+        "json.slug": "slug"
+      },
+      "notes": "Categories."
+    },
+    {
+      "path": "/wp-json/wp/v2/tags",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:wp-settings-1": "cookie: admin UI preferences written by WordPress JavaScript (URL-encoded key=value list)",
+        "REQUEST_COOKIES:wp-settings-time-1": "cookie: timestamp of the UI preferences",
+        "REQUEST_COOKIES:wordpress_test_cookie": "cookie: login cookie test",
+        "_locale": "editor locale flag, always 'user'",
+        "REQUEST_HEADERS:X-WP-Nonce": "REST API nonce (CSRF token)",
+        "json.name": "tag name"
+      },
+      "notes": "Tags."
+    },
+    {
+      "path": "/wp-json/wp/v2/settings",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:wp-settings-1": "cookie: admin UI preferences written by WordPress JavaScript (URL-encoded key=value list)",
+        "REQUEST_COOKIES:wp-settings-time-1": "cookie: timestamp of the UI preferences",
+        "REQUEST_COOKIES:wordpress_test_cookie": "cookie: login cookie test",
+        "_locale": "editor locale flag, always 'user'",
+        "REQUEST_HEADERS:X-WP-Nonce": "REST API nonce (CSRF token)",
+        "json.title": "site title",
+        "json.description": "tagline"
+      },
+      "notes": "Site settings via REST (admin)."
+    },
+    {
+      "path": "/wp-json/wp/v2/users",
+      "methods": [
+        "GET"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:wp-settings-1": "cookie: admin UI preferences written by WordPress JavaScript (URL-encoded key=value list)",
+        "REQUEST_COOKIES:wp-settings-time-1": "cookie: timestamp of the UI preferences",
+        "REQUEST_COOKIES:wordpress_test_cookie": "cookie: login cookie test",
+        "_locale": "editor locale flag, always 'user'",
+        "REQUEST_HEADERS:X-WP-Nonce": "REST API nonce (CSRF token)",
+        "orderby": "sort key: id, name, registered_date ...",
+        "search": "user search"
+      },
+      "notes": "Users collection; orderby is checked against an enum."
+    },
+    {
+      "path": "/wp-json/wp-block-editor/v1/url-details",
+      "methods": [
+        "GET"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:wp-settings-1": "cookie: admin UI preferences written by WordPress JavaScript (URL-encoded key=value list)",
+        "REQUEST_COOKIES:wp-settings-time-1": "cookie: timestamp of the UI preferences",
+        "REQUEST_COOKIES:wordpress_test_cookie": "cookie: login cookie test",
+        "_locale": "editor locale flag, always 'user'",
+        "REQUEST_HEADERS:X-WP-Nonce": "REST API nonce (CSRF token)",
+        "url": "URL the editor wants a link preview for; the server fetches it with wp_safe_remote_get (private and link-local addresses refused)"
+      },
+      "notes": "Editor link preview (server-side fetch)."
+    },
+    {
+      "path": "/wp-json/oembed/1.0/proxy",
+      "methods": [
+        "GET"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:wp-settings-1": "cookie: admin UI preferences written by WordPress JavaScript (URL-encoded key=value list)",
+        "REQUEST_COOKIES:wp-settings-time-1": "cookie: timestamp of the UI preferences",
+        "REQUEST_COOKIES:wordpress_test_cookie": "cookie: login cookie test",
+        "_locale": "editor locale flag, always 'user'",
+        "REQUEST_HEADERS:X-WP-Nonce": "REST API nonce (CSRF token)",
+        "url": "URL to embed; fetched server-side through the oEmbed allowlist/discovery"
+      },
+      "notes": "oEmbed proxy for the editor (server-side fetch)."
+    },
+    {
+      "path": "/*",
+      "methods": [
+        "GET",
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "parameters": {},
+      "notes": "General WordPress context for paths without a documented route."
+    }
+  ]
+}

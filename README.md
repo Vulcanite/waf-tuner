@@ -26,7 +26,7 @@ cp lab-data/.env.example lab-data/.env
 docker compose up --build
 ```
 
-Open `http://localhost:3000`. The included DVWA lab is at `http://localhost:8080` (`admin` / `password`). Generate sample CRS traffic with:
+Open `http://localhost:3000`. The included DVWA lab is at `http://localhost:8080` (`admin` / `password`). The same ModSecurity also fronts a second lab app, the Flask Lab Shop (`lab/flask-app`), for requests with `Host: shop.lab` (`curl -H 'Host: shop.lab' http://localhost:8080/search?q=tote`). Any other Host still reaches DVWA. Generate sample CRS traffic with:
 
 ```bash
 ./scripts/run_incident_matrix.sh
@@ -85,7 +85,7 @@ Lab checks are intentionally outside normal pull-request CI:
 ## Operator workflow
 
 1. Point the backend at a ModSecurity JSON Serial audit log.
-2. Create an application profile for the host, route, and parameters you want to tune. Copyable false-positive exclusions require parameter semantics on the matching route by default. The seeded `default-lab` profile describes DVWA routes. Set `SEED_DEFAULT_PROFILE=false` when starting with your own profile.
+2. Create an application profile for the host, route, and parameters you want to tune. Copyable false-positive exclusions require parameter semantics on the matching route by default. Document an argument by its plain name, a cookie as `REQUEST_COOKIES:<name>` and a header as `REQUEST_HEADERS:<name>`; a cookie entry never covers an argument of the same name. The seeded `default-lab` profile describes DVWA routes and `shop-lab` describes the Flask app on `shop.lab`. Both are seeded only when no profiles exist. Set `SEED_DEFAULT_PROFILE=false` when starting with your own profile.
 3. Send traffic through the WAF and review Cases and Exceptions.
 4. Validate approved rules in your environment, copy them into your configuration, run `nginx -t` or the Apache equivalent, and reload the edge yourself.
 

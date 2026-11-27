@@ -1,0 +1,22 @@
+# Second lab app: requests with Host shop.lab go to the Flask "Lab Shop".
+# Any other Host still reaches DVWA through the image's default_server block.
+# ModSecurity is enabled at http level (conf.d/modsecurity.conf), so this
+# server is inspected by the same CRS rules and writes to the same audit log.
+server {
+    listen ${PORT};
+    server_name ${SHOP_SERVER_NAME};
+
+    location / {
+        client_max_body_size 0;
+        # Resolve at request time so nginx still starts when the Flask service is absent.
+        set $shop_backend ${FLASK_BACKEND};
+        proxy_set_header Host $host;
+        proxy_set_header Proxy "";
+        proxy_set_header ${REAL_IP_PROXY_HEADER} $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_http_version 1.1;
+        proxy_redirect off;
+        proxy_pass $shop_backend;
+    }
+}
