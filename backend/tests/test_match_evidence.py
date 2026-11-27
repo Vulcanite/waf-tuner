@@ -266,6 +266,22 @@ def test_the_prompt_keeps_the_untrusted_evidence_and_tech_stack_rules():
     assert "applies_to_stack" in RESPONSE_FORMAT["json_schema"]["schema"]["required"]
 
 
+def test_the_prompt_judges_the_value_and_separates_the_verdict_from_the_draft():
+    prompt = " ".join(SYSTEM_PROMPT.split())
+    assert "Judge the value, not the rule's attack class" in prompt
+    assert "true_positive even when the rule was written for a different attack class" in prompt
+    # A clearly benign value can be cleared without a route profile; the server still gates drafts.
+    assert "false_positive is prohibited" not in prompt
+    assert "is not required for one" in prompt
+    assert "Missing application semantics must increase uncertainty" in prompt
+    assert "Never classify any of these as false_positive" in prompt
+    for never in ("executable SQL, shell or XSS syntax", "169.254.169.254", "decimal, hex or octal encoded IP",
+                  "eval, exec, system, popen, backticks", "loopback, private and link-local"):
+        assert never in prompt
+    required = RESPONSE_FORMAT["json_schema"]["schema"]["required"]
+    assert {"rule_looks_for", "payload_is", "why"} <= set(required) and "context_factors" not in required
+
+
 @pytest.mark.parametrize("change", [
     {"why": ""}, {"why": "   "}, {"payload_is": None}, {"rule_looks_for": "x" * 601}, {"why": ["list"]},
 ])
