@@ -9,7 +9,7 @@ Initial lab/evaluation release of the observe-and-recommend workflow:
 - Ingest ModSecurity JSON audit data and group alerts into review cases.
 - Run bounded, off-path LLM classification and system-build parameter-scoped exception drafts.
 - Require a matching application route profile (`REQUIRE_APPLICATION_CONTEXT`, on by default; set `false` to disable), deterministic validation, and human approval before a rule is available to copy.
-- Seed a `default-lab` route profile (DVWA routes plus a `/*` catch-all) when no profiles exist, so the lab produces copyable rules under the default; disable with `SEED_DEFAULT_PROFILE=false`.
+- Application profiles can be JSON files: every `PROFILES_DIR/*.json` (default `<DATA_DIR>/profiles`) is loaded at startup and upserted by name, a changed file making a new version (see `docs/profiles.md`). The lab's `default-lab` (DVWA) and `shop-lab` profiles moved to `lab/profiles/`, which Compose mounts as `PROFILES_DIR`. `SEED_DEFAULT_PROFILE` is removed: outside the lab, no profile is created unless you add one. The profile API now bounds routes, parameters and text length.
 - Merge reanalysis into the active pending draft for a scope (upgrade missing context → valid rule; never rewrite approved drafts).
 - Retire approve-time rule-ID conflicts as `stale` (no half-pending rows).
 - Opt-in CORS via `CORS_ALLOW_ORIGINS` (empty default for same-origin Compose UI proxy).

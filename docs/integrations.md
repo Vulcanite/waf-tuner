@@ -18,7 +18,10 @@ MODSEC_AUDIT_LOG=/path/to/audit.log
 CRS_RULES_DIR=/path/to/crs/rules # optional
 DATABASE_PATH=./data/waf-tuner.db
 DATA_DIR=./data # cursor, runtime config and fingerprint key
+PROFILES_DIR=./data/profiles # optional; application profile JSON files (default <DATA_DIR>/profiles)
 ```
+
+Application profiles: see [profiles.md](./profiles.md).
 
 LLM: `LLM_API_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` (OpenAI-compatible).
 
