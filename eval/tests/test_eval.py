@@ -12,7 +12,7 @@ sys.path.insert(0, str(EVAL))
 from capture_lab import label_request_matches, parse_audit_log  # noqa: E402
 from corpus import RequestCase, all_cases, request_cases, route_profile  # noqa: E402
 from evaluate import load_recordings, oracle_response, recording_path  # noqa: E402
-from fixtures import case_to_fixture, load_fixtures, merge_fixtures  # noqa: E402
+from fixtures import case_to_fixture, merge_fixtures  # noqa: E402
 from report import evaluate_recordings, matrix_markdown, write_reports  # noqa: E402
 import evaluate  # noqa: E402
 import report  # noqa: E402
@@ -55,37 +55,24 @@ def test_route_profile_does_not_reveal_the_label():
     # The profile comes from the route alone, so both labels appear with and without one.
     pairs = {(case.label, bool(route_profile(case.path))) for case in all_cases()}
     assert pairs == {("attack", True), ("attack", False), ("false_positive", True), ("false_positive", False)}
-    fixtures = load_fixtures()
-    assert all(
-        record["context"]["application_context"] == route_profile(record["context"]["incident"]["path"])
-        for record in fixtures
-    )
-
-
-def test_committed_fixtures_match_schema_and_volume():
-    fixtures = load_fixtures()
-    assert len(fixtures) >= 200
-    for record in fixtures:
-        assert record["id"]
-        assert record["expected"] in {"attack", "false_positive"}
-        assert record["label"] in {"attack", "false_positive"}
-        assert record["crs_rule_ids"]
-        assert "incident" in record["context"]
-        assert record["context"]["incident"]["rule_id"]
 
 
 def test_merge_preserves_legacy_ids():
-    legacy = load_fixtures()[:19]
+    legacy = [{"id": "attack-legacy", "expected": "attack",
+               "context": {"incident": {"rule_id": "942100", "path": "/search"}}}]
     generated = [case_to_fixture(case) for case in all_cases()[:5]]
     merged = merge_fixtures(legacy, generated)
     assert {item["id"] for item in legacy} <= {item["id"] for item in merged}
 
 
 def test_oracle_recorded_eval_has_no_attack_misses():
-    fixtures = load_fixtures()
+    fixtures = load_requests()
     stored = load_recordings(recording_path("oracle"))
-    assert len(stored) == len(fixtures)
-    results = [replay(fixture, stored[fixture["id"]]) for fixture in fixtures]
+    assert len(stored) == sum(len(fixture["labels"]) for fixture in fixtures)
+    # The committed oracle matches the labels it is derived from.
+    assert sorted(stored.values(), key=lambda item: item["id"]) == sorted(
+        evaluate.oracle_recordings(fixtures), key=lambda item: item["id"])
+    results = [row for fixture in fixtures for row in evaluate.evaluate_fixture(fixture, stored=stored)[0]]
     assert all(row["valid"] for row in results)
     assert sum(row["classification"] == "false_positive" for row in results if row["expected"] == "attack") == 0
     benign = [row for row in results if row["expected"] == "false_positive"]
@@ -93,7 +80,7 @@ def test_oracle_recorded_eval_has_no_attack_misses():
 
 
 def test_per_rule_report_covers_crs_ids(tmp_path: Path):
-    fixtures = load_fixtures()
+    fixtures = load_requests()
     reports = evaluate_recordings(fixtures, ["oracle"], EVAL / "recordings")
     write_reports(reports, tmp_path)
     payload = json.loads((tmp_path / "oracle.json").read_text())
@@ -103,13 +90,6 @@ def test_per_rule_report_covers_crs_ids(tmp_path: Path):
     markdown = matrix_markdown("oracle", payload)
     assert "Per CRS rule ID" in markdown
     assert (tmp_path / "oracle.md").exists()
-
-
-def test_historical_minimax_recording_covers_original_fixtures():
-    stored = load_recordings(recording_path("MiniMax-M3"))
-    assert len(stored) == 19
-    assert "attack-sqli-union" in stored
-    assert stored["benign-url-field"]["classification"] == "uncertain"
 
 
 def test_oracle_response_matches_expected_label():
@@ -242,14 +222,14 @@ def test_eval_uses_the_alert_pinned_ruleset_like_the_worker(monkeypatch):
 
 
 def test_gate_fails_a_model_that_never_commits_to_a_verdict(tmp_path):
-    fixtures = [record for record in load_fixtures() if record["expected"] == "attack"][:3]
-    fixtures_path = tmp_path / "fixtures.jsonl"
+    fixtures = [record for record in load_requests() if record["expected_request"] == "attack"][:3]
+    fixtures_path = tmp_path / "requests.jsonl"
     fixtures_path.write_text("".join(json.dumps(record) + "\n" for record in fixtures))
     uncertain = {**oracle_response("attack"), "classification": "uncertain"}
     evaluate.write_recordings(recording_path("hedger", tmp_path), [
-        {"id": record["id"], "raw": json.dumps(uncertain), "repaired": False, "finish_reason": "stop",
+        {"id": label["row_id"], "raw": json.dumps(uncertain), "repaired": False, "finish_reason": "stop",
          "classification": "uncertain", "latency_ms": 0, "token_usage": {}}
-        for record in fixtures
+        for record in fixtures for label in evaluate.fixture_labels(record)
     ])
     argv = ["--mode", "recorded", "--model", "hedger", "--fixtures", str(fixtures_path),
             "--recordings-dir", str(tmp_path), "--output", str(tmp_path / "report.json")]

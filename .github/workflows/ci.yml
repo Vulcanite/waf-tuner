@@ -35,8 +35,8 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install pytest
           PYTHONPATH=eval pytest -q eval/tests
-          python eval/evaluate.py --mode recorded --model oracle --output eval/reports/oracle.json
-          python eval/report.py --models oracle,MiniMax-M3 --output-dir eval/reports
+          python eval/evaluate.py --mode recorded --model oracle --fixtures eval/requests.jsonl --output eval/reports/oracle.json
+          python eval/report.py --models oracle --fixtures eval/requests.jsonl --output-dir eval/reports
 
   frontend-build:
     runs-on: ubuntu-latest

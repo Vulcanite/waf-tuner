@@ -66,7 +66,7 @@ npm ci
 npm run build
 ```
 
-The eval corpus has 280 cases: the original 19 hand-built fixtures plus 261 synthesized ones. Application profiles follow the route, not the label, and include attacks on profiled routes. The `oracle` recording is derived from the fixture labels, so the recorded eval in CI tests the harness and scoring, not model quality. The only real model run committed so far covers the original 19 fixtures. See [eval/README.md](./eval/README.md).
+The eval set is `eval/requests.jsonl`: 245 requests (868 labeled matches) captured through the lab's ModSecurity in front of DVWA and the Flask Lab Shop. The `oracle` recording is derived from the labels, so the recorded eval in CI tests the harness and scoring, not model quality. No real model run is committed. See [eval/README.md](./eval/README.md).
 
 Lab checks are intentionally outside normal pull-request CI:
 

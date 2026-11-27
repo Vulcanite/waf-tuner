@@ -11,7 +11,8 @@ Fixture path:
   2. Log into DVWA and crawl legitimate flows (benign)
   3. Replay CRS-category attack requests (optionally via go-ftw)
   4. Parse ModSecurity JSON Serial audit logs
-  5. Append labeled records to eval/fixtures.jsonl
+  5. Append labeled match-level records to --output (default eval/fixtures.jsonl;
+     the committed eval set is eval/requests.jsonl)
 
 If Docker or the lab WAF is unavailable, `--synthesize` (the default fallback)
 writes fixtures from eval/corpus.py with cited CRS rule IDs.
