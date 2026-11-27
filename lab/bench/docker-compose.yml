@@ -1,0 +1,142 @@
+# Phase 4 real-application benchmark lab (WordPress + Nextcloud).
+#
+# Three WAF front ends, same image and the same ModSecurity/CRS settings as
+# lab/docker-compose.capture.yml (DetectionOnly, PL2, JSON Serial audit log,
+# parts ABCFHIJKZ, every transaction logged):
+#
+#   waf-base  127.0.0.1:18280  CRS, no plugins (the image's empty plugin stubs)
+#   waf-wp    127.0.0.1:18281  CRS + wordpress-rule-exclusions-plugin v1.2.0
+#   waf-nc    127.0.0.1:18282  CRS + nextcloud-rule-exclusions-plugin v1.8.1
+#
+# Every WAF routes Host wp.bench to WordPress and Host nc.bench to Nextcloud.
+# Each app's traffic goes through waf-base and through its own plugin WAF, so a
+# plugin only ever sees the application it was written for.
+#
+# Audit logs live on a tmpfs inside each WAF; eval/bench/capture.py reads them
+# with `docker compose exec`. Nothing is written to the host.
+#
+#   docker compose -p waftuner-bench -f lab/bench/docker-compose.yml up -d
+#   lab/bench/setup.sh            # installs WordPress (wp-cli) and Nextcloud (occ)
+#   python3 eval/bench/capture.py
+#   docker compose -p waftuner-bench -f lab/bench/docker-compose.yml down -v
+#
+# Passwords below are throwaway lab defaults; override them with env vars.
+
+x-waf-env: &waf-env
+  BACKEND: "http://wordpress:80"
+  WP_BACKEND: "http://wordpress:80"
+  NC_BACKEND: "http://nextcloud:80"
+  WP_SERVER_NAME: "wp.bench"
+  NC_SERVER_NAME: "nc.bench"
+  PORT: "8080"
+  SSL_PORT: "8443"
+  MODSEC_RULE_ENGINE: "DetectionOnly"
+  PARANOIA: "2"
+  EXECUTING_PARANOIA: "2"
+  ANOMALY_INBOUND: "10"
+  ANOMALY_OUTBOUND: "4"
+  MODSEC_AUDIT_ENGINE: "On"
+  # AuditEngine On already logs every transaction; the relevant-status pattern
+  # is set to any status as well, so 200s are logged even if the engine is
+  # switched to RelevantOnly.
+  MODSEC_AUDIT_LOG_RELEVANT_STATUS: "^[1-5]"
+  MODSEC_AUDIT_LOG: "/var/log/modsec/audit.log"
+  MODSEC_AUDIT_LOG_FORMAT: "JSON"
+  MODSEC_AUDIT_LOG_TYPE: "Serial"
+  MODSEC_AUDIT_LOG_PARTS: "ABCFHIJKZ"
+  MODSEC_REQ_BODY_ACCESS: "On"
+  MODSEC_RESP_BODY_ACCESS: "On"
+
+x-waf: &waf
+  image: owasp/modsecurity-crs:nginx-alpine
+  environment: *waf-env
+  tmpfs:
+    - /var/log/modsec:mode=1777
+  depends_on:
+    - wordpress
+    - nextcloud
+  healthcheck:
+    test: ["CMD-SHELL", "curl -sf http://localhost:8080/healthz || exit 1"]
+    interval: 5s
+    timeout: 3s
+    retries: 30
+
+services:
+  waf-base:
+    <<: *waf
+    ports:
+      - "127.0.0.1:18280:8080"
+    volumes:
+      - ./nginx/bench-hosts.conf.template:/etc/nginx/templates/conf.d/bench-hosts.conf.template:ro
+
+  waf-wp:
+    <<: *waf
+    ports:
+      - "127.0.0.1:18281:8080"
+    volumes:
+      - ./nginx/bench-hosts.conf.template:/etc/nginx/templates/conf.d/bench-hosts.conf.template:ro
+      - ./plugins/wordpress/wordpress-rule-exclusions-config.conf:/opt/owasp-crs/plugins/wordpress-rule-exclusions-config.conf:ro
+      - ./plugins/wordpress/wordpress-rule-exclusions-before.conf:/opt/owasp-crs/plugins/wordpress-rule-exclusions-before.conf:ro
+
+  waf-nc:
+    <<: *waf
+    ports:
+      - "127.0.0.1:18282:8080"
+    volumes:
+      - ./nginx/bench-hosts.conf.template:/etc/nginx/templates/conf.d/bench-hosts.conf.template:ro
+      - ./plugins/nextcloud/nextcloud-rule-exclusions-config.conf:/opt/owasp-crs/plugins/nextcloud-rule-exclusions-config.conf:ro
+      - ./plugins/nextcloud/nextcloud-rule-exclusions-before.conf:/opt/owasp-crs/plugins/nextcloud-rule-exclusions-before.conf:ro
+
+  mariadb:
+    image: mariadb:11.4.13
+    environment:
+      MARIADB_DATABASE: wordpress
+      MARIADB_USER: wordpress
+      MARIADB_PASSWORD: ${BENCH_WP_DB_PASSWORD:-bench-wp-db-pass}
+      MARIADB_ROOT_PASSWORD: ${BENCH_DB_ROOT_PASSWORD:-bench-db-root-pass}
+    volumes:
+      - wp_db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  wordpress:
+    image: wordpress:7.1.5-php8.4-apache
+    environment:
+      WORDPRESS_DB_HOST: mariadb
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: ${BENCH_WP_DB_PASSWORD:-bench-wp-db-pass}
+      WORDPRESS_DB_NAME: wordpress
+    volumes:
+      - wp_html:/var/www/html
+    depends_on:
+      mariadb:
+        condition: service_healthy
+
+  # One-off wp-cli runner used by setup.sh (`run --rm wpcli ...`).
+  wpcli:
+    image: wordpress:cli-2.12.0-php8.4
+    profiles: ["tools"]
+    user: "33:33"
+    environment:
+      WORDPRESS_DB_HOST: mariadb
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: ${BENCH_WP_DB_PASSWORD:-bench-wp-db-pass}
+      WORDPRESS_DB_NAME: wordpress
+      HOME: /tmp
+    volumes:
+      - wp_html:/var/www/html
+    depends_on:
+      - wordpress
+
+  nextcloud:
+    image: nextcloud:35.0.3-apache
+    volumes:
+      - nc_html:/var/www/html
+
+volumes:
+  wp_db:
+  wp_html:
+  nc_html:
