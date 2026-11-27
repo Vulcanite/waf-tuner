@@ -23,8 +23,12 @@ def env_bool(name: str, default: bool = False) -> bool:
 
 
 def thinking_options() -> dict:
-    """Thinking controls as the `thinking` and `reasoning_effort` request fields. LLM_THINKING=off sends neither."""
-    thinking = (os.environ.get("LLM_THINKING", "").strip() or "enabled").lower()
+    """Thinking controls as the `thinking` and `reasoning_effort` request fields.
+
+    LLM_THINKING=off (the default) sends neither, so plain chat completions work with any
+    OpenAI-compatible endpoint. Thinking is opt-in with LLM_THINKING=enabled or disabled.
+    """
+    thinking = (os.environ.get("LLM_THINKING", "").strip() or "off").lower()
     if thinking == "off":
         return {}
     if thinking not in {"enabled", "disabled"}:
