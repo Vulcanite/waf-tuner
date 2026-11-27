@@ -173,6 +173,8 @@ class AnalysisRevision(Base):
     analysis_case_id = Column(
         Integer, ForeignKey("analysis_cases.id", ondelete="CASCADE"), nullable=False
     )
+    occurrence_id = Column(Integer, ForeignKey("incident_occurrences.id", ondelete="SET NULL"), nullable=True)
+    input_keys = Column(JSON, nullable=True)
     application_profile_id = Column(
         Integer, ForeignKey("application_profiles.id", ondelete="SET NULL"), nullable=True
     )
@@ -203,6 +205,7 @@ class AnalysisRevision(Base):
 
     __table_args__ = (
         Index("analysis_revisions_case_idx", "analysis_case_id"),
+        Index("analysis_revisions_occurrence_idx", "occurrence_id"),
         Index("analysis_revisions_state_idx", "state"),
         Index("analysis_revisions_evidence_idx", "analysis_case_id", "evidence_digest"),
     )
@@ -327,7 +330,7 @@ def _migrate_schema(connection) -> None:
         AuditEvent: ("path", "anomaly_score"),
         AnalysisCase: ("application_host", "lease_token", "enqueued_at", "completed_generation"),
         IncidentOccurrence: (),
-        AnalysisRevision: ("stage_metrics", "pending_repair_input", "evidence_digest"),
+        AnalysisRevision: ("stage_metrics", "pending_repair_input", "evidence_digest", "occurrence_id", "input_keys"),
         InferenceAttempt: ("reasoning_tokens", "provider_ms"),
     }
     inspector = inspect(connection)

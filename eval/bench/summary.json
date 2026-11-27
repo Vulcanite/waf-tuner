@@ -1,0 +1,264 @@
+{
+  "wordpress": {
+    "requests_sent": 129,
+    "benign_sent": 96,
+    "attacks_sent": 33,
+    "records": 78,
+    "benign_records": 45,
+    "attack_records": 33,
+    "labeled_matches": 608,
+    "fp_plugin_excluded": 361,
+    "fp_not_covered": 30,
+    "tp": 217,
+    "tp_plugin_suppressed": 115,
+    "attacks_with_suppressed_tp": 22,
+    "attacks_fully_suppressed": 12,
+    "attacks_without_payload_match": [],
+    "suppressed": {
+      "wp-atk-sqli-search-0": [
+        "942200",
+        "942360"
+      ],
+      "wp-atk-xss-search-0": [
+        "942131"
+      ],
+      "wp-atk-sqli-rest-search": [
+        "942100",
+        "942190",
+        "942200",
+        "942260",
+        "942270",
+        "942360",
+        "942361",
+        "942362",
+        "942440",
+        "942480"
+      ],
+      "wp-atk-xss-comment-0": [
+        "941100",
+        "941110",
+        "941160",
+        "941180",
+        "941320",
+        "941390",
+        "942131",
+        "942520"
+      ],
+      "wp-atk-xss-comment-1": [
+        "932200",
+        "941100",
+        "941120",
+        "941160",
+        "941180",
+        "941390",
+        "942131",
+        "942520"
+      ],
+      "wp-atk-sqli-comment-2": [
+        "942100",
+        "942190",
+        "942200",
+        "942260",
+        "942270",
+        "942440",
+        "942480"
+      ],
+      "wp-atk-rce-comment-3": [
+        "931130",
+        "932130",
+        "932200",
+        "932220",
+        "932235",
+        "932250"
+      ],
+      "wp-atk-php-comment-4": [
+        "933100",
+        "933130",
+        "933160"
+      ],
+      "wp-atk-lfi-comment-5": [
+        "930100",
+        "930110",
+        "930120"
+      ],
+      "wp-atk-xss-comment-author": [
+        "933160",
+        "934100",
+        "941100",
+        "941120",
+        "941150",
+        "941160",
+        "941320",
+        "942340",
+        "942370"
+      ],
+      "wp-atk-lfi-login-redirect": [
+        "920230"
+      ],
+      "wp-atk-rce-search-0": [
+        "932236"
+      ],
+      "wp-atk-rce-search-1": [
+        "932236"
+      ],
+      "wp-atk-rce-search-2": [
+        "932236"
+      ],
+      "wp-atk-ssrf-url-details-0": [
+        "931130"
+      ],
+      "wp-atk-ssrf-url-details-1": [
+        "931130"
+      ],
+      "wp-atk-ssrf-url-details-2": [
+        "931130"
+      ],
+      "wp-atk-ssrf-oembed": [
+        "931130"
+      ],
+      "wp-atk-xss-block-content-0": [
+        "932200",
+        "941100",
+        "941110",
+        "941150",
+        "941160",
+        "941180",
+        "941181",
+        "941320",
+        "941340",
+        "942120",
+        "942131",
+        "942370",
+        "942430",
+        "942440",
+        "942520"
+      ],
+      "wp-atk-php-block-content-1": [
+        "932200",
+        "933100",
+        "933130",
+        "933150",
+        "933151",
+        "933160",
+        "934100",
+        "941180",
+        "941181",
+        "941390",
+        "942120",
+        "942370",
+        "942430",
+        "942440"
+      ],
+      "wp-atk-sqli-block-content-2": [
+        "930120",
+        "932200",
+        "932240",
+        "941180",
+        "941181",
+        "942120",
+        "942130",
+        "942190",
+        "942300",
+        "942370",
+        "942390",
+        "942430",
+        "942440",
+        "942480",
+        "942520"
+      ],
+      "wp-atk-rce-heartbeat": [
+        "930120",
+        "932160",
+        "932236"
+      ]
+    }
+  },
+  "nextcloud": {
+    "requests_sent": 102,
+    "benign_sent": 76,
+    "attacks_sent": 26,
+    "records": 78,
+    "benign_records": 57,
+    "attack_records": 21,
+    "labeled_matches": 244,
+    "fp_plugin_excluded": 120,
+    "fp_not_covered": 12,
+    "tp": 112,
+    "tp_plugin_suppressed": 38,
+    "attacks_with_suppressed_tp": 11,
+    "attacks_fully_suppressed": 6,
+    "attacks_without_payload_match": [
+      "nc-atk-php-dav-webshell",
+      "nc-atk-php-dav-polyglot",
+      "nc-atk-lfi-dav-xxe",
+      "nc-atk-xss-contact",
+      "nc-atk-rce-calendar-event"
+    ],
+    "suppressed": {
+      "nc-atk-lfi-dav-put-path": [
+        "930130"
+      ],
+      "nc-atk-xss-displayname": [
+        "941100",
+        "941120",
+        "941150",
+        "941160",
+        "941180",
+        "941320",
+        "941390"
+      ],
+      "nc-atk-xss-note": [
+        "941100",
+        "941150",
+        "941160",
+        "941170",
+        "941210",
+        "941320",
+        "941390"
+      ],
+      "nc-atk-xss-file-comment": [
+        "941100",
+        "941110",
+        "941160",
+        "941180",
+        "941320",
+        "941390",
+        "942131"
+      ],
+      "nc-atk-rce-biography": [
+        "932160",
+        "932200",
+        "932236"
+      ],
+      "nc-atk-rce-note": [
+        "931130",
+        "932235",
+        "932236",
+        "932370"
+      ],
+      "nc-atk-php-headline-serialized": [
+        "930120",
+        "933170",
+        "942180",
+        "942430",
+        "942520"
+      ],
+      "nc-atk-ssrf-reference-0": [
+        "931130"
+      ],
+      "nc-atk-ssrf-reference-1": [
+        "931130"
+      ],
+      "nc-atk-ssrf-reference-2": [
+        "931130"
+      ],
+      "nc-atk-ssrf-theming-url": [
+        "931130"
+      ]
+    }
+  },
+  "totals": {
+    "plugin_only_matches": 0,
+    "response_matches_skipped": 2
+  }
+}

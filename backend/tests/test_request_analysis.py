@@ -15,9 +15,10 @@ from db import models
 from services import agent, crs_index
 from services.audit_event import normalize_audit_event
 from services.inference_context import (
-    bound_request_repair_input, build_inference_context, build_request_context, serialize_inference_context,
+    bound_request_repair_input, build_inference_context, build_request_context, prepare_request_evidence,
+    serialize_inference_context,
 )
-from services.incidents import incident_fingerprint
+from services.incidents import incident_fingerprint, matched_input_keys, register_event
 from services.llm_options import request_settings
 from services.model_contract import (
     REQUEST_SYSTEM_PROMPT, RESPONSE_FORMAT, SYSTEM_PROMPT, classify_request_repair_response,
@@ -524,6 +525,7 @@ def test_invalid_request_output_retries_a_group_and_fails_a_single_case(tmp_path
     monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "invalid.db"))
     monkeypatch.setenv("ANALYSIS_UNIT", "request")
     monkeypatch.setenv("LLM_API_KEY", "test")
+    monkeypatch.setenv("INCIDENT_FINGERPRINT_KEY", "test-only-key")
     monkeypatch.setenv("AGENT_MAX_RETRIES", "5")
     monkeypatch.setattr(models, "_async_engine", None)
     monkeypatch.setattr(models, "_async_session_factory", None)
@@ -563,6 +565,95 @@ def test_invalid_request_output_retries_a_group_and_fails_a_single_case(tmp_path
     assert states == [expected] * group_size
     revision_state = "failed" if expected[0] == "failed" else "retryable_error"
     assert revisions == [(revision_state, "invalid_output", "not json")] * group_size
+
+
+def test_input_keys_resolve_wrappers_and_keep_distinct_values_separate(monkeypatch):
+    monkeypatch.setenv("INCIDENT_FINGERPRINT_KEY", "test-only-key")
+    event = {"transaction_id": "catalog", "uri": "/catalog?q=books&q=music"}
+    request = prepare_request_evidence(event)
+    direct = {"collection": "ARGS_GET", "parameter": "q",
+              "match_description": "Matched against variable `ARGS_GET:q' (Value: `books')"}
+    wrapped = {"collection": "TX", "parameter": "copied_ARGS:q",
+               "match_description": "Matched against variable `TX:copied_ARGS:q' (Value: `books')"}
+    other_value = {**direct, "match_description": "Matched against variable `ARGS_GET:q' (Value: `music')"}
+    keys = matched_input_keys(event, request, direct)
+    assert len(keys) == 1
+    assert keys == matched_input_keys(event, request, wrapped)
+    assert set(keys).isdisjoint(matched_input_keys(event, request, other_value))
+    assert set(keys).isdisjoint(matched_input_keys({**event, "transaction_id": "other"}, request, direct))
+
+
+@pytest.mark.parametrize("unit", ["match", "request"])
+@pytest.mark.parametrize("false_positive_first", [True, False])
+def test_same_input_conflict_in_either_mode_and_order(tmp_path, monkeypatch, unit, false_positive_first):
+    monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///{tmp_path / 'conflicts.db'}")
+    monkeypatch.setenv("ANALYSIS_UNIT", unit)
+    monkeypatch.setenv("REQUIRE_APPLICATION_CONTEXT", "true")
+    monkeypatch.setenv("INCIDENT_FINGERPRINT_KEY", "test-only-key")
+    monkeypatch.setattr(models, "_async_engine", None)
+    monkeypatch.setattr(models, "_async_session_factory", None)
+    monkeypatch.setattr(agent, "_provider_settings", {**request_settings(), "escalation_effort": ""})
+    for name in ("_index_dir", "_marker_key", "_status", "CRS_INDEX"):
+        monkeypatch.setattr(crs_index, name, getattr(crs_index, name))
+    rules = tmp_path / "rules"
+    rules.mkdir()
+    (rules / "LOCAL.conf").write_text(
+        'SecRule ARGS:q "@streq books" "id:10001,phase:2,log"\n'
+        'SecRule ARGS:q "@contains books" "id:10002,phase:2,log"\n'
+    )
+    digest = crs_index.initialize_crs_index(rules)["digest"]
+    matches = [("10001", within("ARGS:q", "books")), ("10002", within("TX:copied_ARGS:q", "books"))]
+    if not false_positive_first:
+        matches.reverse()
+    event = audit(matches, headers={"Host": "catalog.test"})
+    event["crs_ruleset_digest"] = digest
+
+    async def respond(_revision, messages, _stage, *_):
+        context = json.loads(messages[1]["content"])
+        entries = context["matches"] if unit == "request" else [context["incident"]]
+        results = [verdict(entry["match_index"], "false_positive" if entry["rule_id"] == "10001" else "true_positive")
+                   for entry in entries]
+        if unit == "request":
+            return json.dumps({"verdicts": results})
+        results[0].pop("match_index")
+        return json.dumps(results[0])
+
+    async def run():
+        await models.init_db()
+        try:
+            async with models.get_session_factory()() as session:
+                session.add(models.ApplicationProfile(name="catalog", host_patterns=["catalog.test"], routes=[
+                    {"path": "/catalog", "methods": ["GET"], "parameters": {"q": "Search terms"}},
+                ]))
+                await register_event(session, event, 0)
+                await session.commit()
+            for number in range(1 if unit == "request" else 2):
+                lease = f"worker-{number}"
+                case_id = await agent._claim_case(lease)
+                assert case_id is not None
+                token = agent._claim_token.set(lease)
+                try:
+                    await agent._run_claimed_case(case_id)
+                finally:
+                    agent._claim_token.reset(token)
+            async with models.get_session_factory()() as session:
+                revisions = (await session.scalars(select(models.AnalysisRevision))).all()
+                assert {(r.classification, r.validation_status) for r in revisions} == {
+                    ("false_positive", "scope_conflict"), ("true_positive", "not_applicable"),
+                }
+                assert len({r.occurrence_id for r in revisions}) == 2
+                assert all(r.normalized_rule is None for r in revisions)
+                assert len({tuple(r.input_keys) for r in revisions}) == 1
+                drafts = (await session.scalars(select(models.ExceptionDraft))).all()
+                if unit == "match" and false_positive_first:
+                    assert [(d.status, d.proposed_rule) for d in drafts] == [("stale", None)]
+                else:
+                    assert not drafts
+        finally:
+            await models._async_engine.dispose()
+
+    with patch.object(agent, "_provider_request", side_effect=respond):
+        asyncio.run(run())
 
 
 def test_request_mode_makes_one_call_per_transaction_and_gates_each_match(tmp_path, monkeypatch):

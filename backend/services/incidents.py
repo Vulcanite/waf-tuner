@@ -16,9 +16,11 @@ from services.crs_index import get_rule_at
 from services.audit_event import parse_audit_timestamp
 from services.inference_context import (
     is_aggregate_match,
+    logged_target_value,
     match_evidence,
     match_target,
     prepare_request_evidence,
+    resolve_input_target,
     split_request_uri,
 )
 
@@ -65,6 +67,39 @@ def _fingerprint_key() -> bytes:
 
 def _encode_identity(value) -> bytes:
     return json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=True).encode('ascii')
+
+
+def matched_input_keys(event: dict, request: dict, match: dict) -> list[str]:
+    """Identify the observed field and value within a transaction without storing the value twice."""
+    inspected = match_target(match)
+    collection, parameter = resolve_input_target(*inspected)
+    if not parameter or collection is None:
+        return []
+    values = match_evidence(request, *inspected)
+    logged = logged_target_value(match, inspected, (collection, parameter))
+    inputs = [(source, value) for source, items in values.items() for value in items]
+    if logged is not None:
+        exact = [(source, value) for source, value in inputs if value == logged]
+        if exact:
+            inputs = exact
+        elif not inputs:
+            source = {'ARGS_GET': 'query', 'ARGS_POST': 'body'}.get(collection, 'audit')
+            inputs = [(source, logged)]
+        # When a transform obscures which repeated value matched, keep the possible overlaps.
+    if collection in {'ARGS_GET', 'ARGS_POST'}:
+        collection = 'ARGS'
+    elif collection in {'ARGS_GET_NAMES', 'ARGS_POST_NAMES'}:
+        collection = 'ARGS_NAMES'
+    elif collection.startswith(('REQUEST_HEADERS', 'REQUEST_COOKIES')):
+        parameter = parameter.lower()
+    if not inputs:
+        return []
+    key = _fingerprint_key()
+    return sorted({
+        hmac.new(key, b'matched-input\0' + _encode_identity(
+            [event.get('transaction_id'), collection, parameter, source, value]), hashlib.sha256).hexdigest()
+        for source, value in inputs
+    })
 
 
 def _transaction_identity(event: dict, request: dict) -> bytes:

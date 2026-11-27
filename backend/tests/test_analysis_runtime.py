@@ -19,6 +19,7 @@ from services.model_contract import classify_repair_response
 def isolated_database(tmp_path, monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.setenv("DATABASE_PATH", str(tmp_path / "test.db"))
+    monkeypatch.setenv("INCIDENT_FINGERPRINT_KEY", "test-only-key")
     monkeypatch.setattr(models, "_async_engine", None)
     monkeypatch.setattr(models, "_async_session_factory", None)
 

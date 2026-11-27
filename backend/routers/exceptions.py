@@ -60,7 +60,7 @@ async def _current_evidence(db, draft, case, revision, event) -> bool:
         event is not None and not event.get("evidence_expired")
         and _certified_rule(draft, case, revision, current_analysis_generation())
         and await profile_is_current(db, event, revision.application_profile_id, revision.profile_version)
-        and not await has_true_positive(db, case, draft.proposed_rule_scope or {})
+        and not await has_true_positive(db, case, draft.proposed_rule_scope or {}, revision=revision)
     )
 
 
@@ -306,7 +306,8 @@ async def export_false_positives(
                         and _certified_rule(draft, case, revision, generation)):
                     profile, _ = application_context_for(active_profiles, case.application_host, case.method, case.path)
                     observed_profile = (profile.id, profile.version) if profile else (None, None)
-                    if observed_profile == (revision.application_profile_id, revision.profile_version):
+                    if (observed_profile == (revision.application_profile_id, revision.profile_version)
+                            and not await has_true_positive(db, case, scope, revision=revision)):
                         rule = draft.proposed_rule
                 buf.seek(0)
                 buf.truncate()
@@ -361,7 +362,7 @@ async def approve_exception(draft_id: int, db: AsyncSession = Depends(get_db)):
     if case is None:
         raise HTTPException(status_code=400, detail="Draft has no analysis case")
     # Recheck this scope while approval owns the SQLite write transaction.
-    if await has_true_positive(db, case, draft.proposed_rule_scope or {}):
+    if await has_true_positive(db, case, draft.proposed_rule_scope or {}, revision=revision):
         draft.proposed_rule = None
         draft.validation_status = "scope_conflict"
         draft.validation_error = SCOPE_CONFLICT_ERROR
