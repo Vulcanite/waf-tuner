@@ -148,6 +148,29 @@ class EvidenceTests(unittest.TestCase):
         self.assertIn('q=red%20book', sent)
         self.assertFalse([text for text in hidden if 'blue7' in text])
 
+    def test_encoded_emails_and_credentials_in_the_uri_are_redacted(self):
+        def uri_match(uri, collection):
+            raw = audit_object()
+            raw['transaction']['request']['uri'] = uri
+            raw['transaction']['messages'] = [{'message': 'uri', 'details': {'ruleId': '920230', 'severity': '2'}}]
+            event = normalize_audit_event(raw)
+            match = {**event['matches'][0], 'collection': collection, 'parameter': None}
+            return serialize_inference_context(build_inference_context(event, match))
+
+        with patch.dict(os.environ, {'INCIDENT_FINGERPRINT_KEY': 'test-key'}):
+            sent = [uri_match(uri, collection) for uri in (
+                '/catalog?q=books&contact=jane.doe%40example.com',
+                '/catalog?q=books&contact=jane.doe%2540example.com',
+                '/catalog?q=books&jane.doe%2540example.com=1',
+                '/users/jane.doe%40example.com/orders?q=books',
+                '/users/jane.doe%2540example.com/orders?q=books',
+                '/catalog?q=books&pass%2577ord=blue7',
+                '/catalog?q=books&note=password%253Dblue7',
+            ) for collection in ('REQUEST_URI', 'REQUEST_URI_RAW')]
+        leaked = [text for text in sent if 'jane.doe' in text or 'blue7' in text]
+        self.assertEqual(leaked, [])
+        self.assertTrue(all('q=books' in text for text in sent))
+
     def test_a_changed_rule_starts_a_new_case(self):
         from types import SimpleNamespace
 

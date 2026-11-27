@@ -6,7 +6,7 @@ import math
 import os
 import re
 from collections.abc import Mapping
-from urllib.parse import SplitResult, parse_qsl, unquote, unquote_plus, urlsplit
+from urllib.parse import SplitResult, parse_qsl, unquote_plus, urlsplit
 
 from services.json_extract import extract_json
 from services.profile_match import route_parameter_semantics
@@ -268,14 +268,40 @@ def _text(value, limit: int) -> str:
     return sanitize_evidence_text(str(value))[:limit]
 
 
+def _decoded_forms(text: str) -> list[str]:
+    """The text as sent, decoded once, and decoded twice (double encoding)."""
+    once = unquote_plus(text)
+    return [text, once, unquote_plus(once)]
+
+
+def _hides_sensitive_text(text: str) -> bool:
+    """Whether the text, in any decoded form, holds something the sanitizer would redact."""
+    return any(sanitize_evidence_text(form) != form for form in _decoded_forms(text))
+
+
+def _sensitive_uri_name(name: str, *, credential: bool) -> bool:
+    check = is_credential_name if credential else is_sensitive_name
+    return any(check(form) for form in _decoded_forms(name))
+
+
 def _safe_path(path: str, limit: int) -> str:
     parts = path.split('/')
     for index, segment in enumerate(parts):
-        if index and is_sensitive_name(unquote(parts[index - 1])):
+        if index and _sensitive_uri_name(parts[index - 1], credential=False):
             parts[index] = REDACTED
-        elif unquote(segment) != segment and sanitize_evidence_text(unquote(segment)) != unquote(segment):
+        elif _hides_sensitive_text(segment):
             parts[index] = REDACTED
     return _text('/'.join(parts), limit)
+
+
+def _safe_query_pair(name: str, value: str) -> str:
+    """One URI query pair for the provider. Checks run on the decoded name and value,
+    so an encoded email (a%40b.com, a%2540b.com) or credential name (pass%77ord) is still redacted."""
+    if _hides_sensitive_text(name):
+        return f'{REDACTED}={REDACTED}'
+    if _sensitive_uri_name(name, credential=True) or _hides_sensitive_text(value):
+        return f'{name}={REDACTED}'
+    return f'{name}={value}'
 
 
 _HEADER_COOKIE_COLLECTIONS = frozenset({'REQUEST_HEADERS', 'REQUEST_COOKIES', 'REQUEST_COOKIES_NAMES'})
@@ -430,11 +456,7 @@ def _project_match(request: dict, match: dict, collection, parameter, field_limi
     safe_target = _safe_target(collection, parameter)
     evidence = match_evidence(request, collection, parameter, match) if safe_target else {}
     if 'uri_query' in evidence:
-        evidence['query'] = [
-            # Check the decoded name, so an encoded name such as pass%77ord is still redacted.
-            f'{name}={REDACTED if is_credential_name(unquote_plus(name)) else value}'
-            for name, value in evidence.pop('uri_query')
-        ]
+        evidence['query'] = [_safe_query_pair(name, value) for name, value in evidence.pop('uri_query')]
     values = {key: _bounded_values(items, field_limit) for key, items in evidence.items() if items}
     values_truncated = any(
         len(items) > 32 or any(isinstance(item, str) and len(item) > field_limit for item in items)
