@@ -35,8 +35,8 @@ from services.exception_builder import build_exception_rule, can_build_exception
 from services.incidents import matched_input_keys
 from services.json_extract import extract_json as _extract_json
 from services.inference_context import (
-    bound_repair_input, build_inference_context, match_evidence_withheld, prepare_request_evidence,
-    serialize_inference_context,
+    application_context_omitted, bound_repair_input, build_inference_context, match_evidence_withheld,
+    prepare_request_evidence, serialize_inference_context,
 )
 from services.llm_options import (
     ESCALATION_EFFORT_REJECTED, env_bool, is_escalation_effort_rejection, request_payload, request_settings,
@@ -765,6 +765,12 @@ async def _finalize_case(
             normalized_rule, validation_status, validation_error = (
                 None, "chained_rule_review",
                 "ModSecurity target exclusions apply to the first rule in a chain. Review the matched clause manually.",
+            )
+        if validation_status == "valid" and application_context_omitted(context):
+            normalized_rule, validation_status, validation_error = (
+                None, "missing_application_context",
+                "The application profile was cut from the model's evidence to fit AI_MAX_CONTEXT_BYTES. "
+                "Raise the limit or shorten the profile, then reanalyze.",
             )
         if validation_status == "valid" and match_evidence_withheld(context):
             normalized_rule, validation_status, validation_error = (

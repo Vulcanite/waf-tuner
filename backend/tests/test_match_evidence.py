@@ -446,3 +446,18 @@ def test_same_input_conflict_across_transactions(tmp_path, monkeypatch, true_pos
 
     with patch.object(agent, "_provider_request", side_effect=respond):
         asyncio.run(run())
+
+
+def test_a_profile_cut_to_fit_the_size_limit_is_marked(monkeypatch):
+    from services.inference_context import _encode, application_context_omitted
+
+    event = audit([("942100", within("ARGS:q", SQLI))])
+    profile = {"application": {"purpose": "catalog " * 60}, "route": {"path": "/catalog", "notes": "search " * 70}}
+    full = build_inference_context(event, event["matches"][0], application_context=profile)
+    assert full["application_context"] and not application_context_omitted(full)
+    without = build_inference_context(event, event["matches"][0])
+    monkeypatch.setenv("AI_MAX_CONTEXT_BYTES", str(len(_encode(without)) + 60))
+    trimmed = build_inference_context(event, event["matches"][0], application_context=profile)
+    assert "application_context" not in trimmed and application_context_omitted(trimmed)
+    # No profile to begin with is a different case: nothing was cut.
+    assert not application_context_omitted(build_inference_context(event, event["matches"][0]))

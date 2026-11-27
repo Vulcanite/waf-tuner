@@ -391,18 +391,22 @@ def _fit_context(context: dict, budget: int) -> dict:
     rule = context.get('crs_rule') or {}
     request = context['request']
     context['redaction']['truncated'] = True
+    had_profile = bool(context.get('application_context'))
     for container, key in (
         (rule, 'raw'), (rule, 'tags'), (incident, 'other_matches'),
         (context, 'application_context'), (rule, 'message'), (incident, 'rule_message'),
         (rule, 'source_file'), (incident, 'matched_data'), (request, 'content_type'),
     ):
         container.pop(key, None)
+        if key == 'application_context' and had_profile:
+            # The model never saw the route facts, so the server must not use them for a draft.
+            context['redaction']['application_context_omitted'] = True
         if len(_encode(context)) <= budget:
             return context
     # Retain the identity at very small budgets and let the model abstain.
     minimal = {
         'incident': {key: incident.get(key) for key in ('method', 'rule_id', 'collection', 'parameter')},
-        'redaction': {'truncated': True},
+        'redaction': {'truncated': True, **({'application_context_omitted': True} if had_profile else {})},
     }
     if len(_encode(minimal)) <= budget:
         return minimal
@@ -525,6 +529,11 @@ def build_inference_context(event, match, *, match_index=0, crs_rule=None, appli
         },
     }
     return _fit_context(context, max_context_bytes())
+
+
+def application_context_omitted(context: dict) -> bool:
+    """The application profile was cut from the provider message to fit the size limit."""
+    return bool((context.get('redaction') or {}).get('application_context_omitted'))
 
 
 def match_evidence_withheld(context: dict) -> bool:

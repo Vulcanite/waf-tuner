@@ -20,6 +20,7 @@ WITHHELD = {
     "rule_removed": "rule_changed_since_alert",
     "data_file_changed": "rule_changed_since_alert",
     "ruleset_uncertain": "ruleset_uncertain",
+    "profile_trimmed": "missing_application_context",
 }
 
 
@@ -111,6 +112,24 @@ def test_audited_match_becomes_a_reviewable_exception(tmp_path, monkeypatch, var
                 changed_rule = crs_index.build_crs_index(changed)["10001"]
                 assert changed_rule.raw == crs_index.get_rule("10001").raw
                 monkeypatch.setattr(agent, "get_rule", lambda _: changed_rule)
+            if variant == "profile_trimmed":
+                # A size limit that fits the evidence only once the application profile is cut.
+                from services import inference_context
+                build = agent.build_inference_context
+
+                def fitted(*args, **kwargs):
+                    full = build(*args, **kwargs)
+                    for key in ("raw", "tags"):
+                        (full.get("crs_rule") or {}).pop(key, None)
+                    full["incident"].pop("other_matches", None)
+                    full.pop("application_context")
+                    full["redaction"].update(truncated=True, application_context_omitted=True)
+                    monkeypatch.setenv("AI_MAX_CONTEXT_BYTES", str(len(inference_context._encode(full))))
+                    trimmed = build(*args, **kwargs)
+                    assert "application_context" not in trimmed and trimmed["incident"].get("matched_data")
+                    return trimmed
+
+                monkeypatch.setattr(agent, "build_inference_context", fitted)
             if variant == "ruleset_uncertain":
                 # A new snapshot went live around when this alert fired.
                 monkeypatch.setattr(log_tailer, "_ruleset_pin", lambda event: {"digest": None, "uncertain": True})
