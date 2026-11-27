@@ -7,6 +7,7 @@ import {
   rejectException,
   downloadFalsePositivesCsv,
 } from '../api'
+import Explanation from '../Explanation'
 
 const TABS = [
   { key: 'pending', label: 'Pending Review' },
@@ -173,13 +174,7 @@ function ExceptionCard({
             txn anomaly {event.anomaly_score}
           </p>
         )}
-        {(draft.context_factors || []).length > 0 && (
-          <ul className="mt-2 text-xs muted list-disc pl-4">
-            {draft.context_factors.slice(0, 5).map((f: string, i: number) => (
-              <li key={i}>{f}</li>
-            ))}
-          </ul>
-        )}
+        <Explanation source={draft} />
         {(draft.uncertainty_factors || []).length > 0 && (
           <details className="mt-2">
             <summary className="text-xs muted cursor-pointer">Uncertainty factors</summary>

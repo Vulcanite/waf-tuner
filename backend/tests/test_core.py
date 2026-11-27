@@ -333,7 +333,7 @@ class TruncatedOutputTests(unittest.TestCase):
 
         from services import agent
 
-        draft = '{"classification": "false_positive", "confidence": 0.99, "verdict": "a draft written mid-reasoning", "context_factors": [], "uncertainty_factors": []}'
+        draft = '{"classification": "false_positive", "confidence": 0.99, "verdict": "a draft written mid-reasoning", "rule_looks_for": "SQL injection syntax", "payload_is": "the matched input", "why": "fixture explanation", "uncertainty_factors": []}'
         calls = []
 
         class FakeClient:

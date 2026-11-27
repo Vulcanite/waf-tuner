@@ -145,7 +145,8 @@ def _draft_to_dict(
         "zone": zone,
         "this_match": this_match,
         "signature": crs_meta,
-        "context_factors": revision.context_factors if revision else None,
+        # The explanation copied with the verdict; null on drafts made before offpath-v8.
+        **{key: getattr(d, key) for key in ("rule_looks_for", "payload_is", "why")},
         "uncertainty_factors": revision.uncertainty_factors if revision else None,
         "event_summary": {
             "uri": event.get("uri") if event else None,

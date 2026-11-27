@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { getCases, getCase, reanalyzeCase } from '../api'
+import Explanation from '../Explanation'
 
 const ACTIVE_STATES = new Set(['queued', 'analyzing', 'retryable_error'])
 
@@ -395,6 +396,7 @@ export default function Cases() {
                         {latest.model && <span className="muted">{latest.model}</span>}
                       </div>
                       {latest.verdict && <p className="leading-relaxed">{latest.verdict}</p>}
+                      {latest.classification && <Explanation source={latest} />}
                       {latest.validation_error && <p className="muted">{latest.validation_error}</p>}
                       {latest.normalized_rule && selected.state === 'complete' && (
                         <div className="mono-block rule-ok">{latest.normalized_rule}</div>
@@ -431,6 +433,7 @@ export default function Cases() {
                             )}
                           </div>
                           {r.verdict && <p>{r.verdict}</p>}
+                          {r.classification && <Explanation source={r} />}
                           {(r.validation_error || r.last_error) && (
                             <p className="text-red-700 dark:text-red-400">
                               {r.validation_error || r.last_error}

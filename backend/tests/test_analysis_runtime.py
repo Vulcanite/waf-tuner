@@ -75,7 +75,7 @@ def test_budget_deferred_repair_resumes_with_same_revision(isolated_database, mo
         {
             "classification": "true_positive", "confidence": 0.99,
             "verdict": "The observed evidence supports this synthetic test verdict.",
-            "context_factors": ["synthetic evidence"], "uncertainty_factors": [],
+            "rule_looks_for": "SQL injection syntax", "payload_is": "the matched input", "why": "fixture explanation", "uncertainty_factors": [],
         },
     ]
     sent = []
@@ -185,7 +185,7 @@ def test_only_effort_rejection_pauses_escalation(provider_error, blocked, monkey
     result = {
         "classification": "uncertain", "confidence": 0.5,
         "verdict": "This evidence needs review to determine the application intent.",
-        "context_factors": [], "uncertainty_factors": [],
+        "rule_looks_for": "SQL injection syntax", "payload_is": "the matched input", "why": "fixture explanation", "uncertainty_factors": [],
     }
 
     def respond(request):
@@ -226,7 +226,7 @@ def test_repair_cannot_reclassify_a_detection_as_false_positive():
     repaired = json.dumps({
         "classification": "false_positive", "confidence": 0.99,
         "verdict": "A repair may not change the selected classification.",
-        "context_factors": [], "uncertainty_factors": [],
+        "rule_looks_for": "SQL injection syntax", "payload_is": "the matched input", "why": "fixture explanation", "uncertainty_factors": [],
     })
     with pytest.raises(ValueError, match="changed"):
         classify_repair_response(repaired, initial)

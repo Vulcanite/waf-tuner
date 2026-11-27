@@ -70,7 +70,7 @@ def test_audited_match_becomes_a_reviewable_exception(tmp_path, monkeypatch, var
             "classification": "false_positive",
             "confidence": 0.98,
             "verdict": "The matched value is an ordinary search term in the catalog.",
-            "context_factors": ["Catalog search field"],
+            "rule_looks_for": "SQL injection syntax", "payload_is": "the matched input", "why": "fixture explanation",
             "uncertainty_factors": [],
         }
         return httpx.Response(200, json={
@@ -166,6 +166,13 @@ def test_audited_match_becomes_a_reviewable_exception(tmp_path, monkeypatch, var
                 approved = client.post(f"/api/exceptions/{drafts[0]['id']}/approve")
                 assert approved.status_code == 200, approved.text
                 assert "ruleRemoveTargetById=10001;ARGS:q" in approved.json()["proposed_rule"]
+                # The structured explanation is stored with the verdict and shown with the draft and case.
+                explanation = {"rule_looks_for": "SQL injection syntax", "payload_is": "the matched input",
+                               "why": "fixture explanation"}
+                assert {key: approved.json()[key] for key in explanation} == explanation
+                revision = client.get(f"/api/cases/{cases[0]['id']}").json()["revisions"][0]
+                assert {key: revision[key] for key in explanation} == explanation
+                assert "context_factors" not in revision
 
         if variant != "normal":
             async def withheld_by():

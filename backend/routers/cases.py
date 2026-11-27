@@ -55,7 +55,10 @@ def _revision_dict(revision: AnalysisRevision | None, *, include_rule: bool = Fa
         "classification": revision.classification,
         "confidence": revision.confidence,
         "verdict": revision.verdict,
-        "context_factors": revision.context_factors,
+        # Null on revisions written before the structured explanation (offpath-v8).
+        "rule_looks_for": revision.rule_looks_for,
+        "payload_is": revision.payload_is,
+        "why": revision.why,
         "uncertainty_factors": revision.uncertainty_factors,
         "normalized_rule": revision.normalized_rule if include_rule else None,
         "proposed_rule_scope": revision.proposed_rule_scope,
