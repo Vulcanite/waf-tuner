@@ -41,11 +41,10 @@ Compose publishes the UI, API, and lab WAF only on `127.0.0.1`. For remote acces
 | `lab-data/.env` | Provider credentials and runtime settings |
 | `lab-data/modsec/audit.log` | ModSecurity audit log |
 | `lab-data/waf-tuner.db` | SQLite workflow, audit, and inference data |
-| `lab-data/events.jsonl` | Local event archive |
 | `lab-data/runtime_config.json` | Selected audit-log path |
 | `lab-data/crs-rules/` | CRS index used by the UI |
 
-The backend sends bounded, match-specific evidence to the configured provider. Raw events stay in the local workspace. Optional age limits use `AUDIT_EVIDENCE_RETENTION_DAYS` and `INFERENCE_ARTIFACT_RETENTION_DAYS`. To bound the JSONL mirror, set `EVENTS_JSONL_MAX_BYTES`. See [SECURITY.md](./SECURITY.md) before using real traffic.
+The backend sends bounded, match-specific evidence to the configured provider. Raw events stay in the local workspace. Optional age limits use `AUDIT_EVIDENCE_RETENTION_DAYS` and `INFERENCE_ARTIFACT_RETENTION_DAYS`. See [SECURITY.md](./SECURITY.md) before using real traffic.
 
 ## Verify a change
 

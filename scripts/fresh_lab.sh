@@ -39,9 +39,8 @@ rm -f \
   lab-data/*.key \
   2>/dev/null || true
 
-# Empty audit + event archive (preserve file so volume mounts stay valid)
+# Empty audit log (preserve file so volume mounts stay valid)
 : > lab-data/modsec/audit.log
-: > lab-data/events.jsonl
 
 # Drop generated exception confs; keep optional placeholder
 if [[ -d lab-data/exceptions ]]; then

@@ -100,7 +100,7 @@ services:
     environment:
       # Lab filesystem layout (override host-relative DATABASE_PATH from .env)
       MODSEC_AUDIT_LOG: /shared/modsec/audit.log
-      EVENTS_JSONL_PATH: /shared/events.jsonl
+      DATA_DIR: /shared
       AUDIT_CURSOR_PATH: /shared/audit_cursor.json
       DATABASE_PATH: /shared/waf-tuner.db
       RUNTIME_CONFIG_PATH: /shared/runtime_config.json

@@ -164,16 +164,6 @@ class EvidenceTests(unittest.TestCase):
             self.assertEqual(fingerprint('rule-v1'), fingerprint('rule-v1'))
             self.assertNotEqual(fingerprint('rule-v1'), fingerprint('rule-v2'))
 
-    def test_restart_reconciles_the_actual_mirror_tail(self):
-        with tempfile.TemporaryDirectory() as directory:
-            active = Path(directory, 'events.jsonl')
-            row = json.dumps({'transaction_id': 'orphan', 'event_line': 8}) + '\n'
-            active.write_text(row)
-            # A crash after rotation can leave a different record with the
-            # same byte count as the old mirror in the checkpoint.
-            cursor = {'archive_size': len(row), 'archive_last_transaction': 'before', 'archive_last_event_line': 7, 'next_event_line': 8}
-            self.assertEqual(log_tailer._mirror_state(str(active), cursor), (len(row), 9, 'orphan', 8))
-
     def test_recovers_valid_record_after_a_corrupt_line_and_partial_utf8(self):
         raw = json.dumps(audit_object()).encode()
         malformed = b'{"transaction": [MALFORMED]}\n'
@@ -187,15 +177,14 @@ class EvidenceTests(unittest.TestCase):
 
 
 class DurableIngestTests(unittest.IsolatedAsyncioTestCase):
-    async def test_recovers_from_archive_and_sqlite_failures_at_eof(self):
+    async def test_recovers_from_sqlite_failures_at_eof(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             audit = root / 'audit.log'
-            archive = root / 'events.jsonl'
             audit.write_text(json.dumps(audit_object()) + '\n')
             env = {
                 'MODSEC_AUDIT_LOG': str(audit),
-                'EVENTS_JSONL_PATH': str(archive),
+                'DATA_DIR': str(root),
                 'AUDIT_CURSOR_PATH': str(root / 'cursor.json'),
                 'RUNTIME_CONFIG_PATH': str(root / 'runtime.json'),
                 'DATABASE_URL': f'sqlite+aiosqlite:///{root / "test.db"}',
@@ -205,22 +194,15 @@ class DurableIngestTests(unittest.IsolatedAsyncioTestCase):
             models._async_session_factory = None
             with patch.dict(os.environ, env):
                 await models.init_db()
-                archive_attempts = db_attempts = 0
-                append_event = log_tailer._append_event
-
-                def append_when_space_available(*args):
-                    nonlocal archive_attempts
-                    archive_attempts += 1
-                    if archive_attempts <= 3:
-                        raise OSError(errno.ENOSPC, 'No space left on device')
-                    return append_event(*args)
-
+                db_attempts = 0
                 states = []
 
                 async def register_when_unlocked(session, event, line):
                     nonlocal db_attempts
                     db_attempts += 1
                     states.append(log_tailer.INGEST_STATE['state'])
+                    if db_attempts <= 2:
+                        raise OSError(errno.ENOSPC, 'No space left on device')
                     if db_attempts <= 3:
                         raise OperationalError('INSERT', {}, sqlite3.OperationalError('database is locked'))
                     if db_attempts <= 6:
@@ -232,7 +214,6 @@ class DurableIngestTests(unittest.IsolatedAsyncioTestCase):
                 try:
                     with (
                         patch.object(log_tailer, 'INGEST_STORAGE_RETRY_SECONDS', 0.01),
-                        patch.object(log_tailer, '_append_event', append_when_space_available),
                         patch.object(log_tailer, 'register_event', register_when_unlocked),
                     ):
                         worker = asyncio.create_task(log_tailer.log_tailer(wake))
@@ -241,11 +222,10 @@ class DurableIngestTests(unittest.IsolatedAsyncioTestCase):
                         finally:
                             worker.cancel()
                             await asyncio.gather(worker, return_exceptions=True)
-                    self.assertEqual((archive_attempts, db_attempts), (4, 7))
+                    self.assertEqual(db_attempts, 7)
                     # /health must show 'retrying' while the record waits, and 'running' once it lands.
                     self.assertEqual(states[1:], ['retrying'] * 6)
                     self.assertEqual(log_tailer.INGEST_STATE['state'], 'running')
-                    self.assertEqual(len(archive.read_text().splitlines()), 1)
                     async with models.get_session_factory()() as session:
                         events = (await session.execute(select(models.AuditEvent))).scalars().all()
                         cases = (await session.execute(select(models.AnalysisCase))).scalars().all()
@@ -257,19 +237,14 @@ class DurableIngestTests(unittest.IsolatedAsyncioTestCase):
                     models._async_engine = None
                     models._async_session_factory = None
 
-    async def test_archive_rotation_and_restart_keep_global_event_lines(self):
+    async def test_restart_keeps_global_event_lines(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             audit = root / 'audit.log'
-            archive = root / 'events.jsonl'
-            previous = root / 'events.jsonl.1'
-            first = audit_object('first')
-            first['transaction']['request']['body'] = {'description': 'x' * 3000}
-            audit.write_text(json.dumps(first) + '\n')
+            audit.write_text(json.dumps(audit_object('first')) + '\n')
             env = {
                 'MODSEC_AUDIT_LOG': str(audit),
-                'EVENTS_JSONL_PATH': str(archive),
-                'EVENTS_JSONL_MAX_BYTES': '2000',
+                'DATA_DIR': str(root),
                 'AUDIT_CURSOR_PATH': str(root / 'cursor.json'),
                 'RUNTIME_CONFIG_PATH': str(root / 'runtime.json'),
                 'DATABASE_URL': f'sqlite+aiosqlite:///{root / "test.db"}',
@@ -279,26 +254,20 @@ class DurableIngestTests(unittest.IsolatedAsyncioTestCase):
             models._async_session_factory = None
             with patch.dict(os.environ, env):
                 await models.init_db()
-                async def ingest_until_ready(wait_for_rotation=False):
+                async def ingest_until_ready():
                     wake = asyncio.Event()
                     worker = asyncio.create_task(log_tailer.log_tailer(wake))
                     try:
                         await asyncio.wait_for(wake.wait(), 3)
-                        if wait_for_rotation:
-                            async with asyncio.timeout(3):
-                                while not previous.exists():
-                                    await asyncio.sleep(0.01)
                     finally:
                         worker.cancel()
                         await asyncio.gather(worker, return_exceptions=True)
 
                 try:
-                    await ingest_until_ready(wait_for_rotation=True)
-                    self.assertEqual(json.loads(previous.read_text())['event_line'], 0)
+                    await ingest_until_ready()
                     with audit.open('a') as source:
                         source.write(json.dumps(audit_object('second')) + '\n')
                     await ingest_until_ready()
-                    self.assertEqual(json.loads(archive.read_text())['event_line'], 1)
                     async with models.get_session_factory()() as session:
                         records = (await session.execute(
                             select(models.AuditEvent.transaction_id, models.AuditEvent.event_line)
@@ -319,7 +288,7 @@ class DurableIngestTests(unittest.IsolatedAsyncioTestCase):
             audit.write_text(json.dumps(bad) + '\n' + json.dumps(audit_object('good')) + '\n')
             env = {
                 'MODSEC_AUDIT_LOG': str(audit),
-                'EVENTS_JSONL_PATH': str(root / 'events.jsonl'),
+                'DATA_DIR': str(root),
                 'AUDIT_CURSOR_PATH': str(root / 'cursor.json'),
                 'RUNTIME_CONFIG_PATH': str(root / 'runtime.json'),
                 'DATABASE_URL': f'sqlite+aiosqlite:///{root / "test.db"}',
@@ -360,7 +329,7 @@ class DurableIngestTests(unittest.IsolatedAsyncioTestCase):
             audit.write_text(json.dumps(audit_object('bad')) + '\n' + json.dumps(audit_object('good')) + '\n')
             env = {
                 'MODSEC_AUDIT_LOG': str(audit),
-                'EVENTS_JSONL_PATH': str(root / 'events.jsonl'),
+                'DATA_DIR': str(root),
                 'AUDIT_CURSOR_PATH': str(root / 'cursor.json'),
                 'RUNTIME_CONFIG_PATH': str(root / 'runtime.json'),
                 'DATABASE_URL': f'sqlite+aiosqlite:///{root / "test.db"}',
@@ -404,7 +373,7 @@ class DurableIngestTests(unittest.IsolatedAsyncioTestCase):
             audit.write_text(json.dumps(audit_object('after-lock')) + '\n')
             env = {
                 'MODSEC_AUDIT_LOG': str(audit),
-                'EVENTS_JSONL_PATH': str(root / 'events.jsonl'),
+                'DATA_DIR': str(root),
                 'AUDIT_CURSOR_PATH': str(root / 'cursor.json'),
                 'RUNTIME_CONFIG_PATH': str(root / 'runtime.json'),
                 'DATABASE_URL': f'sqlite+aiosqlite:///{root / "test.db"}',
@@ -417,11 +386,11 @@ class DurableIngestTests(unittest.IsolatedAsyncioTestCase):
                 load_cursor = log_tailer.load_cursor
                 states = []
 
-                def locked_twice(path):
+                def locked_twice():
                     states.append(log_tailer.INGEST_STATE['state'])
                     if len(states) <= 2:
                         raise OperationalError('SELECT', {}, sqlite3.OperationalError('database is locked'))
-                    return load_cursor(path)
+                    return load_cursor()
 
                 wake = asyncio.Event()
                 try:
@@ -454,11 +423,10 @@ class DurableIngestTests(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             audit = root / 'audit.log'
-            archive = root / 'events.jsonl'
             audit.write_text(json.dumps(audit_object('pinned')) + '\n')
             env = {
                 'MODSEC_AUDIT_LOG': str(audit),
-                'EVENTS_JSONL_PATH': str(archive),
+                'DATA_DIR': str(root),
                 'AUDIT_CURSOR_PATH': str(root / 'cursor.json'),
                 'RUNTIME_CONFIG_PATH': str(root / 'runtime.json'),
                 'DATABASE_URL': f'sqlite+aiosqlite:///{root / "test.db"}',
@@ -492,10 +460,9 @@ class DurableIngestTests(unittest.IsolatedAsyncioTestCase):
                         finally:
                             worker.cancel()
                             await asyncio.gather(worker, return_exceptions=True)
-                    mirrored = json.loads(archive.read_text())
                     async with models.get_session_factory()() as session:
                         stored = (await session.scalars(select(models.AuditEvent))).one().raw_event
-                    self.assertEqual((mirrored['crs_ruleset_digest'], stored['crs_ruleset_digest']), ('a' * 64, 'a' * 64))
+                    self.assertEqual(stored['crs_ruleset_digest'], 'a' * 64)
                 finally:
                     await models.get_async_engine().dispose()
                     models._async_engine = None

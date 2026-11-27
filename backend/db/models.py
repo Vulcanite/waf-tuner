@@ -1,8 +1,8 @@
 """
 SQLAlchemy models and database utilities for the WAF Exception Agent.
 
-Raw events live in events.jsonl; durable ingestion and analysis workflow state
-lives in a local SQLite database (lightweight default for lab / bare metal).
+Raw audit events and the durable ingestion and analysis workflow state live in a
+local SQLite database (lightweight default for lab / bare metal).
 """
 from __future__ import annotations
 
@@ -30,8 +30,9 @@ from sqlalchemy.orm import DeclarativeBase
 
 
 def _default_sqlite_path() -> Path:
-    events = os.environ.get("EVENTS_JSONL_PATH", "/shared/events.jsonl")
-    return Path(events).expanduser().resolve().parent / "waf-tuner.db"
+    from services.runtime_config import data_dir
+
+    return data_dir() / "waf-tuner.db"
 
 
 def get_database_url() -> str:

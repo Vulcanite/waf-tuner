@@ -16,22 +16,22 @@ logger = logging.getLogger(__name__)
 
 
 
-def _data_dir() -> Path:
-    events = os.environ.get("EVENTS_JSONL_PATH", "/shared/events.jsonl")
-    return Path(events).expanduser().resolve().parent
+def data_dir() -> Path:
+    """DATA_DIR (default /shared): the SQLite database, cursor, runtime config and fingerprint key live here."""
+    return Path(os.environ.get("DATA_DIR") or "/shared").expanduser().resolve()
 
 
 def config_path() -> Path:
     override = os.environ.get("RUNTIME_CONFIG_PATH")
     if override:
         return Path(override).expanduser().resolve()
-    return _data_dir() / "runtime_config.json"
+    return data_dir() / "runtime_config.json"
 
 
 def default_audit_log_path() -> str:
     return (
         os.environ.get("MODSEC_AUDIT_LOG")
-        or str(_data_dir() / "modsec" / "audit.log")
+        or str(data_dir() / "modsec" / "audit.log")
     )
 
 
@@ -113,14 +113,14 @@ def set_audit_log_path(path: str) -> dict[str, Any]:
     # Absolute path preferred inside containers; allow relative resolved against data dir
     p = Path(cleaned).expanduser()
     if not p.is_absolute():
-        p = (_data_dir() / p).resolve()
+        p = (data_dir() / p).resolve()
     else:
         p = p.resolve()
 
     # Path traversal validation: restrict to whitelisted roots
     import tempfile
     allowed_dirs = [
-        _data_dir().resolve(),
+        data_dir(),
         Path("/shared").resolve(),
         Path("/var/log").resolve(),
         Path(tempfile.gettempdir()).resolve(),

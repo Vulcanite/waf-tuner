@@ -84,13 +84,6 @@ async def startup():
     if await ensure_default_application_profile():
         logger.info("Created default-lab application route profile")
 
-    events_path = os.environ.get("EVENTS_JSONL_PATH", "/shared/events.jsonl")
-    data_dir = os.path.dirname(events_path) or "/shared"
-    os.makedirs(data_dir, exist_ok=True)
-    if not os.path.exists(events_path):
-        open(events_path, "w").close()
-        logger.info("Created events.jsonl at %s", events_path)
-
     logger.info("Observe-only: no edge deploy or config writes")
     try:
         from services.runtime_config import get_audit_log_path, audit_log_status

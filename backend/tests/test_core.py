@@ -8,7 +8,7 @@ from services.crs_index import build_crs_index
 from services.exception_builder import build_exception_rule, can_build_exception
 from services.incidents import incident_fingerprint, normalized_path
 from services.inference_context import extract_match_target
-from services.log_tailer import _archive_tail, _decode_complete_objects
+from services.log_tailer import _decode_complete_objects
 
 
 class AuditFramingTests(unittest.TestCase):
@@ -26,18 +26,6 @@ class AuditFramingTests(unittest.TestCase):
         objects, pending = _decode_complete_objects(pending + second[10:])
         self.assertEqual(objects[0]["transaction"]["id"], "two")
         self.assertEqual(pending, b"")
-
-    def test_archive_tail_supports_large_records(self):
-        with tempfile.TemporaryDirectory() as directory:
-            archive = Path(directory, "events.jsonl")
-            archive.write_text(
-                '{"transaction_id":"one"}\n'
-                + '{"transaction_id":"two","body":"'
-                + ("x" * 70000)
-                + '"}\n'
-            )
-            self.assertEqual(_archive_tail(str(archive))[0], "two")
-
 
     def test_many_objects_with_noise_decode_in_order(self):
         records = "".join(f'{{"n": {i}, "s": "}}"}}\n' for i in range(20000))
@@ -64,11 +52,10 @@ class AuditFramingTests(unittest.TestCase):
             audit = root / "audit.log"
             audit.write_text(entry("bad", "not-an-object") + "\n" + entry("good", {"method": "GET", "uri": "/s?q=1"}) + "\n")
             env = {
-                "DATABASE_PATH": str(root / "t.db"), "EVENTS_JSONL_PATH": str(root / "events.jsonl"),
+                "DATABASE_PATH": str(root / "t.db"), "DATA_DIR": str(root),
                 "AUDIT_CURSOR_PATH": str(root / "cursor.json"), "RUNTIME_CONFIG_PATH": str(root / "rc.json"),
                 "MODSEC_AUDIT_LOG": str(audit), "INCIDENT_FINGERPRINT_KEY": "test",
             }
-            (root / "events.jsonl").touch()
             db_models._async_engine = None
             db_models._async_session_factory = None
             try:
@@ -246,7 +233,7 @@ class RuntimeConfigTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             old = {
                 "RUNTIME_CONFIG_PATH": os.environ.get("RUNTIME_CONFIG_PATH"),
-                "EVENTS_JSONL_PATH": os.environ.get("EVENTS_JSONL_PATH"),
+                "DATA_DIR": os.environ.get("DATA_DIR"),
                 "MODSEC_AUDIT_LOG": os.environ.get("MODSEC_AUDIT_LOG"),
             }
             cfg = Path(directory) / "runtime_config.json"
@@ -254,7 +241,7 @@ class RuntimeConfigTests(unittest.TestCase):
             log_path.parent.mkdir(parents=True)
             log_path.write_text("")
             os.environ["RUNTIME_CONFIG_PATH"] = str(cfg)
-            os.environ["EVENTS_JSONL_PATH"] = str(Path(directory) / "events.jsonl")
+            os.environ["DATA_DIR"] = directory
             os.environ.pop("MODSEC_AUDIT_LOG", None)
             rc._cache = None
             try:

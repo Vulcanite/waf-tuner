@@ -15,14 +15,13 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import DataError, DBAPIError, IntegrityError
 
 from db.models import AuditEvent, get_session_factory
-from services.audit_cursor import count_lines, load_cursor, save_cursor
+from services.audit_cursor import load_cursor, save_cursor
 from services.audit_event import normalize_audit_event as _parse_modsec_json, parse_audit_timestamp
 from services.crs_index import index_status
 from services.incidents import register_event, transaction_exists
 
 logger = logging.getLogger(__name__)
 
-EVENTS_JSONL_PATH = os.environ.get('EVENTS_JSONL_PATH', '/shared/events.jsonl')
 READ_CHUNK_BYTES = 8 * 1024 * 1024
 # Storage errors are retried until they clear; any other failure skips the record after this many tries.
 MAX_INGEST_ATTEMPTS = 3
@@ -99,52 +98,6 @@ def _decode_complete_objects(pending: bytes) -> tuple[list[dict], bytes]:
     return objects, utf8_tail
 
 
-def _archive_tail(path: str) -> tuple[str | None, int | None]:
-    """Read final mirror record for crash and rotation reconciliation."""
-    try:
-        with open(path, 'rb') as handle:
-            handle.seek(0, os.SEEK_END)
-            position = handle.tell()
-            pieces = []
-            found_end = False
-            while position > 0:
-                size = min(64 * 1024, position)
-                position -= size
-                handle.seek(position)
-                chunk = handle.read(size)
-                if not found_end:
-                    chunk = chunk.rstrip(b'\r\n \t')
-                    found_end = bool(chunk)
-                if found_end:
-                    previous_line = chunk.rfind(b'\n')
-                    pieces.append(chunk[previous_line + 1:])
-                    if previous_line != -1 or position == 0:
-                        value = json.loads(b''.join(reversed(pieces)))
-                        transaction = str(value.get('transaction_id') or '') or None
-                        line = value.get('event_line')
-                        return transaction, line if type(line) is int and line >= 0 else None
-    except (OSError, AttributeError, ValueError):
-        pass
-    return None, None
-
-
-def _mirror_state(path: str, cursor: dict) -> tuple[int, int, str | None, int | None]:
-    try:
-        size = os.path.getsize(path)
-    except FileNotFoundError:
-        size = 0
-    next_line = cursor.get('next_event_line', 0)
-    transaction, last_line = _archive_tail(path if size else path + '.1')
-    if last_line is None and size:
-        physical_lines = count_lines(path)
-        if transaction:
-            last_line = physical_lines - 1
-        next_line = max(next_line, physical_lines)
-    if last_line is not None:
-        next_line = max(next_line, last_line + 1)
-    return size, next_line, transaction, last_line
-
-
 def _read_at(handle: BinaryIO, offset: int) -> tuple[bytes, int]:
     handle.seek(offset)
     data = handle.read(READ_CHUNK_BYTES)
@@ -185,45 +138,24 @@ def _open_log(path: str, target_identity, cursor: dict) -> BinaryIO:
     return handle
 
 
-def _append_event(path: str, event: dict, event_line: int, fsync: bool) -> int:
-    payload = json.dumps({**event, 'event_line': event_line}, ensure_ascii=True, separators=(',', ':')).encode('ascii') + b'\n'
-    with open(path, 'a+b') as archive:
-        start = archive.tell()
-        try:
-            archive.write(payload)
-            archive.flush()
-            if fsync:
-                os.fsync(archive.fileno())
-        except OSError:
-            archive.truncate(start)
-            raise
-    return start + len(payload)
-
-
 async def log_tailer(queue_changed: asyncio.Event | None = None):
     from services.runtime_config import get_audit_log_path
 
-    events_path = os.environ.get('EVENTS_JSONL_PATH', EVENTS_JSONL_PATH)
-    max_mirror_bytes = max(0, int(os.environ.get('EVENTS_JSONL_MAX_BYTES', '0')))
     factory = get_session_factory()
     INGEST_STATE.update(state='starting', error=None)
     while True:
         # A locked or missing database at startup must not end ingestion for good.
         try:
-            cursor = await asyncio.to_thread(load_cursor, events_path)
-            archive_size, next_event_line, last_transaction, last_event_line = await asyncio.to_thread(
-                _mirror_state, events_path, cursor)
+            cursor = await asyncio.to_thread(load_cursor)
             async with factory() as session:
                 last_registered_line = await session.scalar(select(func.max(AuditEvent.event_line)))
-            if last_registered_line is not None:
-                next_event_line = max(next_event_line, last_registered_line + 1)
+            next_event_line = 0 if last_registered_line is None else last_registered_line + 1
             break
         except Exception as exc:
             INGEST_STATE.update(state='retrying', error=f'startup failed ({type(exc).__name__})')
             logger.error('Audit tailer startup failed (%s); retrying', type(exc).__name__)
             await asyncio.sleep(INGEST_STORAGE_RETRY_SECONDS)
     INGEST_STATE.update(state='running', error=None)
-    fsync = os.environ.get('EVENTS_FSYNC', 'false').lower() in ('1', 'true', 'yes')
     reader = None
     drain_rotated = True
     last_logged_path = None
@@ -278,7 +210,7 @@ async def log_tailer(queue_changed: asyncio.Event | None = None):
                         if event is None:
                             continue
                         transaction_id = event['transaction_id']
-                        # Pin the ruleset once, on the raw record, so a retry keeps the same pin in the mirror and SQLite.
+                        # Pin the ruleset once, on the raw record, so a retry keeps the same pin.
                         pin = obj.setdefault('waf_tuner_crs', _ruleset_pin(event))
                         event['crs_ruleset_digest'] = pin.get('digest')
                         event['crs_ruleset_uncertain'] = bool(pin.get('uncertain'))
@@ -291,16 +223,9 @@ async def log_tailer(queue_changed: asyncio.Event | None = None):
                             if await transaction_exists(session, transaction_id):
                                 invalid_attempts = storage_failures = 0
                                 continue
-                            if last_transaction == transaction_id and last_event_line is not None:
-                                event_line = last_event_line
-                            else:
-                                event_line = next_event_line
-                                archive_size = await asyncio.to_thread(_append_event, events_path, event, event_line, fsync)
-                                last_transaction = transaction_id
-                                last_event_line = event_line
-                                next_event_line += 1
-                            registered = await register_event(session, event, event_line)
+                            registered = await register_event(session, event, next_event_line)
                             await session.commit()
+                            next_event_line += 1
                             invalid_attempts = storage_failures = 0
                             INGEST_STATE.update(state='running', error=None)
                             if registered and queue_changed is not None:
@@ -330,14 +255,8 @@ async def log_tailer(queue_changed: asyncio.Event | None = None):
                             updated_cursor.update(pending=retry + remainder, retry_pending=True)
                             break
 
-                updated_cursor.update(
-                    next_event_line=next_event_line,
-                )
                 await asyncio.to_thread(save_cursor, updated_cursor)
                 cursor = updated_cursor
-                if max_mirror_bytes and archive_size >= max_mirror_bytes and not cursor.get('retry_pending'):
-                    await asyncio.to_thread(os.replace, events_path, events_path + '.1')
-                    archive_size = 0
                 if backlog and not cursor.get('retry_pending'):
                     continue
             except Exception as exc:

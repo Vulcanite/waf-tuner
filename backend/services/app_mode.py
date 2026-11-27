@@ -52,7 +52,6 @@ def product_info() -> dict:
         "env": {
             "MODSEC_AUDIT_LOG": os.environ.get("MODSEC_AUDIT_LOG", ""),
             "CRS_RULES_DIR": os.environ.get("CRS_RULES_DIR", ""),
-            "EVENTS_JSONL_PATH": os.environ.get("EVENTS_JSONL_PATH", ""),
             "DATABASE_PATH": os.environ.get(
                 "DATABASE_PATH", ""
             ),
