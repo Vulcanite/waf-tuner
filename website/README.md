@@ -11,4 +11,4 @@ The local site is at `http://localhost:3000/waf-tuner/`. If the WAF Tuner UI is 
 
 Run `npm run build` to verify links and render the static site into `build/`. Run `npm run serve` to preview the build.
 
-The diagram SVGs in `static/diagrams/` were exported from the [MCP Diagrams Eraser workspace](https://app.eraser.io/workspace/0qBH5xzRdtD68ZwhrvuT). Update those diagrams in Eraser and export the light and dark variants together.
+Diagrams are Mermaid code blocks inside the Markdown pages, so edit them as text next to the prose they explain.

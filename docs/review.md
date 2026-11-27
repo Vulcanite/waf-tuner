@@ -1,14 +1,17 @@
 # Review an exclusion
 
-import Diagram from '@site/src/components/Diagram';
+A false-positive verdict describes the observed match. An exclusion affects future requests too, so WAF Tuner applies additional checks before a verdict becomes a draft, and repeats them when you approve.
 
-A false-positive verdict describes the observed match. An exclusion affects future requests too, so WAF Tuner applies additional checks before a verdict becomes a draft.
-
-<Diagram
-  name="review"
-  alt="A false-positive verdict enters the draft checks. Failed checks withhold the draft. A passing draft goes to an operator, and the server checks it again at approval."
-  caption="The server builds the rule. The operator reviews, validates, and applies it."
-/>
+```mermaid
+flowchart TD
+  V[False-positive verdict] --> C{Server checks:<br/>route fact, evidence,<br/>ruleset, conflicts}
+  C -->|any check fails| W[Draft withheld,<br/>status says why]
+  C -->|all pass| D[Draft rule built<br/>from the server template]
+  D --> R[You review it]
+  R --> A{Approve:<br/>checks run again}
+  A -->|still valid| OK[Copy into your WAF<br/>config before CRS]
+  A -->|something changed| S[Draft marked stale]
+```
 
 ## Read the case
 
