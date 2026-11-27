@@ -34,4 +34,4 @@ WAF Tuner does exactly that, and nothing more:
 
 Teams and individuals who already run, or want to run, ModSecurity with OWASP CRS in front of their own applications, and who would rather tune it with evidence than turn it down.
 
-Next: [run the lab](./quick-start.md), or read [how it works](./architecture.md).
+Next: [run the lab](./quick-start.md), or read [how it works](./architecture.mdx).

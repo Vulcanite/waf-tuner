@@ -11,4 +11,4 @@ The local site is at `http://localhost:3000/waf-tuner/`. If the WAF Tuner UI is 
 
 Run `npm run build` to verify links and render the static site into `build/`. Run `npm run serve` to preview the build.
 
-Diagrams are Mermaid code blocks inside the Markdown pages, so edit them as text next to the prose they explain.
+Diagrams are made in Eraser (file `0qBH5xzRdtD68ZwhrvuT`: "WAF Tuner: how it works", "what the model sees", "review checks") and exported as light and dark PNGs into `static/diagrams/`. Never use Mermaid.

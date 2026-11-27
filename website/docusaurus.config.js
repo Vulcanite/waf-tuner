@@ -7,8 +7,7 @@ module.exports = {
   baseUrl: '/waf-tuner/',
   trailingSlash: true,
   onBrokenLinks: 'throw',
-  markdown: {format: 'detect', mermaid: true, hooks: {onBrokenMarkdownLinks: 'throw'}},
-  themes: ['@docusaurus/theme-mermaid'],
+  markdown: {format: 'detect', hooks: {onBrokenMarkdownLinks: 'throw'}},
   presets: [
     ['classic', {
       docs: {
@@ -21,25 +20,26 @@ module.exports = {
   ],
   themeConfig: {
     colorMode: {defaultMode: 'light', respectPrefersColorScheme: true},
-    mermaid: {theme: {light: 'neutral', dark: 'dark'}},
     navbar: {
       title: 'WAF Tuner',
+      logo: {alt: '', src: 'img/mark.svg'},
       items: [
-        {type: 'doc', docId: 'overview', label: 'Why', position: 'left'},
-        {type: 'doc', docId: 'quick-start', label: 'Quickstart', position: 'left'},
-        {type: 'doc', docId: 'architecture', label: 'How it works', position: 'left'},
-        {type: 'doc', docId: 'results', label: 'Results', position: 'left'},
-        {type: 'doc', docId: 'roadmap', label: 'Roadmap', position: 'left'},
+        {to: '/docs/overview/', label: 'Why', position: 'left'},
+        {to: '/docs/quick-start/', label: 'Quickstart', position: 'left'},
+        {to: '/docs/architecture/', label: 'How it works', position: 'left'},
+        {to: '/docs/results/', label: 'Results', position: 'left'},
+        {to: '/docs/roadmap/', label: 'Roadmap', position: 'left'},
         {href: repo, label: 'GitHub', position: 'right'},
       ],
     },
     footer: {
-      style: 'light',
+      style: 'dark',
       links: [
         {label: 'Limits and data handling', to: '/docs/limits/'},
         {label: 'GitHub', href: repo},
         {label: 'Apache-2.0', href: `${repo}/blob/master/LICENSE`},
       ],
+      copyright: 'WAF Tuner is an independent open-source project. ModSecurity, OWASP CRS and Coraza are projects of their respective owners.',
     },
     prism: {additionalLanguages: ['bash', 'json', 'apacheconf']},
   },

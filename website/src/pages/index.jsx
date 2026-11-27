@@ -1,113 +1,171 @@
 import React from 'react';
 import Link from '@docusaurus/Link';
 import Layout from '@theme/Layout';
-import CodeBlock from '@theme/CodeBlock';
+import Diagram from '../components/Diagram';
 
-const verdict = `{
-  "classification": "false_positive",
-  "rule_looks_for": "SQL function names such as log() followed by an opening parenthesis, as used in SQL injection payloads.",
-  "payload_is": "A free-text support message: 'Pasting console.log(window.cart) shows an empty list.'",
-  "why": "The matched log( belongs to JavaScript console.log, not an SQL function call, and the /support route explicitly accepts pasted code and error text."
-}`;
+const rule = `SecRule REQUEST_FILENAME "@streq /support" \\
+    "id:1027971,phase:1,pass,nolog,t:none,chain"
+  SecRule REQUEST_METHOD "@streq POST" "t:none,chain"
+  SecRule REQUEST_HEADERS:Host "@rx ^shop[.]lab[.]?(?::[0-9]+)?$" \\
+    "t:none,t:lowercase,ctl:ruleRemoveTargetById=942150;ARGS:message"`;
 
-const rule = `SecRule REQUEST_FILENAME "@streq /support" "id:1027971,phase:1,pass,nolog,t:none,chain"
-    SecRule REQUEST_METHOD "@streq POST" "t:none,chain"
-    SecRule REQUEST_HEADERS:Host "@rx ^shop[.]lab[.]?(?::[0-9]+)?$" "t:none,t:lowercase,ctl:ruleRemoveTargetById=942150;ARGS:message"`;
+function CaseFile() {
+  return (
+    <div className="case" aria-label="Example case from the lab">
+      <div className="case-head">
+        <span>Case · shop.lab</span>
+        <span className="case-id">POST /support</span>
+      </div>
+      <div className="case-log">
+        <span className="dim">ARGS:message =</span> "Pasting <mark>console.log(</mark>window.cart) shows an empty list."
+      </div>
+      <div className="case-flag">
+        <span className="tag tag--amber">CRS 942150</span>
+        <span>SQL function call detected</span>
+      </div>
+      <div className="case-verdict">
+        <span className="stamp">False positive</span>
+        <dl>
+          <dt>Rule looks for</dt>
+          <dd>SQL function names such as <code>log()</code> followed by an opening parenthesis.</dd>
+          <dt>Payload is</dt>
+          <dd>A support message quoting a browser console call.</dd>
+          <dt>Why</dt>
+          <dd><code>log(</code> belongs to JavaScript <code>console.log</code>, and <code>/support</code> accepts pasted code.</dd>
+        </dl>
+      </div>
+      <div className="case-rule">
+        <div className="case-rule-head"><span className="tag tag--green">Draft exclusion</span><span>awaiting your approval</span></div>
+        <pre>{rule}</pre>
+      </div>
+    </div>
+  );
+}
 
-const steps = [
-  ['Your WAF logs', 'ModSecurity with OWASP CRS keeps serving traffic and writes its JSON audit log. Nothing changes on the request path.'],
-  ['WAF Tuner reads the log', 'Offline, it groups repeated matches and keeps the exact rule, field and value behind each one.'],
-  ['A model judges the payload', 'Any OpenAI-compatible model, self-hosted or hosted, gets the rule, the redacted value and your application profile, and explains its verdict.'],
-  ['The server writes the rule', 'For a false positive that passes its checks, WAF Tuner builds one narrow exclusion: one rule, one field, one route. The model never writes rule text.'],
-  ['You decide', 'You review the evidence and the rule, approve it, and deploy it through your own process.'],
+const misreads = [
+  ['A product review', <>I'd call it <mark>'select'</mark> quality, <mark>or</mark> 'premium'</>, 'SQL injection'],
+  ['A support ticket', <>Pasting <mark>console.log(</mark>window.cart) shows…</>, 'Node.js and SQL injection'],
+  ['A preferences cookie', <>{'{'}"theme<mark>":"</mark>dark","recent<mark>":[</mark>"tote"]{'}'}</>, 'SQL authentication bypass'],
+];
+
+const roadmap = [
+  ['Now', 'ModSecurity v3 + OWASP CRS 4', 'Offline triage, explanations, server-built exclusions, JSON and OpenAPI profiles.'],
+  ['Next', 'Coraza', 'Read Coraza audit logs and verify exclusions end to end on the engine new self-hosted WAFs are choosing.'],
+  ['Then', 'Real-app evidence', 'Run the model on the WordPress and Nextcloud benchmark and measure what exclusions let through.'],
 ];
 
 export default function Home() {
   return (
     <Layout title="Offline false-positive triage for ModSecurity" description="WAF Tuner reads the ModSecurity audit log, asks a model of your choice whether each OWASP CRS match is a false positive, explains why, and drafts a narrow exclusion for you to review.">
       <main className="home">
-        <header className="home-hero wrap">
-          <p className="eyebrow">For teams that run their own ModSecurity + OWASP CRS</p>
-          <h1>Find the false positives in your WAF logs, and know why they are false.</h1>
-          <p className="lede">
-            CRS matches patterns, not meaning: <code>select</code> in a product review or <code>console.log(</code> in a support ticket looks like an attack.
-            WAF Tuner reads your audit log offline, asks a model of your choice to judge each match against what your application actually accepts,
-            and drafts a narrow exclusion for you to review.
-          </p>
-          <div className="actions">
-            <Link className="button button--primary button--lg" to="/docs/quick-start/">Run the lab in 15 minutes</Link>
-            <Link className="button button--secondary button--lg" to="/docs/overview/">Why this exists</Link>
-          </div>
-        </header>
-
-        <section className="wrap section">
-          <h2>One real match, start to finish</h2>
-          <p className="section-lede">
-            From the lab: a customer pastes <code>console.log(window.cart)</code> into the support form. CRS rule 942150 sees <code>log(</code> and flags SQL injection.
-          </p>
-          <div className="example">
+        <section className="hero">
+          <div className="wrap hero-grid">
             <div>
-              <h3>The model's verdict</h3>
-              <CodeBlock language="json">{verdict}</CodeBlock>
+              <p className="kicker">Open source · ModSecurity + OWASP CRS</p>
+              <h1>Your WAF flags patterns.<br /><span>WAF Tuner reads the meaning.</span></h1>
+              <p className="lede">
+                It reads your ModSecurity audit log offline, asks a model you choose whether each CRS match is a real attack,
+                explains the answer in plain words, and drafts the narrowest exclusion that fixes a false positive. You approve it.
+              </p>
+              <div className="cta">
+                <Link className="btn btn--primary" to="/docs/quick-start/">Run the lab</Link>
+                <Link className="btn btn--ghost" to="/docs/overview/">Why it exists</Link>
+              </div>
+              <ul className="hero-facts">
+                <li>Never in the request path</li>
+                <li>Any OpenAI-compatible model</li>
+                <li>Never edits your WAF</li>
+              </ul>
             </div>
-            <div>
-              <h3>The exclusion the server builds</h3>
-              <CodeBlock language="apacheconf">{rule}</CodeBlock>
-              <p className="note">Rule 942150 stops inspecting only <code>message</code>, only on <code>POST /support</code> for this host. Every other rule still inspects that field.</p>
+            <CaseFile />
+          </div>
+        </section>
+
+        <section className="band">
+          <div className="wrap">
+            <p className="label">The problem</p>
+            <h2>CRS matches patterns, not meaning.</h2>
+            <p className="sub">Three ordinary values from the lab, and what the Core Rule Set thought they were.</p>
+            <div className="misreads">
+              {misreads.map(([what, value, thought]) => (
+                <div className="misread" key={what}>
+                  <span className="misread-what">{what}</span>
+                  <code className="misread-value">{value}</code>
+                  <span className="misread-thought"><span className="tag tag--amber">flagged</span> {thought}</span>
+                </div>
+              ))}
+            </div>
+            <p className="sub">At paranoia levels that catch real attacks, these arrive by the hundred. Teams lower the level, write broad exclusions, or stop reading. All three give protection away.</p>
+          </div>
+        </section>
+
+        <section className="band band--alt">
+          <div className="wrap">
+            <p className="label">How it works</p>
+            <h2>Beside your WAF, not in front of it.</h2>
+            <Diagram name="overview" alt="HTTP traffic goes through ModSecurity with CRS, which writes an audit log. WAF Tuner ingests it; an analysis worker combines the match with the app profile and CRS rule, asks any LLM, and server checks either build an exclusion draft for you to approve or withhold it." />
+            <ol className="steps">
+              <li><b>Read</b><span>Tail the JSON audit log and group repeated matches, so each false positive is judged once.</span></li>
+              <li><b>Judge</b><span>Give the model the rule, the redacted value and your app profile. It must say what the rule looks for, what the value is, and why they differ.</span></li>
+              <li><b>Check</b><span>The server, not the model, builds one exclusion: one rule, one field, one route. Missing evidence or a conflicting verdict withholds it.</span></li>
+              <li><b>Decide</b><span>You review the evidence and the rule, approve it, and deploy it your way.</span></li>
+            </ol>
+            <Link className="more" to="/docs/architecture/">Read the architecture</Link>
+          </div>
+        </section>
+
+        <section className="band band--dark">
+          <div className="wrap">
+            <p className="label">Early results</p>
+            <h2>No attacks cleared. Most noise explained.</h2>
+            <div className="stats">
+              <div><b>0<small>/202</small></b><span>attack matches cleared</span></div>
+              <div><b>200<small>/202</small></b><span>attack matches detected</span></div>
+              <div><b>51<small>/62</small></b><span>harmless matches cleared</span></div>
+              <div><b>100%</b><span>verdicts fully explained</span></div>
+            </div>
+            <p className="fine">DeepSeek Flash on 75 lab requests (264 labelled matches), threshold 0.75. Small and lab-made: read it as direction, not proof. <Link to="/docs/results/">Method and caveats</Link></p>
+          </div>
+        </section>
+
+        <section className="band">
+          <div className="wrap two">
+            <div className="card card--yes">
+              <h3>What it does</h3>
+              <ul>
+                <li>Works offline from the audit log.</li>
+                <li>Runs on any OpenAI-compatible endpoint, including a model you host.</li>
+                <li>Explains every verdict in three fixed fields.</li>
+                <li>Builds narrow exclusions itself and withholds them when evidence is weak.</li>
+              </ul>
+            </div>
+            <div className="card card--no">
+              <h3>What it does not do</h3>
+              <ul>
+                <li>Block traffic or touch your WAF configuration.</li>
+                <li>Rate, bot, DDoS or campaign detection.</li>
+                <li>Replace a managed WAF's other services.</li>
+                <li>Remove the trade-off: an excluded field lets a later attack past that rule. <Link to="/docs/limits/">Limits</Link></li>
+              </ul>
             </div>
           </div>
         </section>
 
-        <section className="wrap section">
-          <h2>How it works</h2>
-          <ol className="steps">
-            {steps.map(([title, body]) => (
-              <li key={title}><strong>{title}</strong><span>{body}</span></li>
-            ))}
-          </ol>
-          <p><Link to="/docs/architecture/">Read the architecture →</Link></p>
-        </section>
-
-        <section className="wrap section two-col">
-          <div>
-            <h2>What it does</h2>
-            <ul className="plain">
-              <li>Works offline from the audit log. Inference never sits in the request path.</li>
-              <li>Uses any OpenAI-compatible endpoint, including a model you host yourself.</li>
-              <li>Explains every verdict: what the rule looks for, what the value is, why they differ.</li>
-              <li>Builds exclusions itself, withholds them when evidence is missing or conflicts, and waits for your approval.</li>
-            </ul>
+        <section className="band band--alt">
+          <div className="wrap">
+            <p className="label">Roadmap</p>
+            <h2>Next stop: Coraza.</h2>
+            <div className="timeline">
+              {roadmap.map(([when, what, body]) => (
+                <div className={`tl tl--${when.toLowerCase()}`} key={when}>
+                  <span className="tl-when">{when}</span>
+                  <h3>{what}</h3>
+                  <p>{body}</p>
+                </div>
+              ))}
+            </div>
+            <Link className="more" to="/docs/roadmap/">Full roadmap</Link>
           </div>
-          <div>
-            <h2>What it does not do</h2>
-            <ul className="plain">
-              <li>It does not block traffic or edit your WAF configuration.</li>
-              <li>It judges payloads only: no rate, bot, DDoS or campaign detection.</li>
-              <li>It does not replace a managed WAF's other services.</li>
-              <li>It does not remove the risk of an exclusion. A later attack in an excluded field passes that rule. <Link to="/docs/limits/">Limits</Link></li>
-            </ul>
-          </div>
-        </section>
-
-        <section className="wrap section">
-          <h2>Early results</h2>
-          <p className="section-lede">DeepSeek Flash on 75 lab requests (264 labelled matches). Small and lab-made, so read it as direction, not proof.</p>
-          <div className="stats">
-            <div><b>0 / 202</b><span>attack matches cleared</span></div>
-            <div><b>200 / 202</b><span>attack matches detected</span></div>
-            <div><b>51 / 62</b><span>harmless matches cleared at threshold 0.75</span></div>
-            <div><b>100%</b><span>verdicts with a complete explanation</span></div>
-          </div>
-          <p><Link to="/docs/results/">Full results, method and caveats →</Link></p>
-        </section>
-
-        <section className="wrap section">
-          <h2>Where it is going</h2>
-          <p className="section-lede">
-            Next is <strong>Coraza</strong>, OWASP's Go WAF, so WAF Tuner works with the engine new self-hosted deployments are choosing.
-            After that: running the model on the WordPress and Nextcloud benchmark, and measuring what approved exclusions would let through.
-          </p>
-          <p><Link to="/docs/roadmap/">Roadmap →</Link></p>
         </section>
       </main>
     </Layout>

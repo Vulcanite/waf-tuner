@@ -1,21 +1,14 @@
 # Review an exclusion
 
+import Diagram from '@site/src/components/Diagram';
+
 A false-positive verdict describes the observed match. An exclusion affects future requests too, so WAF Tuner applies additional checks before a verdict becomes a draft, and repeats them when you approve.
 
-```mermaid
-flowchart TD
-  V[False-positive verdict] --> C{Server checks:<br/>route fact, evidence,<br/>ruleset, conflicts}
-  C -->|any check fails| W[Draft withheld,<br/>status says why]
-  C -->|all pass| D[Draft rule built<br/>from the server template]
-  D --> R[You review it]
-  R --> A{Approve:<br/>checks run again}
-  A -->|still valid| OK[Copy into your WAF<br/>config before CRS]
-  A -->|something changed| S[Draft marked stale]
-```
+<Diagram name="review" alt="A false-positive verdict goes through server checks; if a check fails the draft is withheld with a reason, otherwise a draft rule is built. When you approve, the checks run again: if they pass you deploy it before CRS, if evidence changed the draft is marked stale." caption="The server builds the rule and rechecks it at approval. You deploy it." />
 
 ## Read the case
 
-Suppose a product search contains the words “union select hoodie”. The model can explain that the rule looks for SQL syntax and that the words are part of a search phrase. A profile can add that `GET /search` accepts free-text `q` and that the application binds it as data. Review the actual match, the operator it triggered, and whether your application really handles the field as described.
+Suppose a support ticket says “Pasting `console.log(window.cart)` shows an empty list.” CRS rule 942150 fires on `log(` as a SQL function call. The model can explain that the rule looks for SQL function names, that the value is a quoted browser console call, and that the profile says `POST /support` accepts pasted code. Review the actual match, the operator it triggered, and whether your application really handles the field as described.
 
 If that evidence supports the verdict and draft checks pass, the builder can produce a target exclusion for one rule, one field, one host, one HTTP method, and one path. The exclusion covers future values of that field too. Review it against how the application uses the field and any WAF protection you still expect on it.
 

@@ -58,7 +58,7 @@ See root `docker-compose.yml` and `lab-data/`. Default path inside backend: `/sh
 1. Install the backend and give it a writable data directory for SQLite, the ingest cursor, and runtime settings.
 2. Set `MODSEC_AUDIT_LOG` to the host audit file (or use Settings UI).
 3. Point `CRS_RULES_DIR` at the CRS rules tree your WAF uses. Restart the backend after updating a plain rules directory.
-4. [Review and approve](./review.md) rules before copying them into your ModSecurity exceptions include and reloading.
+4. [Review and approve](./review.mdx) rules before copying them into your ModSecurity exceptions include and reloading.
 
 ### Automated bare-metal lab test
 

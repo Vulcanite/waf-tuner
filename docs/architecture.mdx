@@ -1,21 +1,10 @@
 # How it works
 
+import Diagram from '@site/src/components/Diagram';
+
 WAF Tuner sits beside your WAF, not in front of it. ModSecurity keeps handling live traffic and writes its audit log. WAF Tuner reads that log, asks a model to judge each match, and gives you a reviewed exclusion to deploy yourself.
 
-```mermaid
-flowchart TB
-  T[HTTP traffic] --> M[ModSecurity v3 + OWASP CRS<br/>your WAF, unchanged]
-  M -->|JSON audit log| I[Ingest: group repeated matches]
-  I --> W[Analysis worker]
-  P[Application profile] --> W
-  R[CRS rule that fired] --> W
-  W <-->|redacted evidence / verdict + why| LLM[Any OpenAI-compatible model]
-  W --> G{Server checks}
-  G -->|pass| D[Server-built exclusion]
-  G -->|fail| X[Withheld, with the reason]
-  D --> UI[You review and approve]
-  UI -->|copy into your config| M
-```
+<Diagram name="overview" alt="HTTP traffic goes through ModSecurity with CRS, which writes an audit log. WAF Tuner ingests it; an analysis worker combines the match with the app profile and CRS rule, asks any LLM, and server checks either build an exclusion draft for you to approve or withhold it." caption="ModSecurity stays on the traffic path. WAF Tuner starts at the audit log, and only you deploy an exclusion." />
 
 ## From the log to a case
 
@@ -23,20 +12,11 @@ flowchart TB
 2. **Ingest stores the event and groups matches.** Each CRS match becomes a case. A fingerprint over the rule, field and value groups repeated identical matches, so the same false positive is judged once. Anomaly-score rules are kept as context, not judged.
 3. **A worker picks up a queued case.** It selects the application profile for the host and route, loads the exact CRS rule that fired, and builds a bounded, redacted copy of the evidence.
 4. **The model returns a verdict.** The worker validates the JSON. Invalid output gets one repair call. An `uncertain` verdict can get one stronger reasoning call if you enable escalation.
-5. **The server decides whether a rule can be drafted.** See [Review an exclusion](./review.md) for every check.
+5. **The server decides whether a rule can be drafted.** See [Review an exclusion](./review.mdx) for every check.
 
 ## What the model receives
 
-```mermaid
-flowchart LR
-  A[Audit record] --> S[Select the matched<br/>field and value]
-  C[Pinned CRS rule] --> S
-  P[Profile: stack and<br/>route meaning] --> S
-  S --> X[Redact credentials,<br/>bound sizes]
-  X --> M[Model]
-  M --> V[Validate verdict]
-  V --> D[(Stored revision)]
-```
+<Diagram name="evidence" alt="The audit record, the pinned CRS rule and the profile feed a step that selects the matched field and value; it is redacted and bounded, sent to the model as JSON evidence, and the returned verdict and explanation are validated and stored." caption="Only the selected, redacted, bounded evidence reaches the model." />
 
 The evidence is a JSON message: method and path, the matched field and value, the rule ID, message and operator, sibling rule IDs, and the stack and route facts from the profile. Credential-like names (sessions, tokens, passwords, signatures) are redacted, and long values are cut to fixed limits. If cutting removes the profile, no draft is produced. Check [data handling](./limits.md#model-egress-and-local-storage) before you point WAF Tuner at a hosted model.
 

@@ -7,7 +7,7 @@ WAF Tuner reads ModSecurity and OWASP CRS audit logs offline. It reviews individ
   <img src="website/static/diagrams/architecture-light.svg" alt="ModSecurity handles live traffic. WAF Tuner tails the audit log, consults a configured model, and gives an operator draft exclusions for manual deployment.">
 </picture>
 
-The [architecture guide](./docs/architecture.md) traces the pipeline and shows the evidence sent to the model. The [operator guide](./docs/review.md) explains the draft and approval checks.
+The [architecture guide](./docs/architecture.mdx) traces the pipeline and shows the evidence sent to the model. The [operator guide](./docs/review.mdx) explains the draft and approval checks.
 
 ## Principles
 
