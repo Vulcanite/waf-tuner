@@ -51,6 +51,18 @@ export const createApplicationProfileVersion = (id: number, body: any) =>
     body: JSON.stringify(body),
   })
 
+// Spec is OpenAPI 3.x JSON text; the server converts it and creates the next profile version.
+export const importOpenApiProfile = (body: {
+  spec: string
+  name: string
+  host_patterns: string[]
+  context: Record<string, unknown>
+}) =>
+  req<any>('/api/application-profiles/import-openapi', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+
 // ---- Deduplicated cases ----
 export const getCases = (params: Params = {}) =>
   req<any>(`/api/cases${query(params)}`)
