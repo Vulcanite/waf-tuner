@@ -765,10 +765,6 @@ async def _finalize_case(
                 None, "chained_rule_review",
                 "ModSecurity target exclusions apply to the first rule in a chain. Review the matched clause manually.",
             )
-        if validation_status == "valid" and not (scope.get("host") and scope.get("method")):
-            normalized_rule, validation_status, validation_error = (
-                None, "missing_request_scope", "The captured host and HTTP method are required for a scoped exception.",
-            )
         if validation_status == "valid" and match_evidence_withheld(context):
             normalized_rule, validation_status, validation_error = (
                 None, "missing_match_evidence", "The matched value was unavailable or redacted.",

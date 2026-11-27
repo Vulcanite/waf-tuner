@@ -139,6 +139,8 @@ class ExceptionBuilderTests(unittest.TestCase):
             "collection": "ARGS",
             "parameter": "q",
             "rule_id": "942100",
+            "host": "shop.example",
+            "method": "GET",
         }
 
     def test_builds_request_filename_rule(self):
@@ -155,6 +157,12 @@ class ExceptionBuilderTests(unittest.TestCase):
         ok, _ = can_build_exception({**self.scope, "uri": "/search?q=1"})
         self.assertFalse(ok)
 
+    def test_rejects_a_scope_without_host_or_method(self):
+        for key in ("host", "method"):
+            ok, err = can_build_exception({**self.scope, key: None})
+            self.assertFalse(ok)
+            self.assertIn("host and HTTP method", err)
+
     def test_rejects_missing_parameter(self):
         ok, err = can_build_exception({**self.scope, "parameter": None})
         self.assertFalse(ok)
@@ -165,7 +173,8 @@ class RulePolicyTests(unittest.TestCase):
     """The server builds the only rule shape; these are the scopes it must refuse."""
 
     def setUp(self):
-        self.scope = {"uri": "/search", "collection": "ARGS", "parameter": "q", "rule_id": "942100"}
+        self.scope = {"uri": "/search", "collection": "ARGS", "parameter": "q", "rule_id": "942100",
+                      "host": "shop.example", "method": "GET"}
 
     def test_rule_removes_only_the_observed_target(self):
         rule = build_exception_rule(self.scope)
@@ -187,7 +196,7 @@ class RulePolicyTests(unittest.TestCase):
         self.assertFalse(can_build_exception({**self.scope, "rule_id": "942100,ctl:ruleEngine=Off"})[0])
 
     def test_transaction_collection_is_rejected(self):
-        scope = {"uri": "/search", "collection": "TX", "parameter": "inbound_anomaly_score", "rule_id": "949110"}
+        scope = {**self.scope, "collection": "TX", "parameter": "inbound_anomaly_score", "rule_id": "949110"}
         ok, err = can_build_exception(scope)
         self.assertFalse(ok)
         self.assertIn("cannot be auto-excluded", err)

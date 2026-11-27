@@ -128,6 +128,8 @@ class ModelResponseTests(unittest.TestCase):
             "rule_id": "942100",
             "collection": "ARGS",
             "parameter": "q",
+            "host": "shop.example",
+            "method": "GET",
         }
         with patch.dict(os.environ, {"REQUIRE_APPLICATION_CONTEXT": "false"}):
             normalized, status, error = asyncio.run(
@@ -365,6 +367,8 @@ class SqliteAgentTests(unittest.TestCase):
             "rule_id": "942100",
             "collection": "ARGS",
             "parameter": "q",
+            "host": "shop.example",
+            "method": "GET",
         }
         scope_key = canonical_scope_key(scope)
         rule = build_exception_rule(scope)
@@ -474,6 +478,8 @@ class SqliteAgentTests(unittest.TestCase):
             "rule_id": "942100",
             "collection": "ARGS",
             "parameter": "q",
+            "host": "shop.example",
+            "method": "GET",
         }
         scope_key = canonical_scope_key(scope)
         original = build_exception_rule(scope)
@@ -482,6 +488,8 @@ class SqliteAgentTests(unittest.TestCase):
             "rule_id": "942100",
             "collection": "ARGS",
             "parameter": "other",
+            "host": "shop.example",
+            "method": "GET",
         }
         # Different parameter would change the rule text; merge must ignore for approved.
         other_rule = build_exception_rule(other_scope)
@@ -593,6 +601,8 @@ class SqliteAgentTests(unittest.TestCase):
             "rule_id": "942100",
             "collection": "ARGS",
             "parameter": "q",
+            "host": "shop.example",
+            "method": "GET",
         })
 
         async def run():

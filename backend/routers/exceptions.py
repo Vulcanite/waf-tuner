@@ -46,7 +46,7 @@ def _certified_rule(draft, case, revision, generation) -> bool:
     scope = case_exception_scope(case)
     return bool(
         generation and case.completed_generation == generation
-        and scope.get("host") and scope.get("method") and can_build_exception(scope)[0]
+        and can_build_exception(scope)[0]
         and canonical_scope_key(scope) == draft.scope_key == canonical_scope_key(draft.proposed_rule_scope or {})
         and revision.classification == "false_positive" and revision.validation_status == "valid"
         and draft.proposed_rule == build_exception_rule(scope) == revision.normalized_rule

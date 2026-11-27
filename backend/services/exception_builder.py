@@ -6,14 +6,14 @@ never reaches deploy.
 from __future__ import annotations
 
 import re
-from hashlib import sha256
 
 from services.draft_scope import canonical_scope_key
 
-# Collections we will auto-exclude (target-specific only).
+# Collections we will auto-exclude (target-specific only). XML is not here: its targets are
+# XPath expressions, which never pass the plain-name check below.
 SAFE_TARGET_COLLECTIONS = frozenset({
     "ARGS", "ARGS_NAMES", "REQUEST_HEADERS", "REQUEST_COOKIES",
-    "FILES", "FILES_NAMES", "XML",
+    "FILES", "FILES_NAMES",
 })
 
 # Reserved agent exception ID space (before typical custom rules, after CRS setup).
@@ -24,13 +24,7 @@ _EXCEPTION_ID_SPAN = 100_000  # 1_000_000 .. 1_099_999
 
 
 def stable_exception_id(scope: dict) -> int:
-    if scope.get("host") or scope.get("method"):
-        digest = canonical_scope_key(scope)
-    else:
-        # Preserve IDs for callers constructing the legacy path-only form.
-        parts = [str(scope.get(key) or "") for key in ("uri", "rule_id", "collection", "parameter")]
-        digest = sha256(":".join(parts).encode()).hexdigest()
-    return _EXCEPTION_ID_BASE + (int(digest, 16) % _EXCEPTION_ID_SPAN)
+    return _EXCEPTION_ID_BASE + (int(canonical_scope_key(scope), 16) % _EXCEPTION_ID_SPAN)
 
 
 def can_build_exception(scope: dict) -> tuple[bool, str | None]:
@@ -45,11 +39,12 @@ def can_build_exception(scope: dict) -> tuple[bool, str | None]:
     if not uri.startswith("/"):
         return False, "The incident path must be absolute."
     host, method = str(scope.get("host") or ""), str(scope.get("method") or "")
-    if host or method:
-        if not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?", host):
-            return False, "A specific DNS host or IPv4 address is required for this exclusion."
-        if not re.fullmatch(r"[A-Z]{1,24}", method.upper()):
-            return False, "The observed HTTP method cannot be represented safely in a rule."
+    if not host or not method:
+        return False, "The captured host and HTTP method are required for a scoped exception."
+    if not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?", host):
+        return False, "A specific DNS host or IPv4 address is required for this exclusion."
+    if not re.fullmatch(r"[A-Z]{1,24}", method.upper()):
+        return False, "The observed HTTP method cannot be represented safely in a rule."
     rule_id = str(scope.get("rule_id") or "")
     if not re.fullmatch(r"\d+", rule_id):
         return False, "A numeric CRS rule ID is required."
@@ -86,9 +81,6 @@ def build_exception_rule(scope: dict, *, phase: int = 1) -> str:
     actions = f"id:{rid},phase:{phase},pass,nolog,t:none"
     control = f"ctl:ruleRemoveTargetById={rule_id};{target}"
     uri_rule = f'SecRule REQUEST_FILENAME "@streq {uri}"'
-    if not scope.get("host"):
-        return f'{uri_rule} "{actions},{control}"'
-
     method = str(scope["method"]).upper()
     # Put ctl on the final clause so the full scope must match on v2 and v3.
     host_pattern = str(scope["host"]).lower().replace(".", "[.]")
