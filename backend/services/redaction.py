@@ -43,7 +43,7 @@ def is_sensitive_name(name: str) -> bool:
 def is_credential_name(name: str) -> bool:
     """A header, cookie or request field whose value is a credential, session or one-time secret.
 
-    Used for matched header/cookie targets and for every unmatched request field in request mode.
+    Used for matched header/cookie targets and for query parameter names in the URI evidence.
     A matched ARGS target is checked with is_sensitive_name only, so a documented field such as
     `signature` or `author` can still be analysed when a rule matches it.
     """

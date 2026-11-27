@@ -37,7 +37,6 @@ Initial lab/evaluation release of the observe-and-recommend workflow:
 - Sanitize inference evidence, while disclosing that selected evidence may leave the host for the configured provider.
 - Retain raw audit events and provider responses locally until operators remove their data.
 - A match on a request header or cookie now sends that one header's or cookie's value to the model (for example `Referer`, `X-Forwarded-For` or a `prefs` cookie), so payloads there are no longer left `uncertain`. Credential and session names (`Authorization`, `Cookie`, names containing `sess`, `sid`, `token`, `auth`, `jwt`, `csrf`, ...) stay hidden, and cookie matches are fingerprinted by the matched cookie's value.
-- `ANALYSIS_UNIT=request` (default `match`) analyses all queued matches of one audited request in one model call, with one verdict per `match_index`, then applies every exclusion gate to each match separately. Repeated identical requests still deduplicate into existing cases. Switching the setting marks older verdicts stale.
 - Verdicts include `applies_to_stack` (`yes`/`no`/`unknown`): whether the detected technique would work on the profiled stack. It is recorded in the revision's `model_settings` only; no gate uses it, and the stack is never a reason to call an attack a false positive. Outputs without it read as `unknown`.
 
 Known limitations include model/provider variability, classification errors, a single backend process per SQLite data directory, no automatic retention service, and no multi-version CRS compatibility guarantee.

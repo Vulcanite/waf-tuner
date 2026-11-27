@@ -9,7 +9,7 @@ from collections.abc import Mapping
 from urllib.parse import SplitResult, parse_qsl, unquote, unquote_plus, urlsplit
 
 from services.json_extract import extract_json
-from services.profile_match import route_parameter_key, route_parameter_semantics
+from services.profile_match import route_parameter_semantics
 from services.redaction import REDACTED, is_credential_name, is_sensitive_name, sanitize_evidence_text
 
 
@@ -315,8 +315,8 @@ def _safe_profile(value, depth=0):
     return _text(value, 512)
 
 
-def _profile_projection(profile: dict, target: tuple | None = None, *, targets: list[tuple] | None = None) -> dict:
-    """`target` is the match's (collection, parameter); request mode passes every request field as `targets`.
+def _profile_projection(profile: dict, target: tuple | None = None) -> dict:
+    """`target` is the match's (collection, parameter).
 
     A cookie or header is documented under `REQUEST_COOKIES:<name>` / `REQUEST_HEADERS:<name>`
     (see profile_match.route_parameter_key), an argument under its plain name.
@@ -332,15 +332,6 @@ def _profile_projection(profile: dict, target: tuple | None = None, *, targets: 
             semantics = route_parameter_semantics(route, *target)
             if semantics is not None:
                 route_fields['parameter_semantics'] = semantics
-        if targets:
-            # Request mode: semantics for every field of the request that the route documents.
-            named = {}
-            for collection, name in targets:
-                semantics = route_parameter_semantics(route, collection, name) if name and not is_sensitive_name(name) else None
-                if semantics is not None:
-                    named[route_parameter_key(collection, name)] = semantics
-            if named:
-                route_fields['parameter_semantics'] = dict(sorted(named.items()))
         result['route'] = route_fields
     for key in ('profile_name', 'profile_version'):
         if key in profile:
@@ -431,7 +422,7 @@ def _rule_truncated(rule, field_limit: int) -> bool:
 
 
 def _project_match(request: dict, match: dict, collection, parameter, field_limit: int) -> dict:
-    """Sanitized, bounded values of one match's own target, shared by both analysis units."""
+    """Sanitized, bounded values of one match's own target."""
     safe_target = _safe_target(collection, parameter)
     evidence = match_evidence(request, collection, parameter, match) if safe_target else {}
     if 'uri_query' in evidence:
@@ -489,9 +480,9 @@ def _context_matches(event: dict, request: dict, excluded: set[int]) -> tuple[li
 
 
 def build_inference_context(event, match, *, match_index=0, crs_rule=None, application_context=None, collection=None, parameter=None) -> dict:
-    """Per-match analysis unit: bounded, redacted evidence for ONE match of an audited transaction.
+    """Bounded, redacted evidence for ONE match of an audited transaction.
 
-    Used by the backend worker when ANALYSIS_UNIT=match and by eval/evaluate.py.
+    Used by the backend worker and by eval/evaluate.py.
     Send the result with model_contract.response_messages(context).
     """
     request = prepare_request_evidence(event)
@@ -534,167 +525,6 @@ def build_inference_context(event, match, *, match_index=0, crs_rule=None, appli
         },
     }
     return _fit_context(context, max_context_bytes())
-
-
-def _request_fields(items, field_limit: int) -> tuple[list, bool]:
-    # Unmatched fields: also hide session, CSRF, SSO, signature and OAuth code/state values.
-    fields = [
-        [_text(name, 128), REDACTED if is_credential_name(str(name)) else _bounded_values([value], field_limit)[0]]
-        for name, value in items[:32]
-    ]
-    truncated = len(items) > 32 or any(isinstance(value, str) and len(value) > field_limit for _, value in items[:32])
-    return fields, truncated
-
-
-def _fit_request_context(context: dict, budget: int) -> dict:
-    """Trim to the budget, marking a match truncated only when its own evidence is cut.
-
-    Shared evidence (other_matches, unmatched request fields, the profile) goes first and
-    marks no match. Rule text goes largest first, so one long rule costs one match its draft.
-    """
-    if len(_encode(context)) <= budget:
-        return context
-    context['redaction']['truncated'] = True
-    request = context['request']
-    entries = context['matches']
-    by_rule_size = sorted(entries, key=lambda entry: len(_encode(entry.get('crs_rule') or {})), reverse=True)
-    steps = [
-        (None, context, 'other_matches'), (None, request, 'body'), (None, request, 'query'),
-        *((entry, entry.get('crs_rule'), 'raw') for entry in by_rule_size),
-        *((entry, entry.get('crs_rule'), 'tags') for entry in by_rule_size),
-        (None, context, 'application_context'),
-        *((entry, entry.get('crs_rule'), 'message') for entry in entries),
-        *((entry, entry, 'rule_message') for entry in entries),
-        *((entry, entry.get('crs_rule'), 'source_file') for entry in entries),
-        *((entry, entry, 'matched_data') for entry in entries),
-        (None, request, 'content_type'),
-    ]
-    for owner, container, key in steps:
-        if not container or key not in container:
-            continue
-        if container.pop(key) and owner is not None:
-            owner['redaction']['truncated'] = True
-        if len(_encode(context)) <= budget:
-            return context
-    # Retain each match's identity at very small budgets and let the model abstain.
-    # Entries without a redaction block count as truncated (request_match_view).
-    minimal = {
-        'request': {'method': request.get('method')},
-        'matches': [
-            {key: entry.get(key) for key in ('match_index', 'rule_id', 'collection', 'parameter')}
-            for entry in entries
-        ],
-        'redaction': {'truncated': True},
-    }
-    if len(_encode(minimal)) <= budget:
-        return minimal
-    return {}
-
-
-def build_request_context(event, match_indexes, crs_rules, application_context) -> dict:
-    """Per-request analysis unit: the request once plus every match being analysed.
-
-    `match_indexes` are indexes into event['matches']; aggregate (anomaly-score) matches
-    are never listed for a verdict and appear only under `other_matches`. `crs_rules`
-    maps match_index -> CRSRule (or a dict, or None). The whole request's query and
-    body fields are included, redacted by name; a header or cookie value is included
-    only inside the entry of a match on that header or cookie (see _safe_target).
-
-    Shape: {'request': {...}, 'matches': [{'match_index', 'rule_id', 'collection',
-    'parameter', 'input_target'?, 'matched_data', 'matched_values', 'crs_rule', 'redaction'}, ...],
-    'other_matches': [...], 'application_context': {...}, 'redaction': {'truncated', ...}}.
-    Bounded by AI_MAX_CONTEXT_BYTES. Send with model_contract.request_response_messages.
-    Used by the backend worker when ANALYSIS_UNIT=request and by eval/evaluate.py.
-    """
-    request = prepare_request_evidence(event)
-    matches = event.get('matches') or []
-    field_limit = _field_limit()
-    crs_rules = crs_rules or {}
-    analysed = sorted({
-        index for index in match_indexes
-        if type(index) is int and 0 <= index < len(matches) and not is_aggregate_match(matches[index])
-    })
-    entries = []
-    targets = set()
-    for index in analysed:
-        match = matches[index]
-        collection, parameter = request['targets'][index]
-        crs_rule = crs_rules.get(index)
-        projected = _project_match(request, match, collection, parameter, field_limit)
-        input_target = _input_target(collection, parameter)
-        resolved = resolve_input_target(collection, parameter)
-        if resolved[1]:
-            targets.add(resolved)
-        entries.append({
-            'match_index': index,
-            'rule_id': _text(match.get('rule_id') or '', 24),
-            'rule_message': _text(_rule_value(crs_rule, 'message') or '', 512),
-            'collection': collection,
-            'parameter': _text(parameter, 512) if parameter else None,
-            **({'input_target': input_target} if input_target else {}),
-            'matched_data': projected['matched_data'],
-            'matched_values': projected['values'],
-            'crs_rule': _rule_projection(crs_rule, field_limit),
-            'redaction': {
-                'target_hidden': projected['target_hidden'],
-                'logged_excerpt_omitted': projected['logged_excerpt_omitted'],
-                'truncated': projected['values_truncated'] or _rule_truncated(crs_rule, field_limit),
-            },
-        })
-    query, query_truncated = _request_fields(request['query_items'], field_limit)
-    body, body_truncated = _request_fields(request['body_items'], field_limit)
-    targets.update(('ARGS', str(name)) for name, _ in [*request['query_items'], *request['body_items']])
-    other_matches, other_truncated = _context_matches(event, request, set(analysed))
-    context = {
-        'request': {
-            'method': _text(request['method'], 24),
-            'path': _safe_path(request['path'], field_limit),
-            'query': query,
-            'content_type': _text(request['media_type'], 128),
-            'body_status': request['body_status'],
-            'body': body,
-            'anomaly_score': event.get('anomaly_score'),
-            'anomaly_score_source': event.get('anomaly_score_source'),
-        },
-        'matches': entries,
-        'other_matches': other_matches,
-        'application_context': (
-            _profile_projection(application_context, targets=sorted(targets, key=lambda item: (str(item[0]), item[1])))
-            if application_context else {}
-        ),
-        'redaction': {
-            # Any trimming anywhere, for the model. Drafts read each match's own flag (request_match_view).
-            'truncated': len(request['path']) > field_limit,
-            # The shared path was cut; withholds every draft from this request.
-            'path_truncated': len(request['path']) > field_limit,
-            # Unmatched request fields were cut; each match's own values carry their own flag.
-            'request_fields_truncated': query_truncated or body_truncated or other_truncated,
-        },
-    }
-    return _fit_request_context(context, max_context_bytes())
-
-
-def request_match_view(context: dict, match_index: int) -> dict:
-    """One match's evidence in a request context, in the per-match shape the draft gates read.
-
-    A match counts as truncated when its own evidence (values, rule projection, matched
-    excerpt) was trimmed, when the shared path was cut, or when the context fell back to
-    identities only. Trimming another match's rule text, other_matches, unmatched request
-    fields or the profile does not mark it.
-    """
-    entry = next((item for item in context.get('matches') or [] if item.get('match_index') == match_index), {})
-    own = entry.get('redaction')
-    return {
-        'incident': {'matched_data': entry.get('matched_data'), 'uri': {'query': []}},
-        'request': {'matched_values': entry.get('matched_values') or {}},
-        'crs_rule': entry.get('crs_rule'),
-        'redaction': {
-            'target_hidden': bool((own or {}).get('target_hidden')),
-            'truncated': bool(
-                own is None or own.get('truncated') or (context.get('redaction') or {}).get('path_truncated')
-            ),
-        },
-    }
 
 
 def match_evidence_withheld(context: dict) -> bool:
@@ -745,32 +575,3 @@ def _repair_candidate(value) -> dict | None:
     if isinstance(confidence, (int, float)) and not isinstance(confidence, bool) and math.isfinite(confidence) and 0 <= confidence <= 1:
         summary['confidence'] = confidence
     return summary
-
-
-def bound_request_repair_input(raw: str, context: dict, match_indexes) -> str:
-    """Request-mode repair input: each match's candidate classification plus the sanitized evidence.
-
-    Returns '' (no repair) unless the invalid output names exactly one classification for
-    every analysed match_index, since a repair may restate but never choose a classification.
-    """
-    if len(raw) > max_context_bytes():
-        return ''
-    try:
-        candidate = extract_json(raw)
-    except ValueError:
-        return ''
-    expected = set(match_indexes)
-    verdicts = candidate.get('verdicts')
-    if not expected or not isinstance(verdicts, list):
-        return ''
-    summaries = {}
-    for item in verdicts:
-        index = item.get('match_index') if isinstance(item, dict) else None
-        summary = _repair_candidate(item)
-        if type(index) is not int or index not in expected or index in summaries or summary is None:
-            return ''
-        summaries[index] = {'match_index': index, **summary}
-    if set(summaries) != expected:
-        return ''
-    encoded = _encode({'verdicts': [summaries[index] for index in sorted(summaries)], 'evidence': context})
-    return encoded if len(encoded) <= max_context_bytes() else ''

@@ -3,6 +3,8 @@ import sys
 import io
 from pathlib import Path
 
+import pytest
+
 EVAL = Path(__file__).resolve().parents[1]
 ROOT = EVAL.parent
 sys.path.insert(0, str(EVAL))
@@ -13,6 +15,7 @@ from evaluate import load_recordings, oracle_response, recording_path  # noqa: E
 from fixtures import case_to_fixture, load_fixtures, merge_fixtures  # noqa: E402
 from report import evaluate_recordings, matrix_markdown, write_reports  # noqa: E402
 import evaluate  # noqa: E402
+import report  # noqa: E402
 from services import crs_index  # noqa: E402
 from services.audit_event import normalize_audit_event  # noqa: E402
 from services.inference_context import is_aggregate_match  # noqa: E402
@@ -24,15 +27,17 @@ REQUESTS = EVAL / "requests.jsonl"
 
 
 def replay(fixture, recording):
-    """One match-level fixture replayed in the match unit (the path `evaluate.py --mode recorded` takes)."""
-    rows, _, _ = evaluate.evaluate_fixture(fixture, "match", stored={fixture["id"]: recording} if recording else {})
+    """One match-level fixture replayed (the path `evaluate.py --mode recorded` takes)."""
+    rows, _, _ = evaluate.evaluate_fixture(fixture, stored={fixture["id"]: recording} if recording else {})
     return rows[0]
 
 
 def run_live(fixture, settings):
-    """One match-level fixture run live in the match unit: (row, recording)."""
-    rows, _, recordings = evaluate.evaluate_fixture(fixture, "match", settings=settings)
+    """One match-level fixture run live: (row, recording)."""
+    rows, _, recordings = evaluate.evaluate_fixture(fixture, settings=settings)
     return rows[0], recordings[0]
+
+
 REQUEST_KEYS = {"id", "app", "source", "expected_request", "modsec_audit", "labels", "application_context",
                 "payload_target", "notes"}
 
@@ -327,3 +332,280 @@ def test_request_set_profile_matches_the_app():
         path = normalized["uri"].split("?", 1)[0]
         live = application_context_for(profiles, host, normalized["method"], path)[1]
         assert live == context
+
+
+# Request-level fixtures: a captured ModSecurity record with several labeled matches.
+
+ATTACK_Q = "1' UNION SELECT password FROM users--"
+
+
+def request_fixture(fixture_id="req-search", wrong_stack=None):
+    """A ModSecurity serial record with two scored matches and the 949110 anomaly-score match."""
+    fixture = {
+        "id": fixture_id,
+        "app": "flask",
+        "source": "lab-capture",
+        "expected_request": "attack",
+        "modsec_audit": {"transaction": {
+            "id": "txn-" + fixture_id,
+            "time_stamp": "Mon Jan 01 12:00:00 2024",
+            "client_ip": "10.0.0.5",
+            "request": {
+                "method": "GET",
+                "uri": "/search?q=1%27%20UNION%20SELECT%20password%20FROM%20users--&comment=select%20all%20shoes",
+                "headers": {"Host": "shop.test", "User-Agent": "lab"},
+            },
+            "messages": [
+                {"message": "SQL Injection Attack Detected via libinjection", "details": {
+                    "ruleId": "942100", "severity": "2",
+                    "data": f"Matched Data: {ATTACK_Q} found within ARGS:q: {ATTACK_Q}",
+                }},
+                {"message": "Detects MSSQL code execution and information gathering attempts", "details": {
+                    "ruleId": "942190", "severity": "2",
+                    "data": "Matched Data: select all found within ARGS:comment: select all shoes",
+                }},
+                {"message": "Inbound Anomaly Score Exceeded (Total Score: 10)", "details": {
+                    "ruleId": "949110", "severity": "2", "data": "",
+                }},
+            ],
+        }},
+        "labels": [
+            {"match_index": 0, "expected": "attack"},
+            {"match_index": 1, "expected": "false_positive"},
+        ],
+        "application_context": {
+            "application": {"purpose": "shop search", "languages": ["python"], "data_stores": ["sqlite"]},
+            "route": {"path": "/search", "methods": ["GET"],
+                      "parameters": {"q": "product search terms", "comment": "free-text shopper note"}},
+        },
+        "payload_target": {"collection": "ARGS", "parameter": "q"},
+        "notes": "synthetic request for eval tests",
+    }
+    if wrong_stack is not None:
+        fixture["labels"][0]["wrong_stack"] = wrong_stack
+    return fixture
+
+
+def verdict(classification, **extra):
+    base = {**oracle_response("attack" if classification == "true_positive" else "false_positive"),
+            "classification": classification, "applies_to_stack": "yes"}
+    return {**base, **extra}
+
+
+def by_rule(messages, attempt_type):
+    """The attack on `q` (942100) is a true positive, the comment match (942190) a false positive."""
+    context = json.loads(messages[1]["content"])
+    return json.dumps(verdict("true_positive" if context["incident"]["rule_id"] == "942100" else "false_positive"))
+
+
+USAGE = {
+    "prompt_tokens": 1000, "completion_tokens": 200,
+    "prompt_tokens_details": {"cached_tokens": 600},
+    "completion_tokens_details": {"reasoning_tokens": 150},
+}
+
+
+@pytest.fixture
+def settings(monkeypatch):
+    monkeypatch.setenv("LLM_API_BASE_URL", "http://localhost:12345/v1")
+    monkeypatch.setenv("LLM_API_KEY", "mock-key")
+    monkeypatch.setenv("LLM_ESCALATION_REASONING_EFFORT", "")
+    monkeypatch.setenv("FALSE_POSITIVE_THRESHOLD", "0.90")
+    return evaluate.request_settings(model="mock")
+
+
+def mock_provider(monkeypatch, replies, usage=USAGE):
+    """replies: attempt_type -> content, or a callable(messages, attempt_type) -> content."""
+    sent = []
+
+    def fake_request(messages, settings, attempt_type="initial"):
+        sent.append({"attempt": attempt_type, "messages": messages})
+        content = replies(messages, attempt_type) if callable(replies) else replies[attempt_type]
+        return {"finish_reason": "stop", "message": {"content": content}}, 7, usage
+
+    monkeypatch.setattr(evaluate, "request", fake_request)
+    return sent
+
+
+def test_request_fixture_loads_and_rejects_an_aggregate_label(tmp_path):
+    path = tmp_path / "requests.jsonl"
+    path.write_text(json.dumps(request_fixture()) + "\n")
+    assert evaluate.load_fixture_rows(path)[0]["id"] == "req-search"
+    bad = request_fixture()
+    bad["labels"].append({"match_index": 2, "expected": "attack"})
+    path.write_text(json.dumps(bad) + "\n")
+    with pytest.raises(ValueError, match="aggregate"):
+        evaluate.load_fixture_rows(path)
+
+
+def test_one_call_per_labeled_match(settings, monkeypatch):
+    sent = mock_provider(monkeypatch, by_rule)
+    rows, calls, recordings = evaluate.evaluate_fixture(request_fixture(), settings=settings)
+    assert [item["attempt"] for item in sent] == ["initial", "initial"]
+    context = json.loads(sent[0]["messages"][1]["content"])
+    assert [item.get("rule_id") for item in context["incident"]["other_matches"]] == ["942190", "949110"]
+    assert [(row["id"], row["classification"], row["applies_to_stack"]) for row in rows] == [
+        ("req-search#0", "true_positive", "yes"), ("req-search#1", "false_positive", "yes"),
+    ]
+    assert [call["id"] for call in calls] == ["req-search#0", "req-search#1"]
+    assert all(rec["prompt_sha256"] == evaluate.PROMPT_SHA256 for rec in recordings)
+
+
+def test_repair_cannot_change_a_classification(settings, monkeypatch):
+    # Missing the factor lists: invalid, but the classification is stated, so one repair is allowed.
+    broken = json.dumps({"classification": "false_positive", "confidence": 0.95, "verdict": "x"})
+    fixture = {**request_fixture(), "labels": [{"match_index": 1, "expected": "false_positive"}]}
+    sent = mock_provider(monkeypatch, {"initial": broken, "repair": json.dumps(verdict("true_positive"))})
+    rows, calls, _ = evaluate.evaluate_fixture(fixture, settings=settings)
+    assert [item["attempt"] for item in sent] == ["initial", "repair"]
+    assert not rows[0]["valid"] and rows[0]["repaired"] and calls[0]["model_calls"] == 2
+
+    sent = mock_provider(monkeypatch, {"initial": broken, "repair": json.dumps(verdict("false_positive"))})
+    rows, _, recordings = evaluate.evaluate_fixture(fixture, settings=settings)
+    assert rows[0]["classification"] == "false_positive"
+    # The stored repair input holds the candidate label, not the evidence.
+    assert json.loads(recordings[0]["repair_input"]) == {"classification": "false_positive", "confidence": 0.95}
+    replayed, _, _ = evaluate.evaluate_fixture(fixture, stored={"req-search#1": recordings[0]})
+    assert replayed[0]["classification"] == "false_positive"
+
+
+def test_copyable_estimate_applies_the_route_and_evidence_gates(settings, monkeypatch):
+    def cleared(fixture):
+        mock_provider(monkeypatch, by_rule)
+        rows, calls, _ = evaluate.evaluate_fixture(fixture, settings=settings)
+        return evaluate.build_report([fixture], rows, settings, "mock", calls)["summary"], rows
+
+    summary, rows = cleared(request_fixture())
+    assert summary["copyable_exclusions"] == 1
+    assert (rows[1]["route_supports_exception"], rows[1]["evidence_withheld"]) == (True, False)
+
+    # The route does not document `comment`: the worker withholds the draft.
+    undocumented = request_fixture()
+    del undocumented["application_context"]["route"]["parameters"]["comment"]
+    summary, rows = cleared(undocumented)
+    assert summary["copyable_exclusions"] == 0 and rows[1]["route_supports_exception"] is False
+
+    # A cookie entry on the route never vouches for an argument of the same name.
+    cookie_only = request_fixture()
+    parameters = cookie_only["application_context"]["route"]["parameters"]
+    parameters["REQUEST_COOKIES:comment"] = parameters.pop("comment")
+    assert cleared(cookie_only)[0]["copyable_exclusions"] == 0
+
+    # The match's own evidence was trimmed: no copyable rule either.
+    monkeypatch.setenv("AI_MAX_CONTEXT_BYTES", "300")
+    summary, rows = cleared(request_fixture())
+    assert summary["copyable_exclusions"] == 0 and rows[1]["evidence_withheld"] is True
+
+
+def test_cut_off_output_is_never_parsed(settings, monkeypatch):
+    def fake_request(messages, settings, attempt_type="initial"):
+        return {"finish_reason": "length", "message": {"content": json.dumps(verdict("false_positive"))}}, 1, {}
+
+    monkeypatch.setattr(evaluate, "request", fake_request)
+    rows, calls, _ = evaluate.evaluate_fixture(request_fixture(), settings=settings)
+    assert [row["valid"] for row in rows] == [False, False]
+    assert calls[0]["finish_reason"] == "length" and calls[0]["model_calls"] == 1
+
+
+def test_tokens_are_summed_once_per_call(settings, monkeypatch):
+    fixtures = [request_fixture("req-a"), request_fixture("req-b")]
+    mock_provider(monkeypatch, by_rule)
+    rows, calls = [], []
+    for fixture in fixtures:
+        fixture_rows, fixture_calls, _ = evaluate.evaluate_fixture(fixture, settings=settings)
+        rows += fixture_rows
+        calls += fixture_calls
+    tokens = evaluate.build_report(fixtures, rows, settings, "mock", calls)["summary"]["tokens"]
+    # Two requests, two labeled matches each, one call per match.
+    assert tokens["model_calls"] == 4 and tokens["calls_per_request"] == 2
+    assert (tokens["prompt_tokens"], tokens["cached_prompt_tokens"], tokens["completion_tokens"],
+            tokens["reasoning_tokens"]) == (4000, 2400, 800, 600)
+    assert tokens["per_request"]["prompt_tokens"] == 2000
+    assert tokens["per_scored_match"]["prompt_tokens"] == 1000
+
+
+def test_cached_tokens_come_only_from_the_openai_compatible_field():
+    from scoring import usage_tokens
+
+    # A provider-specific top-level cache field is ignored, alone or beside the standard one.
+    assert usage_tokens({"prompt_tokens": 800, "prompt_cache_hit_tokens": 512})["cached_prompt_tokens"] == 0
+    both = {"prompt_tokens": 800, "prompt_cache_hit_tokens": 512, "prompt_tokens_details": {"cached_tokens": 256}}
+    assert usage_tokens(both)["cached_prompt_tokens"] == 256
+
+
+def test_metrics_cover_gates_copyable_exclusions_and_stack(settings, monkeypatch):
+    mock_provider(monkeypatch, by_rule)
+    fixture = request_fixture(wrong_stack=True)
+    rows, calls, _ = evaluate.evaluate_fixture(fixture, settings=settings)
+    summary = evaluate.build_report([fixture], rows, settings, "mock", calls)["summary"]
+    assert summary["attacks_classified_false_positive"] == 0
+    assert summary["attack_detection"] == 1 and summary["harmless_cleared_rate"] == 1
+    assert summary["uncertain_rate"] == 0 and summary["invalid"] == 0
+    assert summary["copyable_exclusions"] == 1  # ARGS:comment
+    assert summary["applies_to_stack"] == {"attack": {"yes": 1}, "false_positive": {"yes": 1}}
+    assert summary["wrong_stack_attacks"]["attacks"] == 1 and summary["wrong_stack_attacks"]["true_positive"] == 1
+
+
+def test_recorded_mode_round_trips_per_model(settings, monkeypatch, tmp_path):
+    fixtures_path = tmp_path / "requests.jsonl"
+    fixtures_path.write_text(json.dumps(request_fixture()) + "\n")
+    crs = tmp_path / "crs"
+    crs.mkdir()
+    (crs / "LOCAL.conf").write_text('SecRule ARGS "@rx union" "id:942100,phase:2,log"\n')
+    for name in ("_index_dir", "_marker_key", "_status", "CRS_INDEX"):
+        monkeypatch.setattr(crs_index, name, getattr(crs_index, name))
+    sent = mock_provider(monkeypatch, by_rule)
+    base = ["--fixtures", str(fixtures_path), "--recordings-dir", str(tmp_path), "--model", "mock",
+            "--record-as", "flash"]
+    live = [*base, "--crs-rules-dir", str(crs), "--record", "--output", str(tmp_path / "live.json")]
+    assert evaluate.main(live) == 0
+    assert (tmp_path / "flash.jsonl").exists() and len(sent) == 2
+    monkeypatch.setattr(evaluate, "request", None)  # replay must not call a provider
+    output = tmp_path / "replay.json"
+    assert evaluate.main([*base, "--mode", "recorded", "--output", str(output)]) == 0
+    replayed = json.loads(output.read_text())
+    recorded = json.loads((tmp_path / "live.json").read_text())
+    assert replayed["prompt_version"] == evaluate.PROMPT_VERSION
+    assert [row["classification"] for row in replayed["results"]] == [row["classification"] for row in recorded["results"]]
+    assert replayed["summary"]["tokens"]["prompt_tokens"] == recorded["summary"]["tokens"]["prompt_tokens"]
+    with pytest.raises(ValueError, match="no recordings"):
+        evaluate.main([*base, "--record-as", "pro", "--mode", "recorded"])
+
+
+def test_gates_fail_on_an_attack_cleared_as_false_positive(tmp_path):
+    fixtures_path = tmp_path / "requests.jsonl"
+    fixtures_path.write_text(json.dumps(request_fixture()) + "\n")
+    evaluate.write_recordings(evaluate.recording_path("leaky", tmp_path), [
+        {"id": f"req-search#{index}", "raw": json.dumps(verdict("false_positive")), "finish_reason": "stop"}
+        for index in (0, 1)
+    ])
+    argv = ["--mode", "recorded", "--model", "leaky", "--fixtures", str(fixtures_path),
+            "--recordings-dir", str(tmp_path), "--output", str(tmp_path / "report.json"), "--min-attack-detection", "0"]
+    assert evaluate.main(argv) == 1
+
+
+def test_comparison_report_renders_one_column_per_run(tmp_path):
+    runs = ["deepseek-flash", "deepseek-pro"]
+    for run in runs:
+        attack_class = "true_positive" if run == "deepseek-pro" else "uncertain"
+        evaluate.write_recordings(evaluate.recording_path(run, tmp_path), [
+            {"id": "req-search#0", "raw": json.dumps(verdict(attack_class)), "finish_reason": "stop",
+             "token_usage": USAGE, "model_calls": 1},
+            {"id": "req-search#1", "raw": json.dumps(verdict("false_positive")), "finish_reason": "stop",
+             "token_usage": USAGE, "model_calls": 1},
+        ])
+    reports = report.evaluate_recordings([request_fixture()], runs, tmp_path)
+    assert reports["deepseek-flash"]["summary"]["tokens"]["prompt_tokens"] == 2000
+    out = tmp_path / "out"
+    report.write_reports(reports, out)
+    table = (out / "comparison.md").read_text()
+    header = next(line for line in table.splitlines() if line.startswith("| metric"))
+    assert header == "| metric | " + " | ".join(runs) + " |"
+    rows = {line.split(" | ")[0].lstrip("| "): line for line in table.splitlines() if line.startswith("| ")}
+    assert rows["attack detection"].endswith("| 0.0% | 100.0% |")
+    assert rows["model calls"].endswith("| 2 | 2 |")
+    assert rows["prompt tokens"].endswith("| 2,000 | 2,000 |")
+    for label in ("cached prompt tokens", "reasoning tokens", "copyable exclusions (estimate)",
+                  "attacks classified false_positive (must be 0)", "harmless correctly cleared", "uncertain rate"):
+        assert label in rows
+    assert "Run metrics" in (out / "deepseek-pro.md").read_text()

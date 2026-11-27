@@ -2,8 +2,7 @@
 """Write per-CRS-rule-ID confusion matrices for one or more recorded runs, plus a side-by-side
 comparison when there are several.
 
-A run is a recording stem: `oracle` (legacy match-unit file) or `<name>__<unit>`, for example
-`--runs small__match,small__request,large__match,large__request`.
+A run is a recording stem in eval/recordings, for example `--models oracle,deepseek-flash`.
 """
 from __future__ import annotations
 
@@ -17,8 +16,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "eval"))
 
 from evaluate import (  # noqa: E402
-    RECORDINGS_DIR, build_report, call_ids, evaluate_fixture, load_fixture_rows, load_recordings,
-    resolve_recording_path, split_run_name,
+    DEFAULT_FIXTURES, RECORDINGS_DIR, build_report, evaluate_fixture, fixture_labels, load_fixture_rows,
+    load_recordings, recording_path,
 )
 
 
@@ -33,7 +32,6 @@ def matrix_markdown(model: str, report: dict[str, Any]) -> str:
     lines = [
         f"# Eval report — {model}",
         "",
-        f"Unit: `{report.get('unit') or 'match'}`",
         f"Generated: {report.get('generated_at', '')}",
         f"Prompt: `{report.get('prompt_version') or 'unrecorded'}` (`{(report.get('prompt_sha256') or '')[:12]}`)",
         "",
@@ -128,7 +126,6 @@ def run_metrics_markdown(report: dict[str, Any]) -> list[str]:
 
 # (label, getter) rows of the comparison table; runs are the columns.
 _COMPARISON_ROWS = [
-    ("unit", lambda r, s, t: r.get("unit") or "match"),
     ("prompt", lambda r, s, t: f"`{r.get('prompt_version') or 'unrecorded'}`"),
     ("requests", lambda r, s, t: _num(s.get("requests"))),
     ("scored matches", lambda r, s, t: _num(s.get("scored_matches"))),
@@ -180,7 +177,7 @@ def comparison_markdown(reports: dict[str, dict[str, Any]]) -> str:
         lines.append(f"| {label} | " + " | ".join(cells) + " |")
     lines.extend([
         "",
-        "Token averages divide by requests and by scored matches. A request-unit call counts once for its request.",
+        "Token averages divide by requests and by scored matches.",
         "Per-rule matrices are in the sibling `*.md` files.",
         "",
     ])
@@ -205,19 +202,17 @@ def write_reports(reports: dict[str, dict[str, Any]], output_dir: Path) -> None:
 def evaluate_run(
     fixtures: list[dict], run: str, recordings_dir: Path, *, ignore_missing: bool = True,
 ) -> dict[str, Any]:
-    """Replay one recorded run; the unit comes from the run name (`<name>__<unit>`, else match)."""
-    model, unit = split_run_name(run)
-    unit = unit or "match"
-    stored = load_recordings(resolve_recording_path(model, recordings_dir, unit))
+    """Replay one recorded run."""
+    stored = load_recordings(recording_path(run, recordings_dir))
     subset = [
-        fixture for fixture in fixtures if any(key in stored for key in call_ids(fixture, unit))
+        fixture for fixture in fixtures if any(label["row_id"] in stored for label in fixture_labels(fixture))
     ] if ignore_missing else fixtures
     rows, calls = [], []
     for fixture in subset:
-        fixture_rows, fixture_calls, _ = evaluate_fixture(fixture, unit, stored=stored)
+        fixture_rows, fixture_calls, _ = evaluate_fixture(fixture, stored=stored)
         rows.extend(fixture_rows)
         calls.extend(fixture_calls)
-    report = build_report(subset, rows, {"model": model, "mode": "recorded", "analysis_unit": unit}, model, calls, unit)
+    report = build_report(subset, rows, {"model": run, "mode": "recorded"}, run, calls)
     report["run"] = run
     return report
 
@@ -234,17 +229,13 @@ def evaluate_recordings(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--fixtures", default=str(ROOT / "eval/fixtures.jsonl"))
+    parser.add_argument("--fixtures", default=str(DEFAULT_FIXTURES))
     parser.add_argument("--recordings-dir", default=str(RECORDINGS_DIR))
     parser.add_argument("--models", default="", help="comma-separated run names; default: every *.jsonl in recordings/")
-    parser.add_argument(
-        "--runs", default="",
-        help="comma-separated runs such as small__match,small__request (overrides --models)",
-    )
     parser.add_argument("--output-dir", default=str(ROOT / "eval/reports"))
     args = parser.parse_args()
     recordings_dir = Path(args.recordings_dir)
-    selected = args.runs.strip() or args.models.strip()
+    selected = args.models.strip()
     if selected:
         models = [item.strip() for item in selected.split(",") if item.strip()]
     else:
