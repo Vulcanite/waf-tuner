@@ -1,6 +1,6 @@
 # Eval report — oracle
 
-Generated: 2026-11-27T01:23:14.636345+00:00
+Generated: 2026-11-27T01:49:48.934784+00:00
 Prompt: `unrecorded` (``)
 
 ## Overall
@@ -25,7 +25,11 @@ Prompt: `unrecorded` (``)
 - Attack detection: 100.0%
 - Harmless correctly cleared: 100.0%
 - Uncertain rate: 0.0%
-- Copyable exclusions (estimate): 106
+- False positives identified (harmless matches classified false_positive): 178
+- Exclusions produced (also pass the server's draft gates): n/a (no gate inputs recorded)
+- Attack matches that would produce an exclusion (must be 0): n/a
+- Drafts withheld by gate: none
+- Explanation fields present: 100.0%
 - applies_to_stack on attacks: unknown 690
 - applies_to_stack on harmless: unknown 178
 - Wrong-stack attacks: 112 (true_positive 112, false_positive 0, uncertain 0, invalid 0; applies_to_stack unknown 112)
