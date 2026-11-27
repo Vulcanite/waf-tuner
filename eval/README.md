@@ -33,12 +33,23 @@ docker compose -p waftuner-capture -f lab/docker-compose.capture.yml down
 
 ## Live provider eval
 
+Copy the CRS rule set out of the WAF image the requests were captured with, then run:
+
 ```bash
+python3 eval/extract_crs_rules.py          # waftuner-capture-nginx -> eval/crs-rules (gitignored)
 set -a; . lab-data/.env; set +a
-python3 eval/evaluate.py --output eval/report.json --record
+python3 eval/evaluate.py --output eval/report.json --record --concurrency 8
 ```
 
-`--crs-rules-dir` selects the deployed CRS files or a published snapshot. Live eval builds the same compact request as the analysis worker, uses the same provider settings and validator, and records the prompt, fixture, and request digests. Recorded replay marks an altered fixture invalid when a digest was captured.
+`extract_crs_rules.py` creates one stopped container from `--image` (default `waftuner-capture-nginx:latest`, built by `lab/docker-compose.capture.yml`), copies its `.conf`/`.data` rule files to `--output` (default `eval/crs-rules`) and removes that container. It never starts a container or touches others. `--crs-rules-dir` defaults to `eval/crs-rules` (or `CRS_RULES_DIR`); point it at other deployed CRS files or a published snapshot as needed. `lab-data/crs-rules` is the main lab's copy and can lag behind the capture image.
+
+Live eval builds the same compact request as the analysis worker, uses the same provider settings and validator, and records the prompt, fixture, and request digests. Recorded replay marks an altered fixture invalid when a digest was captured. `--concurrency N` analyses N requests at a time in threads; rows, recordings and token totals come out in fixture order, as in a serial run. A 429, 5xx or timeout is retried twice per call; any other provider failure stops the run without sending the queued requests. The report records `wall_time_s`.
+
+### What the report scores
+
+- **False positives identified**: harmless matches the model classified `false_positive`.
+- **Exclusions produced**: of those, the ones that would also pass the server's draft gates, in the worker's order: a captured host and a route that documents the target (`REQUIRE_APPLICATION_CONTEXT`, `route_supports_exception`), a buildable scope (`can_build_exception`), the CRS rule present and not chained, the profile not cut from the prompt, the matched evidence not withheld, and no true positive on the same input in the same request. True positives on the same rule and target in other requests, ruleset changes and rule-ID collisions are not modelled. `draft_withheld` counts the gate that stopped each identified false positive. The gate inputs are recorded from the exact context sent, so recordings without them (the oracle) report n/a.
+- **Explanation fields present**: the share of scored matches whose verdict has non-empty `rule_looks_for`, `payload_is` and `why` (an invalid output or a bare "not stated" counts as missing).
 
 For a held-out test, supply operator-labeled, scrubbed JSONL with an `id`, a `modsec_audit` object and `labels` as above, or one match per line with `expected` (`attack` or `false_positive`) and a zero-based `match_index`. An optional `application_context` gives the route and parameter semantics. Each line should use evidence you are allowed to send to the configured provider.
 
@@ -49,4 +60,4 @@ LLM_REASONING_EFFORT=low LLM_ESCALATION_REASONING_EFFORT=high \
   python3 eval/evaluate.py --record --record-as low-with-escalation --output /tmp/waf-eval-low.json
 ```
 
-`--record` writes a JSONL next to other recordings. Treat model outputs as evidence that can contain sensitive text. The command exits nonzero if any response remains invalid, any attack is classified as a false positive, or fewer than `--min-attack-detection` (default 0.5) of attacks are classified `true_positive`, so a model that answers "uncertain" to everything fails.
+Thinking is off unless `LLM_THINKING=enabled` is set (the lab example sets it). `--record` writes a JSONL next to other recordings. Treat model outputs as evidence that can contain sensitive text. The command exits nonzero if any response remains invalid, any attack is classified as a false positive, or fewer than `--min-attack-detection` (default 0.5) of attacks are classified `true_positive`, so a model that answers "uncertain" to everything fails.

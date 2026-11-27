@@ -64,6 +64,8 @@ from services.profile_match import route_supports_exception  # noqa: E402
 
 RECORDINGS_DIR = ROOT / "eval" / "recordings"
 DEFAULT_FIXTURES = ROOT / "eval" / "requests.jsonl"
+# Written by eval/extract_crs_rules.py from the WAF image the eval set was captured with.
+DEFAULT_CRS_RULES = ROOT / "eval" / "crs-rules"
 # Transient provider failures retried per call, like the worker's retryable errors.
 _RETRIES = 2
 PROVENANCE_KEYS = (
@@ -666,7 +668,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--mode", choices=["live", "recorded"], default="live")
     parser.add_argument("--model", default=os.getenv("LLM_MODEL", "Foundation-Sec-1.1-8B-Instruct"))
     parser.add_argument("--recordings-dir", default=str(RECORDINGS_DIR))
-    parser.add_argument("--crs-rules-dir", default=os.getenv("CRS_RULES_DIR") or str(ROOT / "lab-data" / "crs-rules"))
+    parser.add_argument(
+        "--crs-rules-dir", default=os.getenv("CRS_RULES_DIR") or str(DEFAULT_CRS_RULES),
+        help="CRS .conf/.data files (default: eval/crs-rules, written by eval/extract_crs_rules.py)",
+    )
     parser.add_argument("--concurrency", type=int, default=1,
                         help="live mode: fixtures analysed in parallel threads (default 1)")
     parser.add_argument("--record", action="store_true", help="save live responses after all calls complete")
