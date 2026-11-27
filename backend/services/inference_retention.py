@@ -12,6 +12,10 @@ from db.models import (
 
 logger = logging.getLogger(__name__)
 
+APPROVED_EVIDENCE_EXPIRED = (
+    "The supporting audit evidence expired after approval. The rule was verified when it was approved."
+)
+
 
 def retention_days(name: str) -> int:
     days = int(os.getenv(name, "0"))
@@ -80,7 +84,16 @@ async def prune_audit_evidence(cutoff: datetime) -> int:
             }
         if events:
             lines = [event.event_line for event in events]
-            expired_cases = select(AnalysisCase.id).where(AnalysisCase.latest_event_line.in_(lines))
+            transactions = [event.transaction_id for event in events]
+            # An approved exclusion may already be deployed. It keeps its rule text, its revision and
+            # its case so the operator can still copy and export it; only pending drafts go stale.
+            approved_revisions = select(ExceptionDraft.analysis_revision_id).where(
+                ExceptionDraft.status == "approved", ExceptionDraft.analysis_revision_id.is_not(None),
+            )
+            approved_cases = select(AnalysisRevision.analysis_case_id).where(AnalysisRevision.id.in_(approved_revisions))
+            expired_cases = select(AnalysisCase.id).where(
+                AnalysisCase.latest_event_line.in_(lines), AnalysisCase.id.not_in(approved_cases),
+            )
             reason = "The supporting audit evidence expired."
             await session.execute(update(AnalysisRevision).where(
                 AnalysisRevision.analysis_case_id.in_(expired_cases),
@@ -93,13 +106,18 @@ async def prune_audit_evidence(cutoff: datetime) -> int:
                 update(AnalysisCase).where(AnalysisCase.latest_event_line.in_(lines)).values(matched_data="")
             )
             await session.execute(update(ExceptionDraft).where(
-                ExceptionDraft.transaction_id.in_([event.transaction_id for event in events]),
-                ExceptionDraft.status.in_(["pending", "approved"]),
+                ExceptionDraft.transaction_id.in_(transactions),
+                ExceptionDraft.status == "pending",
                 ExceptionDraft.classification == "false_positive",
             ).values(
                 status="stale", proposed_rule=None, rule_placement=None,
                 validation_status="evidence_expired", validation_error=reason,
             ))
+            await session.execute(update(ExceptionDraft).where(
+                ExceptionDraft.transaction_id.in_(transactions),
+                ExceptionDraft.status == "approved",
+                ExceptionDraft.classification == "false_positive",
+            ).values(validation_error=APPROVED_EVIDENCE_EXPIRED))
         await session.commit()
         return len(events)
 

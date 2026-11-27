@@ -1,15 +1,19 @@
 import asyncio
+import csv
+import io
 import json
 import time
 from datetime import datetime, timedelta, timezone
 
 import httpx
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from openai import AsyncOpenAI
 from sqlalchemy import select
 
 from db import models
+from routers import exceptions
 from services import agent, crs_index, log_tailer
 from services.inference_retention import prune_audit_evidence, prune_inference_artifacts
 
@@ -184,10 +188,22 @@ def test_audited_match_becomes_a_reviewable_exception(tmp_path, monkeypatch, var
                 case = (await session.scalars(select(models.AnalysisCase))).one()
                 assert attempt.status == "complete" and attempt.raw_response is None
                 assert revision.classification == "false_positive"
-                assert revision.normalized_rule is None and case.state == "stale"
                 assert event.raw_event["evidence_expired"] and "raw_request" not in event.raw_event
                 assert event.raw_event["matches"] == [{"rule_id": "10001"}]
-                assert draft.status == "stale" and draft.proposed_rule is None
+                # The approved exclusion may be deployed: it keeps its rule, status and verdict.
+                assert draft.status == "approved" and "ruleRemoveTargetById=10001;ARGS:q" in draft.proposed_rule
+                assert draft.validation_status == "valid" and "expired" in draft.validation_error
+                assert revision.normalized_rule == draft.proposed_rule and case.state == "complete"
+                assert case.matched_data == ""
+                # Copy (the detail view) and export still give the rule; approving again is refused.
+                shown = await exceptions.get_exception(draft.id, session)
+                assert shown["status"] == "approved" and shown["proposed_rule"] == draft.proposed_rule
+                response = await exceptions.export_false_positives()
+                content = "".join([chunk async for chunk in response.body_iterator])
+                exported = next(csv.DictReader(io.StringIO(content)))
+                assert exported["Proposed Exception Rule"] == draft.proposed_rule
+                with pytest.raises(HTTPException):
+                    await exceptions.approve_exception(draft.id, session)
 
         asyncio.run(check_retention())
     finally:

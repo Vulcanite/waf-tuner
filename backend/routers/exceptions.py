@@ -55,13 +55,33 @@ def _certified_rule(draft, case, revision, generation) -> bool:
     )
 
 
-async def _current_evidence(db, draft, case, revision, event) -> bool:
-    return bool(
-        event is not None and not event.get("evidence_expired")
-        and _certified_rule(draft, case, revision, current_analysis_generation())
-        and await profile_is_current(db, event, revision.application_profile_id, revision.profile_version)
-        and not await has_true_positive(db, case, draft.proposed_rule_scope or {}, revision=revision)
+async def _case_profile_is_current(db, case, revision) -> bool:
+    """The profile check from the case's own host, method and path, for evidence that has expired."""
+    profile, _ = application_context_for(
+        await active_application_profiles(db), case.application_host, case.method, case.path,
     )
+    observed = (profile.id, profile.version) if profile else (None, None)
+    return observed == (revision.application_profile_id, revision.profile_version)
+
+
+async def _current_evidence(db, draft, case, revision, event, *, approved: bool = False) -> bool:
+    """Whether the draft's rule can still be shown, copied or approved.
+
+    Approval needs the audit evidence. An already approved rule keeps working after retention
+    expires that evidence: the rule, ruleset, profile and true-positive checks still apply.
+    """
+    if event is None:
+        return False
+    expired = bool(event.get("evidence_expired"))
+    if expired and not approved:
+        return False
+    if not _certified_rule(draft, case, revision, current_analysis_generation()):
+        return False
+    if expired:
+        profile_current = await _case_profile_is_current(db, case, revision)
+    else:
+        profile_current = await profile_is_current(db, event, revision.application_profile_id, revision.profile_version)
+    return profile_current and not await has_true_positive(db, case, draft.proposed_rule_scope or {}, revision=revision)
 
 
 def _matching_evidence(matches: list, scope: dict) -> dict | None:
@@ -219,7 +239,7 @@ async def _enrich_draft(db: AsyncSession, d: ExceptionDraft) -> dict:
     elif d.crs_rule_raw:
         crs_meta = {"rule_id": rule_id, "message": "", "raw_available": True}
     result = _draft_to_dict(d, event, case=case, revision=revision, crs_meta=crs_meta)
-    if d.status == "approved" and not await _current_evidence(db, d, case, revision, event):
+    if d.status == "approved" and not await _current_evidence(db, d, case, revision, event, approved=True):
         result.update(
             status="stale", proposed_rule=None, rule_placement=None, validation_status="stale_context",
             validation_error="The current rule or application evidence could not be verified. Reanalyze this case.",
@@ -267,8 +287,7 @@ async def export_false_positives(
     """Stream matched evidence for false-positive review without request bodies."""
     stmt = (
         select(
-            ExceptionDraft, AuditEvent.raw_event["matches"], AuditEvent.timestamp,
-            AuditEvent.raw_event["evidence_expired"].as_boolean(), AnalysisCase, AnalysisRevision,
+            ExceptionDraft, AuditEvent.raw_event["matches"], AuditEvent.timestamp, AnalysisCase, AnalysisRevision,
         )
         .outerjoin(AuditEvent, AuditEvent.transaction_id == ExceptionDraft.transaction_id)
         .outerjoin(AnalysisRevision, AnalysisRevision.id == ExceptionDraft.analysis_revision_id)
@@ -297,12 +316,13 @@ async def export_false_positives(
             active_profiles = await active_application_profiles(db)
             generation = current_analysis_generation()
             result = await db.stream(stmt)
-            async for draft, matches, observed_at, expired, case, revision in result:
+            async for draft, matches, observed_at, case, revision in result:
                 scope = draft.proposed_rule_scope or {}
                 rule_id = scope.get("rule_id", "")
                 match = _matching_evidence(matches or [], scope) or {}
                 rule = None
-                if (not expired and draft.status == "approved" and draft.validation_status == "valid"
+                # An approved rule stays exportable after its audit evidence expires.
+                if (draft.status == "approved" and draft.validation_status == "valid"
                         and _certified_rule(draft, case, revision, generation)):
                     profile, _ = application_context_for(active_profiles, case.application_host, case.method, case.path)
                     observed_profile = (profile.id, profile.version) if profile else (None, None)
