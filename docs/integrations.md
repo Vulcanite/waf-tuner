@@ -1,6 +1,6 @@
 # Integrations
 
-Attach **waf-tuner-backend** to an existing Nginx or Apache ModSecurity deployment. The app only needs a readable **JSON Serial** audit log.
+Attach **waf-tuner-backend** to an existing Nginx or Apache ModSecurity deployment. Use a readable **JSON Serial** audit log for ingest and supply the corresponding CRS rule files for exclusion drafting.
 
 ## What the product does
 
@@ -15,7 +15,7 @@ Attach **waf-tuner-backend** to an existing Nginx or Apache ModSecurity deployme
 
 ```env
 MODSEC_AUDIT_LOG=/path/to/audit.log
-CRS_RULES_DIR=/path/to/crs/rules # optional
+CRS_RULES_DIR=/path/to/crs/rules # needed for exclusion drafts
 DATABASE_PATH=./data/waf-tuner.db
 DATA_DIR=./data # cursor, runtime config and fingerprint key
 PROFILES_DIR=./data/profiles # optional; application profile JSON files (default <DATA_DIR>/profiles)
@@ -23,7 +23,7 @@ PROFILES_DIR=./data/profiles # optional; application profile JSON files (default
 
 Application profiles: see [profiles.md](./profiles.md).
 
-LLM: `LLM_API_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` (OpenAI-compatible).
+Set `LLM_API_BASE_URL`, `LLM_API_KEY`, and `LLM_MODEL` for an OpenAI-compatible chat completions endpoint. Leave `LLM_THINKING=off` unless the provider accepts the optional thinking fields.
 
 ## Audit log contract
 
@@ -55,10 +55,10 @@ See root `docker-compose.yml` and `lab-data/`. Default path inside backend: `/sh
 
 ## Bare metal
 
-1. Install backend (+ optional frontend) and ensure SQLite / events paths are writable.
+1. Install the backend and give it a writable data directory for SQLite, the ingest cursor, and runtime settings.
 2. Set `MODSEC_AUDIT_LOG` to the host audit file (or use Settings UI).
-3. Point `CRS_RULES_DIR` at a CRS rules tree if available.
-4. Copy proposed rules into your ModSecurity exceptions include; reload yourself.
+3. Point `CRS_RULES_DIR` at the CRS rules tree your WAF uses. Restart the backend after updating a plain rules directory.
+4. [Review and approve](./review.mdx) rules before copying them into your ModSecurity exceptions include and reloading.
 
 ### Automated bare-metal lab test
 
@@ -85,4 +85,4 @@ Requires **Python 3.13** and `curl`. Defaults to **API :18000** (and UI :13000) 
 | `GET/PUT /api/settings/ingest` | Audit log path |
 | `GET /health` | Liveness |
 
-Changing `lab-data/.env` requires **restarting** the backend container.
+After changing `lab-data/.env`, recreate the backend container with `docker compose up -d --force-recreate waf-tuner-backend`.

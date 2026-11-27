@@ -1,20 +1,13 @@
 # Architecture
 
-WAF Tuner is an **observe-and-recommend** control plane for ModSecurity + OWASP CRS.
+WAF Tuner reads ModSecurity and OWASP CRS audit logs offline. It reviews individual matches and gives operators a queue of scoped exclusion drafts.
 
-```
-Traffic → Nginx/Apache + ModSecurity + CRS
- │ JSON Serial audit log
- ▼
- waf-tuner-backend
- ├── log tailer → SQLite events + cases
- ├── redaction + LLM classify (off-path workers)
- ├── exception_builder (server builds the only rule shape)
- └── REST API
- ▼
- waf-tuner-frontend
- └── human review → Copy SecRule (operator deploys externally)
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="website/static/diagrams/architecture-dark.svg">
+  <img src="website/static/diagrams/architecture-light.svg" alt="ModSecurity handles live traffic. WAF Tuner tails the audit log, consults a configured model, and gives an operator draft exclusions for manual deployment.">
+</picture>
+
+The [architecture guide](./docs/architecture.mdx) traces the pipeline and shows the evidence sent to the model. The [operator guide](./docs/review.mdx) explains the draft and approval checks.
 
 ## Principles
 
@@ -28,12 +21,13 @@ Traffic → Nginx/Apache + ModSecurity + CRS
 | Store | Role |
 |-------|------|
 | Audit log file | Source of truth for ModSecurity hits |
-| SQLite (`waf-tuner.db`) | Parsed audit events, cases, revisions, drafts, application profiles |
+| SQLite (`waf-tuner.db`) | Parsed audit events, cases, occurrences, revisions, drafts, application profiles |
+| `audit_cursor.json` | File identity, read position, and pending data |
 | `runtime_config.json` | Operator-set audit log path |
 
 ## Lab topology
 
-Compose runs nginx (WAF) → DVWA, plus backend/frontend sharing `./lab-data`.
+Compose runs Nginx and ModSecurity in front of DVWA and the Flask Lab Shop. `Host: shop.lab` routes to Flask. The analysis backend reads the audit log from `./lab-data`.
 
 ## Out of scope (future)
 

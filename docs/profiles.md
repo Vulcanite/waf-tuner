@@ -11,8 +11,8 @@ You can create profiles in three ways:
 - **UI or API**: the Application Profiles page, or `POST /api/application-profiles`.
 - **OpenAPI import**: generate a profile from an OpenAPI 3.x JSON document (see below).
 
-Every change creates a new immutable version of the profile. Cases analysed under the
-previous version become stale and are reanalysed.
+Every change creates a new immutable version of the profile. Affected cases become stale.
+Use **Reanalyze** on a case to run it with the current profile.
 
 ## File format
 
@@ -136,7 +136,10 @@ Path-level parameters apply to every operation under the path. `allOf`, `oneOf` 
 `anyOf` body schemas contribute their properties. A `/*` catch-all route is added unless
 `catch_all` is false (`--no-catch-all`). Imported profiles carry
 `source_metadata: {"type": "openapi", "verified": false, ...}`; review the meanings before
-relying on them, since they come from the spec author.
+relying on them, since they come from the spec author. Check the meaning for each HTTP
+method before drafting rules. Current imports combine operations on the same path into
+one profile route. Create separate route entries when a field means different things on
+two methods.
 
 The spec is treated as untrusted. Besides the profile limits above, only local `$ref`s
 (`#/...`) are followed, `$ref` chains stop at depth 16, at most 20 000 schema nodes are
@@ -145,7 +148,5 @@ or `$ref` limit is rejected (HTTP 400, or 422 for an oversized request) rather t
 partly imported. Long descriptions and enum lists are shortened, and parameters with
 names over 256 characters are skipped.
 
-`lab/flask-app/openapi.json` describes the Lab Shop. A test converts it and checks that,
-on every Flask match in `eval/requests.jsonl`, the generated profile picks the same route
-as the hand-written `shop-lab` profile and gives the same answer on whether an
-exclusion can be built. The eval set keeps using the hand-written profile.
+`lab/flask-app/openapi.json` describes the Lab Shop. Use it as an example of what the
+importer can read. The running Compose lab mounts the hand-written `shop-lab` profile.
