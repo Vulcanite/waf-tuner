@@ -19,16 +19,28 @@ module.exports = {
     }],
   ],
   themeConfig: {
-    colorMode: {defaultMode: 'dark', respectPrefersColorScheme: false},
+    colorMode: {defaultMode: 'light', respectPrefersColorScheme: true},
     navbar: {
       title: 'WAF Tuner',
       logo: {alt: '', src: 'img/mark.svg'},
       items: [
-        {type: 'doc', docId: 'quick-start', label: 'Quickstart', position: 'left'},
-        {type: 'doc', docId: 'architecture', label: 'Architecture', position: 'left'},
-        {type: 'doc', docId: 'profiles', label: 'Profiles', position: 'left'},
+        {to: '/docs/overview/', label: 'Why', position: 'left'},
+        {to: '/docs/quick-start/', label: 'Quickstart', position: 'left'},
+        {to: '/docs/architecture/', label: 'How it works', position: 'left'},
+        {to: '/docs/results/', label: 'Results', position: 'left'},
+        {to: '/docs/roadmap/', label: 'Roadmap', position: 'left'},
         {href: repo, label: 'GitHub', position: 'right'},
       ],
     },
+    footer: {
+      style: 'dark',
+      links: [
+        {label: 'Limits and data handling', to: '/docs/limits/'},
+        {label: 'GitHub', href: repo},
+        {label: 'Apache-2.0', href: `${repo}/blob/master/LICENSE`},
+      ],
+      copyright: 'WAF Tuner is an independent open-source project. ModSecurity, OWASP CRS and Coraza are projects of their respective owners.',
+    },
+    prism: {additionalLanguages: ['bash', 'json', 'apacheconf']},
   },
 };

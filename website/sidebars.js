@@ -1,10 +1,12 @@
 module.exports = {
-  operatorGuide: [
+  guide: [
+    'overview',
     'quick-start',
     'architecture',
     'review',
     'profiles',
     'integrations',
+    'results',
     'limits',
     'roadmap',
   ],

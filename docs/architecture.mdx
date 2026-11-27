@@ -1,42 +1,41 @@
-# Architecture
+# How it works
 
 import Diagram from '@site/src/components/Diagram';
 
-WAF Tuner is an offline false-positive triage tool for ModSecurity and OWASP CRS. A signature can match ordinary application input, such as SQL keywords in a product search. WAF Tuner gives a configured language model the matching rule, the observed value, and application-specific facts so it can explain why the alert may be benign, malicious, or uncertain.
+WAF Tuner sits beside your WAF, not in front of it. ModSecurity keeps handling live traffic and writes its audit log. WAF Tuner reads that log, asks a model to judge each match, and gives you a reviewed exclusion to deploy yourself.
 
-<Diagram
-  name="architecture"
-  alt="ModSecurity handles live traffic and writes an audit log. WAF Tuner tails the log, stores cases, asks the configured LLM for verdicts, and presents eligible drafts to an operator."
-  caption="The application and ModSecurity stay on the live traffic path. Analysis starts at the audit log. Only the operator deploys an exclusion."
-/>
+<Diagram name="overview" alt="HTTP traffic goes through ModSecurity with CRS, which writes an audit log. WAF Tuner ingests it; an analysis worker combines the match with the app profile and CRS rule, asks any LLM, and server checks either build an exclusion draft for you to approve or withhold it." caption="ModSecurity stays on the traffic path. WAF Tuner starts at the audit log, and only you deploy an exclusion." />
 
 ## From the log to a case
 
-1. **ModSecurity writes an audit event.** WAF Tuner tails its JSON Serial log and persists a cursor for restart and rotation.
-2. **Ingest stores the event and groups matches.** SQLite holds the audit evidence, cases, and occurrences. A fingerprint groups repeated observations with equivalent match evidence. Score-only rules stay available as context.
-3. **A worker analyses a queued match.** It selects the application profile, loads the CRS rule associated with the event, and prepares a bounded copy of the evidence.
-4. **The endpoint returns a verdict.** The worker validates the output and records the result on the case. A repair or stronger reasoning call can occur depending on the output and provider settings.
-5. **The server checks whether it can draft a rule.** The [review workflow](./review.mdx) explains why some verdicts never produce a draft.
+1. **ModSecurity writes an audit event.** WAF Tuner tails the JSON Serial log and keeps a cursor, so restarts and log rotation lose nothing.
+2. **Ingest stores the event and groups matches.** Each CRS match becomes a case. A fingerprint over the rule, field and value groups repeated identical matches, so the same false positive is judged once. Anomaly-score rules are kept as context, not judged.
+3. **A worker picks up a queued case.** It selects the application profile for the host and route, loads the exact CRS rule that fired, and builds a bounded, redacted copy of the evidence.
+4. **The model returns a verdict.** The worker validates the JSON. Invalid output gets one repair call. An `uncertain` verdict can get one stronger reasoning call if you enable escalation.
+5. **The server decides whether a rule can be drafted.** See [Review an exclusion](./review.mdx) for every check.
 
 ## What the model receives
 
-<Diagram
-  name="evidence"
-  alt="A worker selects evidence from the audit record, the pinned CRS rule, and the application profile. It redacts and bounds that evidence, sends it to the configured model, and validates the returned verdict."
-  caption="Only the selected, bounded evidence is sent to the configured model. SQLite stores the analysis revision."
-/>
+<Diagram name="evidence" alt="The audit record, the pinned CRS rule and the profile feed a step that selects the matched field and value; it is redacted and bounded, sent to the model as JSON evidence, and the returned verdict and explanation are validated and stored." caption="Only the selected, redacted, bounded evidence reaches the model." />
 
-The initial call uses a system prompt and a JSON evidence message. The evidence can include the method and path, the matched target and value, the rule ID and operator, sibling rule IDs, and the selected stack and route information. Redaction and size limits can remove parts of that evidence. See [data handling](./limits.md#model-egress-and-local-storage) before sending application traffic to a provider.
+The evidence is a JSON message: method and path, the matched field and value, the rule ID, message and operator, sibling rule IDs, and the stack and route facts from the profile. Credential-like names (sessions, tokens, passwords, signatures) are redacted, and long values are cut to fixed limits. If cutting removes the profile, no draft is produced. Check [data handling](./limits.md#model-egress-and-local-storage) before you point WAF Tuner at a hosted model.
 
-The response includes a classification, confidence, and the explanation fields `rule_looks_for`, `payload_is`, and `why`. It can also describe uncertainty and the technique’s applicability to the application stack. A technique can be malicious even when it would fail against that stack.
+The verdict carries `classification`, `confidence`, a one-line `verdict`, and three required explanation fields:
+
+| Field | Answers |
+| --- | --- |
+| `rule_looks_for` | What the CRS rule is designed to detect |
+| `payload_is` | What the matched value actually is |
+| `why` | Why they differ (false positive), match (true positive), or what is missing (uncertain) |
+
+It also records `applies_to_stack`, whether the technique would work on your stack. That is recorded only: an attack that could not work on your stack is still an attack.
 
 ## Where state lives
 
 | Store | Contents |
 | --- | --- |
 | ModSecurity audit log | Source transactions and detections |
-| SQLite | Events, cases, occurrences, profiles, analysis revisions, and drafts |
-| Ingest cursor | Audit file identity, read position, and any pending data |
-| CRS snapshot or rules directory | The rule text and data files used to interpret matches |
-
-The UI and API operate on this stored state. The operator uses the reviewed output when managing the WAF configuration.
+| SQLite | Events, cases, occurrences, profiles, analysis revisions and drafts |
+| Ingest cursor | Audit file identity, read position and any pending data |
+| CRS rules directory | The rule text and data files used to interpret matches |
+| Profiles directory | One JSON file per application (see [Profiles](./profiles.md)) |
