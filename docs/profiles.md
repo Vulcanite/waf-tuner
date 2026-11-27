@@ -97,3 +97,55 @@ sha256. Restart the backend to pick up file changes.
 The lab's profiles are in `lab/profiles/` (`dvwa.json` is `default-lab`, `shop.json` is
 `shop-lab`). Docker Compose mounts that directory read-only at `/profiles` and sets
 `PROFILES_DIR=/profiles`; `scripts/e2e_baremetal.sh` points `PROFILES_DIR` at it too.
+
+## OpenAPI import
+
+An OpenAPI 3.x **JSON** document can be turned into a profile. YAML is not supported
+(the converter uses only the Python standard library); convert YAML to JSON first.
+
+- **UI**: Application Profiles → Import OpenAPI (paste or upload the spec, then name,
+  hosts and stack).
+- **API**: `POST /api/application-profiles/import-openapi` with
+  `{"spec": "<JSON text>", "name": "...", "host_patterns": [...], "context": {...}}`, plus
+  optional `base_path` and `catch_all` (default `true`). It creates version 1, or the next
+  version when the name exists.
+- **CLI**: write a profile file for `PROFILES_DIR`:
+
+  ```sh
+  python3 scripts/openapi_to_profile.py lab/flask-app/openapi.json --name shop \
+      --host shop.lab --language python --framework flask --data-store sqlite \
+      --output data/profiles/shop.json
+  ```
+
+OpenAPI does not describe the stack, so `languages`, `frameworks`, `data_stores`, notes
+and host patterns come from you. The converter maps:
+
+| OpenAPI | Profile |
+|---------|---------|
+| each path (`{param}` kept), prefixed with `base_path` or the first server URL's path | one route |
+| the path's operations | `methods` |
+| `in: query` and `in: path` parameters | plain name |
+| `in: header` / `in: cookie` parameters | `REQUEST_HEADERS:<name>` / `REQUEST_COOKIES:<name>` |
+| top-level `requestBody` properties for `application/json` (and `+json`) | `json.<name>`, ModSecurity's name for JSON fields |
+| top-level properties for `application/x-www-form-urlencoded` and `multipart/form-data` | plain name |
+| description, type, format, enum and example | a short meaning string (at most 300 characters) |
+| operation summaries | route `notes` |
+| `info.title` | `context.purpose`, unless you set one |
+
+Path-level parameters apply to every operation under the path. `allOf`, `oneOf` and
+`anyOf` body schemas contribute their properties. A `/*` catch-all route is added unless
+`catch_all` is false (`--no-catch-all`). Imported profiles carry
+`source_metadata: {"type": "openapi", "verified": false, ...}`; review the meanings before
+relying on them, since they come from the spec author.
+
+The spec is treated as untrusted. Besides the profile limits above, only local `$ref`s
+(`#/...`) are followed, `$ref` chains stop at depth 16, at most 20 000 schema nodes are
+visited, and control characters are removed from text. A spec that breaks a size, count
+or `$ref` limit is rejected (HTTP 400, or 422 for an oversized request) rather than
+partly imported. Long descriptions and enum lists are shortened, and parameters with
+names over 256 characters are skipped.
+
+`lab/flask-app/openapi.json` describes the Lab Shop. A test converts it and checks that,
+on every Flask match in `eval/requests.jsonl`, the generated profile picks the same route
+as the hand-written `shop-lab` profile and gives the same answer on whether an
+exclusion can be built. The eval set keeps using the hand-written profile.
