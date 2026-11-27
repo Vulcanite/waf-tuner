@@ -3,7 +3,7 @@ WAF Tuner backend — FastAPI entrypoint.
 
 Startup:
 1. SQLite schema
-2. Event archive files
+2. Application profile files (PROFILES_DIR)
 3. CRS rule index
 4. Background tasks: log_tailer, agent_worker(s)
 """
@@ -23,7 +23,7 @@ from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from db.models import init_db, get_database_url
-from services.application_context import ensure_default_application_profile
+from services.profile_loader import load_profile_files
 from services.crs_index import initialize_crs_index
 from services.log_tailer import INGEST_STATE, log_tailer
 from services.agent import (
@@ -81,8 +81,7 @@ async def startup():
     )
     await init_db()
     logger.info("Database schema ready")
-    if await ensure_default_application_profile():
-        logger.info("Created default-lab application route profile")
+    await load_profile_files()
 
     logger.info("Observe-only: no edge deploy or config writes")
     try:

@@ -26,6 +26,7 @@ WITHHELD = {
 @pytest.mark.parametrize("variant", ["normal", *WITHHELD])
 def test_audited_match_becomes_a_reviewable_exception(tmp_path, monkeypatch, variant):
     monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("PROFILES_DIR", raising=False)
     paths = {
         "DATABASE_PATH": tmp_path / "cases.db",
         "MODSEC_AUDIT_LOG": tmp_path / "audit.log",
@@ -37,7 +38,7 @@ def test_audited_match_becomes_a_reviewable_exception(tmp_path, monkeypatch, var
     for key, path in paths.items():
         monkeypatch.setenv(key, str(path))
     for key, value in {
-        "SEED_DEFAULT_PROFILE": "false", "REQUIRE_APPLICATION_CONTEXT": "true",
+        "REQUIRE_APPLICATION_CONTEXT": "true",
         "LLM_API_KEY": "local", "LLM_API_BASE_URL": "http://classifier.test/v1",
         "LLM_MODEL": "test-classifier", "LLM_THINKING": "off",
         "AGENT_WORKER_CONCURRENCY": "1", "INFERENCE_ARTIFACT_RETENTION_DAYS": "0",

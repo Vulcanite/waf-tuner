@@ -1,0 +1,244 @@
+{
+  "name": "default-lab",
+  "host_patterns": [
+    "*"
+  ],
+  "context": {
+    "purpose": "OWASP DVWA lab application behind ModSecurity CRS",
+    "languages": [
+      "php"
+    ],
+    "frameworks": [
+      "dvwa"
+    ],
+    "data_stores": [
+      "mysql"
+    ]
+  },
+  "routes": [
+    {
+      "path": "/login.php",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:security": "cookie: DVWA security level (low, medium, high or impossible)",
+        "REQUEST_COOKIES:theme": "cookie: UI theme name such as dark or light",
+        "REQUEST_COOKIES:lang": "cookie: UI language code such as en or fr",
+        "REQUEST_COOKIES:prefs": "cookie: JSON UI preferences written by front-end script",
+        "username": "account username",
+        "password": "account password",
+        "user_token": "csrf token",
+        "Login": "form submit"
+      },
+      "notes": "DVWA login. Credential fields are not SQL."
+    },
+    {
+      "path": "/security.php",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:security": "cookie: DVWA security level (low, medium, high or impossible)",
+        "REQUEST_COOKIES:theme": "cookie: UI theme name such as dark or light",
+        "REQUEST_COOKIES:lang": "cookie: UI language code such as en or fr",
+        "REQUEST_COOKIES:prefs": "cookie: JSON UI preferences written by front-end script",
+        "security": "DVWA security level",
+        "seclev_submit": "form submit",
+        "user_token": "csrf token"
+      },
+      "notes": "DVWA security-level form."
+    },
+    {
+      "path": "/setup.php",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:security": "cookie: DVWA security level (low, medium, high or impossible)",
+        "REQUEST_COOKIES:theme": "cookie: UI theme name such as dark or light",
+        "REQUEST_COOKIES:lang": "cookie: UI language code such as en or fr",
+        "REQUEST_COOKIES:prefs": "cookie: JSON UI preferences written by front-end script",
+        "create_db": "form submit",
+        "user_token": "csrf token"
+      },
+      "notes": "DVWA database setup / reset."
+    },
+    {
+      "path": "/instructions.php",
+      "methods": [
+        "GET"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:security": "cookie: DVWA security level (low, medium, high or impossible)",
+        "REQUEST_COOKIES:theme": "cookie: UI theme name such as dark or light",
+        "REQUEST_COOKIES:lang": "cookie: UI language code such as en or fr",
+        "REQUEST_COOKIES:prefs": "cookie: JSON UI preferences written by front-end script",
+        "doc": "name of a bundled documentation page (readme, PDF, changelog, copying)"
+      },
+      "notes": "DVWA instructions viewer."
+    },
+    {
+      "path": "/vulnerabilities/brute/",
+      "methods": [
+        "GET"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:security": "cookie: DVWA security level (low, medium, high or impossible)",
+        "REQUEST_COOKIES:theme": "cookie: UI theme name such as dark or light",
+        "REQUEST_COOKIES:lang": "cookie: UI language code such as en or fr",
+        "REQUEST_COOKIES:prefs": "cookie: JSON UI preferences written by front-end script",
+        "username": "account username",
+        "password": "account password",
+        "Login": "form submit"
+      },
+      "notes": "DVWA brute-force lab; credentials are sent in the query string."
+    },
+    {
+      "path": "/vulnerabilities/csrf/",
+      "methods": [
+        "GET"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:security": "cookie: DVWA security level (low, medium, high or impossible)",
+        "REQUEST_COOKIES:theme": "cookie: UI theme name such as dark or light",
+        "REQUEST_COOKIES:lang": "cookie: UI language code such as en or fr",
+        "REQUEST_COOKIES:prefs": "cookie: JSON UI preferences written by front-end script",
+        "password_new": "new account password",
+        "password_conf": "new password confirmation",
+        "Change": "form submit"
+      },
+      "notes": "DVWA CSRF lab: password change form."
+    },
+    {
+      "path": "/vulnerabilities/sqli/",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:security": "cookie: DVWA security level (low, medium, high or impossible)",
+        "REQUEST_COOKIES:theme": "cookie: UI theme name such as dark or light",
+        "REQUEST_COOKIES:lang": "cookie: UI language code such as en or fr",
+        "REQUEST_COOKIES:prefs": "cookie: JSON UI preferences written by front-end script",
+        "id": "user id lookup",
+        "Submit": "form submit"
+      },
+      "notes": "DVWA SQL injection lab. Natural-language id values are search terms."
+    },
+    {
+      "path": "/vulnerabilities/sqli_blind/",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:security": "cookie: DVWA security level (low, medium, high or impossible)",
+        "REQUEST_COOKIES:theme": "cookie: UI theme name such as dark or light",
+        "REQUEST_COOKIES:lang": "cookie: UI language code such as en or fr",
+        "REQUEST_COOKIES:prefs": "cookie: JSON UI preferences written by front-end script",
+        "id": "user id lookup",
+        "Submit": "form submit"
+      },
+      "notes": "DVWA blind SQL injection lab."
+    },
+    {
+      "path": "/vulnerabilities/xss_d/",
+      "methods": [
+        "GET"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:security": "cookie: DVWA security level (low, medium, high or impossible)",
+        "REQUEST_COOKIES:theme": "cookie: UI theme name such as dark or light",
+        "REQUEST_COOKIES:lang": "cookie: UI language code such as en or fr",
+        "REQUEST_COOKIES:prefs": "cookie: JSON UI preferences written by front-end script",
+        "default": "preferred language name (English, French, Spanish, German)"
+      },
+      "notes": "DVWA DOM XSS lab: language picker."
+    },
+    {
+      "path": "/vulnerabilities/xss_r/",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:security": "cookie: DVWA security level (low, medium, high or impossible)",
+        "REQUEST_COOKIES:theme": "cookie: UI theme name such as dark or light",
+        "REQUEST_COOKIES:lang": "cookie: UI language code such as en or fr",
+        "REQUEST_COOKIES:prefs": "cookie: JSON UI preferences written by front-end script",
+        "name": "display name shown in greeting"
+      },
+      "notes": "DVWA reflected XSS lab. Names may include punctuation."
+    },
+    {
+      "path": "/vulnerabilities/xss_s/",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:security": "cookie: DVWA security level (low, medium, high or impossible)",
+        "REQUEST_COOKIES:theme": "cookie: UI theme name such as dark or light",
+        "REQUEST_COOKIES:lang": "cookie: UI language code such as en or fr",
+        "REQUEST_COOKIES:prefs": "cookie: JSON UI preferences written by front-end script",
+        "txtName": "guestbook author name",
+        "mtxMessage": "guestbook message, may include sanitized markup",
+        "btnSign": "form submit"
+      },
+      "notes": "DVWA stored XSS / guestbook lab."
+    },
+    {
+      "path": "/vulnerabilities/exec/",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:security": "cookie: DVWA security level (low, medium, high or impossible)",
+        "REQUEST_COOKIES:theme": "cookie: UI theme name such as dark or light",
+        "REQUEST_COOKIES:lang": "cookie: UI language code such as en or fr",
+        "REQUEST_COOKIES:prefs": "cookie: JSON UI preferences written by front-end script",
+        "ip": "host to ping",
+        "Submit": "form submit"
+      },
+      "notes": "DVWA command-injection lab. ip is a hostname or address."
+    },
+    {
+      "path": "/vulnerabilities/fi/",
+      "methods": [
+        "GET"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:security": "cookie: DVWA security level (low, medium, high or impossible)",
+        "REQUEST_COOKIES:theme": "cookie: UI theme name such as dark or light",
+        "REQUEST_COOKIES:lang": "cookie: UI language code such as en or fr",
+        "REQUEST_COOKIES:prefs": "cookie: JSON UI preferences written by front-end script",
+        "page": "local content page name"
+      },
+      "notes": "DVWA file-inclusion lab. page is a local include name, not a filesystem path."
+    },
+    {
+      "path": "/*",
+      "methods": [
+        "GET",
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "parameters": {},
+      "notes": "General lab context for paths without a documented route."
+    }
+  ],
+  "source_metadata": {
+    "seeded": true,
+    "seed": "default-lab",
+    "replace_with_operator_profile": true
+  }
+}

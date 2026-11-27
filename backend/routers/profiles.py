@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from db.models import AnalysisCase, AnalysisRevision, ApplicationProfile, AuditEvent, ExceptionDraft, get_db
 from services.application_context import active_application_profiles, application_context_for
 from services.inference_context import application_host
+from services.profile_files import MAX_ROUTE_PARAMETERS, MAX_ROUTES, MAX_TEXT_CHARS
 
 
 router = APIRouter(prefix="/api/application-profiles", tags=["application-profiles"])
@@ -18,9 +19,9 @@ router = APIRouter(prefix="/api/application-profiles", tags=["application-profil
 
 class ProfileBody(BaseModel):
     name: str = Field(min_length=1, max_length=200)
-    host_patterns: list[str] = Field(default_factory=list)
+    host_patterns: list[str] = Field(default_factory=list, max_length=100)
     context: dict[str, Any] = Field(default_factory=dict)
-    routes: list[dict[str, Any]] = Field(default_factory=list)
+    routes: list[dict[str, Any]] = Field(default_factory=list, max_length=MAX_ROUTES)
     source_metadata: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("routes")
@@ -36,6 +37,11 @@ class ProfileBody(BaseModel):
                 raise ValueError("Route methods must be a list of HTTP method names")
             if "parameters" in route and not isinstance(route["parameters"], dict):
                 raise ValueError("Route parameters must map names to application semantics")
+            if len(route.get("parameters") or {}) > MAX_ROUTE_PARAMETERS:
+                raise ValueError(f"A route documents at most {MAX_ROUTE_PARAMETERS} parameters")
+            texts = [route.get("notes"), *(route.get("parameters") or {}).values()]
+            if any(isinstance(text, str) and len(text) > MAX_TEXT_CHARS for text in texts):
+                raise ValueError(f"Route notes and parameter meanings are at most {MAX_TEXT_CHARS} characters")
         return routes
 
 
