@@ -360,16 +360,18 @@ class TruncatedOutputTests(unittest.TestCase):
                 asyncio.run(agent._call_model({}, {}, revision_id=1))
         self.assertIn("cut off", str(caught.exception))
         self.assertEqual(len(calls), 1)  # no repair request
-        self.assertEqual(calls[0]["extra_body"], {"thinking": {"type": "enabled"}, "reasoning_effort": "high"})
+        self.assertNotIn("extra_body", calls[0])  # thinking is off unless LLM_THINKING opts in
 
 
 class ThinkingOptionsTests(unittest.TestCase):
-    def test_defaults_enable_thinking_at_high_effort(self):
+    def test_thinking_is_off_by_default_and_enabled_at_high_effort(self):
         from unittest import mock
 
         from services.llm_options import thinking_options
 
         with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(thinking_options(), {})
+        with mock.patch.dict(os.environ, {"LLM_THINKING": "enabled"}, clear=True):
             self.assertEqual(thinking_options(), {"thinking": {"type": "enabled"}, "reasoning_effort": "high"})
         with mock.patch.dict(os.environ, {"LLM_THINKING": "disabled", "LLM_REASONING_EFFORT": "max"}):
             self.assertEqual(thinking_options(), {"thinking": {"type": "disabled"}})
@@ -384,9 +386,9 @@ class ThinkingOptionsTests(unittest.TestCase):
         from services.llm_options import request_payload, request_settings
 
         env = {"LLM_API_KEY": "test", "LLM_ESCALATION_REASONING_EFFORT": "xhigh"}
-        with mock.patch.dict(os.environ, env, clear=True):
+        with mock.patch.dict(os.environ, {**env, "LLM_THINKING": "enabled"}, clear=True):
             escalation = request_payload(request_settings(), [], "escalation")
             self.assertEqual((escalation["thinking"], escalation["reasoning_effort"]), ({"type": "enabled"}, "xhigh"))
-        for thinking in ("off", "disabled"):
+        for thinking in ("", "off", "disabled"):
             with mock.patch.dict(os.environ, {**env, "LLM_THINKING": thinking}, clear=True):
                 self.assertEqual(request_settings()["escalation_effort"], "")

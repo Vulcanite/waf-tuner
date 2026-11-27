@@ -1,15 +1,19 @@
 import asyncio
+import csv
+import io
 import json
 import time
 from datetime import datetime, timedelta, timezone
 
 import httpx
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from openai import AsyncOpenAI
 from sqlalchemy import select
 
 from db import models
+from routers import exceptions
 from services import agent, crs_index, log_tailer
 from services.inference_retention import prune_audit_evidence, prune_inference_artifacts
 
@@ -20,6 +24,7 @@ WITHHELD = {
     "rule_removed": "rule_changed_since_alert",
     "data_file_changed": "rule_changed_since_alert",
     "ruleset_uncertain": "ruleset_uncertain",
+    "profile_trimmed": "missing_application_context",
 }
 
 
@@ -111,6 +116,24 @@ def test_audited_match_becomes_a_reviewable_exception(tmp_path, monkeypatch, var
                 changed_rule = crs_index.build_crs_index(changed)["10001"]
                 assert changed_rule.raw == crs_index.get_rule("10001").raw
                 monkeypatch.setattr(agent, "get_rule", lambda _: changed_rule)
+            if variant == "profile_trimmed":
+                # A size limit that fits the evidence only once the application profile is cut.
+                from services import inference_context
+                build = agent.build_inference_context
+
+                def fitted(*args, **kwargs):
+                    full = build(*args, **kwargs)
+                    for key in ("raw", "tags"):
+                        (full.get("crs_rule") or {}).pop(key, None)
+                    full["incident"].pop("other_matches", None)
+                    full.pop("application_context")
+                    full["redaction"].update(truncated=True, application_context_omitted=True)
+                    monkeypatch.setenv("AI_MAX_CONTEXT_BYTES", str(len(inference_context._encode(full))))
+                    trimmed = build(*args, **kwargs)
+                    assert "application_context" not in trimmed and trimmed["incident"].get("matched_data")
+                    return trimmed
+
+                monkeypatch.setattr(agent, "build_inference_context", fitted)
             if variant == "ruleset_uncertain":
                 # A new snapshot went live around when this alert fired.
                 monkeypatch.setattr(log_tailer, "_ruleset_pin", lambda event: {"digest": None, "uncertain": True})
@@ -165,10 +188,22 @@ def test_audited_match_becomes_a_reviewable_exception(tmp_path, monkeypatch, var
                 case = (await session.scalars(select(models.AnalysisCase))).one()
                 assert attempt.status == "complete" and attempt.raw_response is None
                 assert revision.classification == "false_positive"
-                assert revision.normalized_rule is None and case.state == "stale"
                 assert event.raw_event["evidence_expired"] and "raw_request" not in event.raw_event
                 assert event.raw_event["matches"] == [{"rule_id": "10001"}]
-                assert draft.status == "stale" and draft.proposed_rule is None
+                # The approved exclusion may be deployed: it keeps its rule, status and verdict.
+                assert draft.status == "approved" and "ruleRemoveTargetById=10001;ARGS:q" in draft.proposed_rule
+                assert draft.validation_status == "valid" and "expired" in draft.validation_error
+                assert revision.normalized_rule == draft.proposed_rule and case.state == "complete"
+                assert case.matched_data == ""
+                # Copy (the detail view) and export still give the rule; approving again is refused.
+                shown = await exceptions.get_exception(draft.id, session)
+                assert shown["status"] == "approved" and shown["proposed_rule"] == draft.proposed_rule
+                response = await exceptions.export_false_positives()
+                content = "".join([chunk async for chunk in response.body_iterator])
+                exported = next(csv.DictReader(io.StringIO(content)))
+                assert exported["Proposed Exception Rule"] == draft.proposed_rule
+                with pytest.raises(HTTPException):
+                    await exceptions.approve_exception(draft.id, session)
 
         asyncio.run(check_retention())
     finally:

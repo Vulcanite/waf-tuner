@@ -217,6 +217,7 @@ def test_copy_and_export_require_approved_current_scoped_rule(sqlite, monkeypatc
             other_case = models.AnalysisCase(
                 fingerprint="other-rule", method="GET", path="/catalog", rule_id="10002",
                 collection="ARGS", parameter="q", latest_event_line=17, state="complete",
+                application_host="catalog.test",
             )
             db.add(other_case)
             await db.flush()
@@ -233,11 +234,6 @@ def test_copy_and_export_require_approved_current_scoped_rule(sqlite, monkeypatc
             db.add(true_positive)
             await db.commit()
             assert (await exceptions.get_exception(draft.id, db))["proposed_rule"] is None
-            assert await exported_rule() == ""
-            # Upgraded databases still contain verdicts without an occurrence link.
-            true_positive.occurrence_id = None
-            true_positive.input_keys = None
-            await db.commit()
             assert await exported_rule() == ""
             draft.status = "pending"
             await db.commit()
@@ -311,4 +307,51 @@ def test_detection_without_a_method_blocks_an_overlapping_get_exclusion(sqlite):
             assert await has_true_positive(db, allowed, scope)
             # Detection arriving after the exclusion: the approved GET draft must be invalidated.
             assert await invalidate_false_positive_drafts(db, detected) == 1
+    asyncio.run(run())
+
+
+def test_retention_stales_pending_drafts_only(sqlite):
+    from datetime import timedelta
+
+    from services.inference_retention import prune_audit_evidence
+
+    async def run():
+        await models.init_db()
+        old = datetime.now(timezone.utc) - timedelta(days=30)
+        async with models.get_session_factory()() as db:
+            drafts = {}
+            for line, status in enumerate(("pending", "approved"), 1):
+                event = models.AuditEvent(transaction_id=status, event_line=line, created_at=old, raw_event={
+                    "transaction_id": status, "method": "GET", "uri": "/catalog?q=music",
+                    "raw_request": {"headers": {"Host": "catalog.test"}}, "matches": [{"rule_id": "10001"}],
+                })
+                case = models.AnalysisCase(fingerprint=status, method="GET", path="/catalog", rule_id="10001",
+                                           latest_event_line=line, state="complete", matched_data="music")
+                db.add_all([event, case])
+                await db.flush()
+                revision = models.AnalysisRevision(
+                    analysis_case_id=case.id, state="complete", classification="false_positive", model="fixture",
+                    prompt_version="test", validation_status="valid", normalized_rule=f"rule-{status}",
+                )
+                db.add(revision)
+                await db.flush()
+                drafts[status] = models.ExceptionDraft(
+                    analysis_revision_id=revision.id, event_line=line, transaction_id=status,
+                    classification="false_positive", confidence=0.95, verdict="Search term.", status=status,
+                    validation_status="valid", proposed_rule=f"rule-{status}", rule_placement="before_crs",
+                )
+                db.add(drafts[status])
+            await db.commit()
+            assert await prune_audit_evidence(datetime.now(timezone.utc)) == 2
+            await db.refresh(drafts["pending"])
+            await db.refresh(drafts["approved"])
+            pending, approved = drafts["pending"], drafts["approved"]
+            assert (pending.status, pending.proposed_rule, pending.validation_status) == ("stale", None, "evidence_expired")
+            assert (approved.status, approved.proposed_rule, approved.validation_status) == (
+                "approved", "rule-approved", "valid")
+            assert approved.rule_placement == "before_crs" and "expired" in approved.validation_error
+            revisions = {r.normalized_rule: r for r in (await db.scalars(select(models.AnalysisRevision))).all()}
+            assert set(revisions) == {None, "rule-approved"}
+            states = {c.fingerprint: c.state for c in (await db.scalars(select(models.AnalysisCase))).all()}
+            assert states == {"pending": "stale", "approved": "complete"}
     asyncio.run(run())

@@ -26,6 +26,8 @@ cp lab-data/.env.example lab-data/.env
 docker compose up --build
 ```
 
+Requests are plain chat completions, so any OpenAI-compatible endpoint works. Thinking controls are opt-in: `LLM_THINKING` defaults to `off`, which sends no `thinking` or `reasoning_effort` field. Set `LLM_THINKING=enabled` (with `LLM_REASONING_EFFORT`) only for a provider that accepts them; the lab example does.
+
 Open `http://localhost:3000`. The included DVWA lab is at `http://localhost:8080` (`admin` / `password`). The same ModSecurity also fronts a second lab app, the Flask Lab Shop (`lab/flask-app`), for requests with `Host: shop.lab` (`curl -H 'Host: shop.lab' http://localhost:8080/search?q=tote`). Any other Host still reaches DVWA. Generate sample CRS traffic with:
 
 ```bash

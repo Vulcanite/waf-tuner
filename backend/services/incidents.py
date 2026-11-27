@@ -71,7 +71,11 @@ def _encode_identity(value) -> bytes:
 
 
 def matched_input_keys(event: dict, request: dict, match: dict) -> list[str]:
-    """Identify the observed field and value within a transaction without storing the value twice."""
+    """Identify the observed field and value without storing the value twice.
+
+    The key covers host, method, path, field and value but not the transaction, so the same
+    payload sent again in a later request still conflicts with a verdict on the first one.
+    """
     inspected = match_target(match)
     collection, parameter = resolve_input_target(*inspected)
     if not parameter or collection is None:
@@ -95,10 +99,13 @@ def matched_input_keys(event: dict, request: dict, match: dict) -> list[str]:
         parameter = parameter.lower()
     if not inputs:
         return []
+    host = (request['host'] or '').lower()
+    method = request['method']
+    path = normalized_path(event.get('uri') or '/')
     key = _fingerprint_key()
     return sorted({
         hmac.new(key, b'matched-input\0' + _encode_identity(
-            [event.get('transaction_id'), collection, parameter, source, value]), hashlib.sha256).hexdigest()
+            [host, method, path, collection, parameter, source, value]), hashlib.sha256).hexdigest()
         for source, value in inputs
     })
 

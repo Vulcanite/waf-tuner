@@ -3,14 +3,12 @@ import json
 
 from sqlalchemy import func, or_, select, update
 
-from db.models import AnalysisCase, AnalysisRevision, AuditEvent, ExceptionDraft, IncidentOccurrence
+from db.models import AnalysisCase, AnalysisRevision, ExceptionDraft
 from services.draft_scope import case_exception_scope
-from services.incidents import matched_input_keys
-from services.inference_context import prepare_request_evidence
 
 
 SCOPE_CONFLICT_ERROR = (
-    "A true-positive verdict exists for the same input in this transaction "
+    "A true-positive verdict exists for the same input value on this host, method and path "
     "or for the same rule and target within this exclusion's scope."
 )
 
@@ -24,50 +22,30 @@ def _same_target(case: AnalysisCase):
     )
 
 
-def _event_id(occurrence_id: int):
-    return select(IncidentOccurrence.audit_event_id).where(
-        IncidentOccurrence.id == occurrence_id,
-    ).scalar_subquery()
+def _same_input(case: AnalysisCase, revision: AnalysisRevision, classification: str):
+    """Complete verdicts of any rule, in any transaction, on the same observed input.
 
-
-def _same_event_input(revision: AnalysisRevision, classification: str):
-    occurrences = select(IncidentOccurrence.id).where(
-        IncidentOccurrence.audit_event_id == _event_id(revision.occurrence_id),
-    )
+    The input keys already cover host, method and path; filtering on the case's path and host
+    first lets SQLite narrow the candidates with an index before comparing keys.
+    """
     keys = func.json_each(AnalysisRevision.input_keys).table_valued("value", joins_implicitly=True)
     observed = func.json_each(json.dumps(revision.input_keys)).table_valued("value")
     overlap = select(1).where(keys.c.value.in_(select(observed.c.value))).correlate(AnalysisRevision)
-    return select(AnalysisRevision.id).where(
-        AnalysisRevision.occurrence_id.in_(occurrences),
-        AnalysisRevision.state == "complete",
-        AnalysisRevision.classification == classification,
-        overlap.exists(),
+    host = (
+        AnalysisCase.application_host == case.application_host if case.application_host
+        else or_(AnalysisCase.application_host.is_(None), AnalysisCase.application_host == "")
     )
-
-
-async def _legacy_input_conflict(session, revision: AnalysisRevision) -> bool:
-    # Older verdicts cannot identify their exact occurrence. Hold the draft if an
-    # overlapping occurrence in this event has a legacy true-positive verdict.
-    matches = await session.execute(
-        select(AuditEvent.raw_event, IncidentOccurrence.match_index)
-        .join(IncidentOccurrence, IncidentOccurrence.audit_event_id == AuditEvent.id)
-        .where(AuditEvent.id == _event_id(revision.occurrence_id), select(1).where(
-            AnalysisRevision.analysis_case_id == IncidentOccurrence.analysis_case_id,
-            AnalysisRevision.occurrence_id.is_(None),
+    return (
+        select(AnalysisRevision.id)
+        .join(AnalysisCase, AnalysisCase.id == AnalysisRevision.analysis_case_id)
+        .where(
+            AnalysisCase.path == case.path,
+            host,
             AnalysisRevision.state == "complete",
-            AnalysisRevision.classification == "true_positive",
-        ).exists())
-    )
-    rows = matches.all()
-    if not rows:
-        return False
-    event = rows[0].raw_event
-    request = prepare_request_evidence(event)
-    inputs = set(revision.input_keys)
-    detections = event.get("matches") or []
-    return any(
-        0 <= index < len(detections) and not inputs.isdisjoint(matched_input_keys(event, request, detections[index]))
-        for _, index in rows
+            AnalysisRevision.classification == classification,
+            AnalysisRevision.input_keys.is_not(None),
+            overlap.exists(),
+        )
     )
 
 
@@ -95,12 +73,10 @@ async def has_true_positive(
             AnalysisRevision.classification == "true_positive",
         )
     )
-    if revision and revision.occurrence_id and revision.input_keys:
-        matches = matches.union_all(_same_event_input(revision, "true_positive"))
+    if revision and revision.input_keys:
+        matches = matches.union_all(_same_input(case, revision, "true_positive"))
     result = await session.execute(matches.limit(1))
-    if result.scalar_one_or_none() is not None:
-        return True
-    return bool(revision and revision.occurrence_id and revision.input_keys and await _legacy_input_conflict(session, revision))
+    return result.scalar_one_or_none() is not None
 
 
 async def invalidate_false_positive_drafts(
@@ -123,8 +99,8 @@ async def invalidate_false_positive_drafts(
         AnalysisRevision.state == "complete",
         AnalysisRevision.classification == "false_positive",
     )
-    if revision and revision.occurrence_id and revision.input_keys:
-        revision_ids = revision_ids.union_all(_same_event_input(revision, "false_positive"))
+    if revision and revision.input_keys:
+        revision_ids = revision_ids.union_all(_same_input(case, revision, "false_positive"))
     policy = dict(validation_status="scope_conflict", validation_error=SCOPE_CONFLICT_ERROR)
     await session.execute(
         update(AnalysisRevision).where(AnalysisRevision.id.in_(revision_ids))
