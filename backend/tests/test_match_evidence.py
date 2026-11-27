@@ -291,7 +291,14 @@ def test_input_keys_resolve_wrappers_and_keep_distinct_values_separate(monkeypat
     assert len(keys) == 1
     assert keys == matched_input_keys(event, request, wrapped)
     assert set(keys).isdisjoint(matched_input_keys(event, request, other_value))
-    assert set(keys).isdisjoint(matched_input_keys({**event, "transaction_id": "other"}, request, direct))
+    # The same input in another transaction keeps its key; another path, host or method does not.
+    assert keys == matched_input_keys({**event, "transaction_id": "other"}, request, direct)
+    moved = {**event, "uri": "/other?q=books&q=music"}
+    assert set(keys).isdisjoint(matched_input_keys(moved, prepare_request_evidence(moved), direct))
+    elsewhere = {**event, "raw_request": {"headers": {"Host": "other.test"}}}
+    assert set(keys).isdisjoint(matched_input_keys(elsewhere, prepare_request_evidence(elsewhere), direct))
+    posted = {**event, "method": "POST"}
+    assert set(keys).isdisjoint(matched_input_keys(posted, prepare_request_evidence(posted), direct))
 
 
 @pytest.mark.parametrize("false_positive_first", [True, False])
@@ -354,6 +361,86 @@ def test_same_input_conflict_in_either_order(tmp_path, monkeypatch, false_positi
                     assert [(d.status, d.proposed_rule) for d in drafts] == [("stale", None)]
                 else:
                     assert not drafts
+        finally:
+            await models._async_engine.dispose()
+
+    with patch.object(agent, "_provider_request", side_effect=respond):
+        asyncio.run(run())
+
+
+@pytest.mark.parametrize("true_positive_first", [True, False])
+def test_same_input_conflict_across_transactions(tmp_path, monkeypatch, true_positive_first):
+    """Each case is analysed against its latest occurrence, so the two verdicts can come from
+    different transactions carrying the same payload. They must still conflict."""
+    monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///{tmp_path / 'conflicts.db'}")
+    monkeypatch.setenv("REQUIRE_APPLICATION_CONTEXT", "true")
+    monkeypatch.setenv("INCIDENT_FINGERPRINT_KEY", "test-only-key")
+    monkeypatch.setattr(models, "_async_engine", None)
+    monkeypatch.setattr(models, "_async_session_factory", None)
+    monkeypatch.setattr(agent, "_provider_settings", {**request_settings(), "escalation_effort": ""})
+    for name in ("_index_dir", "_marker_key", "_status", "CRS_INDEX"):
+        monkeypatch.setattr(crs_index, name, getattr(crs_index, name))
+    rules = tmp_path / "rules"
+    rules.mkdir()
+    (rules / "LOCAL.conf").write_text(
+        'SecRule ARGS:q "@streq books" "id:10001,phase:2,log"\n'
+        'SecRule ARGS:q "@contains books" "id:10002,phase:2,log"\n'
+    )
+    digest = crs_index.initialize_crs_index(rules)["digest"]
+    # 10002 is judged true_positive, 10001 false_positive. The first match is claimed first.
+    matches = [("10001", within("ARGS:q", "books")), ("10002", within("TX:copied_ARGS:q", "books"))]
+    if true_positive_first:
+        matches.reverse()
+    events = []
+    for transaction_id in ("T1", "T2"):
+        event = audit(matches, headers={"Host": "catalog.test"}, transaction_id=transaction_id)
+        event["crs_ruleset_digest"] = digest
+        events.append(event)
+
+    async def respond(_revision, messages, _stage):
+        incident = json.loads(messages[1]["content"])["incident"]
+        result = verdict(incident["match_index"], "false_positive" if incident["rule_id"] == "10001" else "true_positive")
+        result.pop("match_index")
+        return json.dumps(result)
+
+    async def analyse_next(lease):
+        case_id = await agent._claim_case(lease)
+        assert case_id is not None
+        token = agent._claim_token.set(lease)
+        try:
+            await agent._run_claimed_case(case_id)
+        finally:
+            agent._claim_token.reset(token)
+
+    async def run():
+        await models.init_db()
+        try:
+            async with models.get_session_factory()() as session:
+                session.add(models.ApplicationProfile(name="catalog", host_patterns=["catalog.test"], routes=[
+                    {"path": "/catalog", "methods": ["GET"], "parameters": {"q": "Search terms"}},
+                ]))
+                await register_event(session, events[0], 0)
+                await session.commit()
+            await analyse_next("worker-1")  # first rule, on T1
+            async with models.get_session_factory()() as session:
+                await register_event(session, events[1], 1)
+                await session.commit()
+            await analyse_next("worker-2")  # second rule, on its latest occurrence T2
+            async with models.get_session_factory()() as session:
+                revisions = (await session.scalars(select(models.AnalysisRevision))).all()
+                occurrences = {o.id: o.transaction_id for o in (await session.scalars(select(models.IncidentOccurrence))).all()}
+                assert sorted(occurrences[r.occurrence_id] for r in revisions) == ["T1", "T2"]
+                assert {(r.classification, r.validation_status) for r in revisions} == {
+                    ("false_positive", "scope_conflict"), ("true_positive", "not_applicable"),
+                }
+                assert all(r.normalized_rule is None for r in revisions)
+                drafts = (await session.scalars(select(models.ExceptionDraft))).all()
+                if true_positive_first:
+                    assert not drafts
+                else:
+                    assert [(d.status, d.proposed_rule, d.validation_status) for d in drafts] == [
+                        ("stale", None, "scope_conflict"),
+                    ]
         finally:
             await models._async_engine.dispose()
 

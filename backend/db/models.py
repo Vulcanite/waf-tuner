@@ -130,6 +130,7 @@ class AnalysisCase(Base):
         Index("analysis_cases_rule_id_idx", "rule_id"),
         Index("analysis_cases_last_seen_idx", "last_seen_at", "id"),
         Index("analysis_cases_lease_idx", "state", "lease_expires_at"),
+        Index("analysis_cases_path_host_idx", "path", "application_host"),
     )
 
 

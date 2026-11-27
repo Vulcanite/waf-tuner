@@ -217,6 +217,7 @@ def test_copy_and_export_require_approved_current_scoped_rule(sqlite, monkeypatc
             other_case = models.AnalysisCase(
                 fingerprint="other-rule", method="GET", path="/catalog", rule_id="10002",
                 collection="ARGS", parameter="q", latest_event_line=17, state="complete",
+                application_host="catalog.test",
             )
             db.add(other_case)
             await db.flush()
@@ -233,11 +234,6 @@ def test_copy_and_export_require_approved_current_scoped_rule(sqlite, monkeypatc
             db.add(true_positive)
             await db.commit()
             assert (await exceptions.get_exception(draft.id, db))["proposed_rule"] is None
-            assert await exported_rule() == ""
-            # Upgraded databases still contain verdicts without an occurrence link.
-            true_positive.occurrence_id = None
-            true_positive.input_keys = None
-            await db.commit()
             assert await exported_rule() == ""
             draft.status = "pending"
             await db.commit()

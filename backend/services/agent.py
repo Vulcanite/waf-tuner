@@ -188,7 +188,8 @@ def _elapsed_ms(started: datetime | None, completed: datetime) -> int | None:
 
 # Raise when the evidence rules change in a way that makes older verdicts unsafe to approve.
 # 3: cross-rule conflicts on the same observed input require occurrence-linked verdicts.
-EVIDENCE_POLICY_VERSION = 3
+# 4: input keys cover host, method and path instead of the transaction, so conflicts span transactions.
+EVIDENCE_POLICY_VERSION = 4
 
 
 def _analysis_generation(ruleset: dict) -> str:
