@@ -1,0 +1,488 @@
+{
+  "name": "bench-nextcloud",
+  "version": 1,
+  "host_patterns": [
+    "nc.bench"
+  ],
+  "context": {
+    "purpose": "Nextcloud 35 file sync and share (Files, Text, Notes, Calendar, Contacts), behind ModSecurity CRS",
+    "languages": [
+      "php"
+    ],
+    "frameworks": [
+      "nextcloud",
+      "sabre/dav"
+    ],
+    "data_stores": [
+      "sqlite"
+    ]
+  },
+  "routes": [
+    {
+      "path": "/login",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:nc_sameSiteCookielax": "cookie: SameSite marker, value 'true'",
+        "REQUEST_COOKIES:nc_sameSiteCookiestrict": "cookie: SameSite marker, value 'true'",
+        "user": "username or email",
+        "password": "password",
+        "timezone": "IANA timezone",
+        "timezone_offset": "integer hours",
+        "requesttoken": "CSRF token",
+        "redirect_url": "relative URL"
+      },
+      "notes": "Web login form."
+    },
+    {
+      "path": "/remote.php/dav/files/*",
+      "methods": [
+        "GET",
+        "PUT",
+        "DELETE",
+        "PROPFIND",
+        "PROPPATCH",
+        "MKCOL",
+        "MOVE",
+        "COPY",
+        "REPORT",
+        "SEARCH",
+        "LOCK",
+        "UNLOCK",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:nc_sameSiteCookielax": "cookie: SameSite marker, value 'true'",
+        "REQUEST_COOKIES:nc_sameSiteCookiestrict": "cookie: SameSite marker, value 'true'",
+        "REQUEST_HEADERS:requesttoken": "CSRF token (base64 with ':' separator)",
+        "REQUEST_HEADERS:OCS-APIRequest": "'true' on API calls",
+        "REQUEST_BODY": "WebDAV XML for PROPFIND/PROPPATCH/REPORT, or the raw contents of an uploaded file for PUT (stored in the user's files, never executed)",
+        "REQUEST_FILENAME": "file path inside the user's storage; names may contain spaces, quotes, &, #, brackets and unicode",
+        "REQUEST_HEADERS:Destination": "absolute URL of the new path for MOVE/COPY",
+        "REQUEST_HEADERS:Depth": "0, 1 or infinity",
+        "REQUEST_HEADERS:Overwrite": "T or F",
+        "REQUEST_HEADERS:Authorization": "Basic auth from sync clients"
+      },
+      "notes": "WebDAV file storage used by the web UI and sync clients. Paths are virtual (database-backed), not joined to the server filesystem."
+    },
+    {
+      "path": "/remote.php/dav/",
+      "methods": [
+        "SEARCH",
+        "PROPFIND",
+        "REPORT"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:nc_sameSiteCookielax": "cookie: SameSite marker, value 'true'",
+        "REQUEST_COOKIES:nc_sameSiteCookiestrict": "cookie: SameSite marker, value 'true'",
+        "REQUEST_HEADERS:requesttoken": "CSRF token (base64 with ':' separator)",
+        "REQUEST_HEADERS:OCS-APIRequest": "'true' on API calls",
+        "REQUEST_BODY": "WebDAV SEARCH XML; d:literal holds the user's search text"
+      },
+      "notes": "DAV search (Files app name search)."
+    },
+    {
+      "path": "/remote.php/dav/comments/files/{fileid}",
+      "methods": [
+        "POST",
+        "PROPFIND",
+        "REPORT"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:nc_sameSiteCookielax": "cookie: SameSite marker, value 'true'",
+        "REQUEST_COOKIES:nc_sameSiteCookiestrict": "cookie: SameSite marker, value 'true'",
+        "REQUEST_HEADERS:requesttoken": "CSRF token (base64 with ':' separator)",
+        "REQUEST_HEADERS:OCS-APIRequest": "'true' on API calls",
+        "json.message": "comment text on a file; plain text, may mention users",
+        "json.verb": "'comment'",
+        "json.actorType": "'users'",
+        "REQUEST_BODY": "JSON comment"
+      },
+      "notes": "File comments."
+    },
+    {
+      "path": "/remote.php/dav/calendars/*",
+      "methods": [
+        "GET",
+        "PUT",
+        "DELETE",
+        "PROPFIND",
+        "PROPPATCH",
+        "MKCOL",
+        "MOVE",
+        "COPY",
+        "REPORT",
+        "SEARCH",
+        "LOCK",
+        "UNLOCK",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:nc_sameSiteCookielax": "cookie: SameSite marker, value 'true'",
+        "REQUEST_COOKIES:nc_sameSiteCookiestrict": "cookie: SameSite marker, value 'true'",
+        "REQUEST_HEADERS:requesttoken": "CSRF token (base64 with ':' separator)",
+        "REQUEST_HEADERS:OCS-APIRequest": "'true' on API calls",
+        "REQUEST_BODY": "iCalendar (text/calendar) event data or CalDAV XML; SUMMARY/DESCRIPTION/LOCATION are free text"
+      },
+      "notes": "CalDAV."
+    },
+    {
+      "path": "/remote.php/dav/addressbooks/*",
+      "methods": [
+        "GET",
+        "PUT",
+        "DELETE",
+        "PROPFIND",
+        "PROPPATCH",
+        "MKCOL",
+        "MOVE",
+        "COPY",
+        "REPORT",
+        "SEARCH",
+        "LOCK",
+        "UNLOCK",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:nc_sameSiteCookielax": "cookie: SameSite marker, value 'true'",
+        "REQUEST_COOKIES:nc_sameSiteCookiestrict": "cookie: SameSite marker, value 'true'",
+        "REQUEST_HEADERS:requesttoken": "CSRF token (base64 with ':' separator)",
+        "REQUEST_HEADERS:OCS-APIRequest": "'true' on API calls",
+        "REQUEST_BODY": "vCard (text/vcard) or CardDAV XML; NOTE/FN are free text"
+      },
+      "notes": "CardDAV."
+    },
+    {
+      "path": "/remote.php/dav/versions/*",
+      "methods": [
+        "GET",
+        "PUT",
+        "DELETE",
+        "PROPFIND",
+        "PROPPATCH",
+        "MKCOL",
+        "MOVE",
+        "COPY",
+        "REPORT",
+        "SEARCH",
+        "LOCK",
+        "UNLOCK",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:nc_sameSiteCookielax": "cookie: SameSite marker, value 'true'",
+        "REQUEST_COOKIES:nc_sameSiteCookiestrict": "cookie: SameSite marker, value 'true'",
+        "REQUEST_HEADERS:requesttoken": "CSRF token (base64 with ':' separator)",
+        "REQUEST_HEADERS:OCS-APIRequest": "'true' on API calls",
+        "REQUEST_BODY": "WebDAV XML"
+      },
+      "notes": "File versions."
+    },
+    {
+      "path": "/remote.php/dav/trashbin/*",
+      "methods": [
+        "GET",
+        "PUT",
+        "DELETE",
+        "PROPFIND",
+        "PROPPATCH",
+        "MKCOL",
+        "MOVE",
+        "COPY",
+        "REPORT",
+        "SEARCH",
+        "LOCK",
+        "UNLOCK",
+        "HEAD",
+        "OPTIONS"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:nc_sameSiteCookielax": "cookie: SameSite marker, value 'true'",
+        "REQUEST_COOKIES:nc_sameSiteCookiestrict": "cookie: SameSite marker, value 'true'",
+        "REQUEST_HEADERS:requesttoken": "CSRF token (base64 with ':' separator)",
+        "REQUEST_HEADERS:OCS-APIRequest": "'true' on API calls",
+        "REQUEST_BODY": "WebDAV XML"
+      },
+      "notes": "Trash bin."
+    },
+    {
+      "path": "/index.php/apps/text/session/file/{id}/create",
+      "methods": [
+        "PUT"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:nc_sameSiteCookielax": "cookie: SameSite marker, value 'true'",
+        "REQUEST_COOKIES:nc_sameSiteCookiestrict": "cookie: SameSite marker, value 'true'",
+        "REQUEST_HEADERS:requesttoken": "CSRF token (base64 with ':' separator)",
+        "REQUEST_HEADERS:OCS-APIRequest": "'true' on API calls"
+      },
+      "notes": "Open a document in the Text editor."
+    },
+    {
+      "path": "/index.php/apps/text/session/{id}/save",
+      "methods": [
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:nc_sameSiteCookielax": "cookie: SameSite marker, value 'true'",
+        "REQUEST_COOKIES:nc_sameSiteCookiestrict": "cookie: SameSite marker, value 'true'",
+        "REQUEST_HEADERS:requesttoken": "CSRF token (base64 with ':' separator)",
+        "REQUEST_HEADERS:OCS-APIRequest": "'true' on API calls",
+        "json.autosaveContent": "full Markdown text of the document being edited",
+        "json.documentState": "base64 Yjs document state",
+        "json.sessionToken": "editor session token",
+        "json.sessionId": "numeric",
+        "json.documentId": "numeric",
+        "json.version": "numeric"
+      },
+      "notes": "Text editor save."
+    },
+    {
+      "path": "/index.php/apps/text/session/{id}/close",
+      "methods": [
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:nc_sameSiteCookielax": "cookie: SameSite marker, value 'true'",
+        "REQUEST_COOKIES:nc_sameSiteCookiestrict": "cookie: SameSite marker, value 'true'",
+        "REQUEST_HEADERS:requesttoken": "CSRF token (base64 with ':' separator)",
+        "REQUEST_HEADERS:OCS-APIRequest": "'true' on API calls"
+      },
+      "notes": "Text editor close."
+    },
+    {
+      "path": "/ocs/v2.php/apps/files_sharing/api/v1/shares",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:nc_sameSiteCookielax": "cookie: SameSite marker, value 'true'",
+        "REQUEST_COOKIES:nc_sameSiteCookiestrict": "cookie: SameSite marker, value 'true'",
+        "REQUEST_HEADERS:requesttoken": "CSRF token (base64 with ':' separator)",
+        "REQUEST_HEADERS:OCS-APIRequest": "'true' on API calls",
+        "json.path": "path of the shared file or folder",
+        "json.shareType": "integer",
+        "json.shareWith": "user or group id",
+        "json.permissions": "integer bitmask",
+        "json.note": "free-text note to the recipient",
+        "json.label": "link label",
+        "json.attributes": "JSON string",
+        "path": "file path",
+        "reshares": "boolean",
+        "format": "json"
+      },
+      "notes": "Create and list shares."
+    },
+    {
+      "path": "/ocs/v2.php/apps/files_sharing/api/v1/shares/{id}",
+      "methods": [
+        "PUT",
+        "DELETE",
+        "GET"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:nc_sameSiteCookielax": "cookie: SameSite marker, value 'true'",
+        "REQUEST_COOKIES:nc_sameSiteCookiestrict": "cookie: SameSite marker, value 'true'",
+        "REQUEST_HEADERS:requesttoken": "CSRF token (base64 with ':' separator)",
+        "REQUEST_HEADERS:OCS-APIRequest": "'true' on API calls",
+        "json.note": "free-text note to the recipient",
+        "json.expireDate": "YYYY-MM-DD"
+      },
+      "notes": "Update a share."
+    },
+    {
+      "path": "/ocs/v2.php/apps/files_sharing/api/v1/sharees",
+      "methods": [
+        "GET"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:nc_sameSiteCookielax": "cookie: SameSite marker, value 'true'",
+        "REQUEST_COOKIES:nc_sameSiteCookiestrict": "cookie: SameSite marker, value 'true'",
+        "REQUEST_HEADERS:requesttoken": "CSRF token (base64 with ':' separator)",
+        "REQUEST_HEADERS:OCS-APIRequest": "'true' on API calls",
+        "search": "user search"
+      },
+      "notes": "Sharee search."
+    },
+    {
+      "path": "/index.php/apps/notes/api/v1/notes",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:nc_sameSiteCookielax": "cookie: SameSite marker, value 'true'",
+        "REQUEST_COOKIES:nc_sameSiteCookiestrict": "cookie: SameSite marker, value 'true'",
+        "REQUEST_HEADERS:requesttoken": "CSRF token (base64 with ':' separator)",
+        "REQUEST_HEADERS:OCS-APIRequest": "'true' on API calls",
+        "json.title": "note title",
+        "json.content": "Markdown note body, often code, commands and lists",
+        "json.category": "folder-like category"
+      },
+      "notes": "Notes app (notes are Markdown files in the user's storage)."
+    },
+    {
+      "path": "/index.php/apps/notes/api/v1/notes/{id}",
+      "methods": [
+        "GET",
+        "PUT",
+        "DELETE"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:nc_sameSiteCookielax": "cookie: SameSite marker, value 'true'",
+        "REQUEST_COOKIES:nc_sameSiteCookiestrict": "cookie: SameSite marker, value 'true'",
+        "REQUEST_HEADERS:requesttoken": "CSRF token (base64 with ':' separator)",
+        "REQUEST_HEADERS:OCS-APIRequest": "'true' on API calls",
+        "json.content": "Markdown note body"
+      },
+      "notes": "Edit a note."
+    },
+    {
+      "path": "/ocs/v2.php/cloud/users/{user}",
+      "methods": [
+        "GET",
+        "PUT"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:nc_sameSiteCookielax": "cookie: SameSite marker, value 'true'",
+        "REQUEST_COOKIES:nc_sameSiteCookiestrict": "cookie: SameSite marker, value 'true'",
+        "REQUEST_HEADERS:requesttoken": "CSRF token (base64 with ':' separator)",
+        "REQUEST_HEADERS:OCS-APIRequest": "'true' on API calls",
+        "json.key": "profile field: displayname, biography, website, address, headline, email, phone",
+        "json.value": "profile field value, free text shown on the user's profile"
+      },
+      "notes": "Personal info settings."
+    },
+    {
+      "path": "/ocs/v2.php/apps/user_status/api/v1/user_status/message/custom",
+      "methods": [
+        "PUT"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:nc_sameSiteCookielax": "cookie: SameSite marker, value 'true'",
+        "REQUEST_COOKIES:nc_sameSiteCookiestrict": "cookie: SameSite marker, value 'true'",
+        "REQUEST_HEADERS:requesttoken": "CSRF token (base64 with ':' separator)",
+        "REQUEST_HEADERS:OCS-APIRequest": "'true' on API calls",
+        "json.message": "custom status text",
+        "json.statusIcon": "emoji",
+        "json.clearAt": "timestamp or null"
+      },
+      "notes": "Custom user status."
+    },
+    {
+      "path": "/index.php/apps/theming/ajax/updateStylesheet",
+      "methods": [
+        "POST"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:nc_sameSiteCookielax": "cookie: SameSite marker, value 'true'",
+        "REQUEST_COOKIES:nc_sameSiteCookiestrict": "cookie: SameSite marker, value 'true'",
+        "REQUEST_HEADERS:requesttoken": "CSRF token (base64 with ':' separator)",
+        "REQUEST_HEADERS:OCS-APIRequest": "'true' on API calls",
+        "json.setting": "theming key: name, slogan, url, color",
+        "json.value": "theming value: free text or URL (admin only)"
+      },
+      "notes": "Admin theming settings."
+    },
+    {
+      "path": "/ocs/v2.php/search/providers/{provider}/search",
+      "methods": [
+        "GET"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:nc_sameSiteCookielax": "cookie: SameSite marker, value 'true'",
+        "REQUEST_COOKIES:nc_sameSiteCookiestrict": "cookie: SameSite marker, value 'true'",
+        "REQUEST_HEADERS:requesttoken": "CSRF token (base64 with ':' separator)",
+        "REQUEST_HEADERS:OCS-APIRequest": "'true' on API calls",
+        "term": "unified search text typed by the user",
+        "limit": "integer",
+        "from": "current app route",
+        "cursor": "pagination cursor"
+      },
+      "notes": "Unified search; terms are bound as query parameters."
+    },
+    {
+      "path": "/ocs/v2.php/references/resolve",
+      "methods": [
+        "GET"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:nc_sameSiteCookielax": "cookie: SameSite marker, value 'true'",
+        "REQUEST_COOKIES:nc_sameSiteCookiestrict": "cookie: SameSite marker, value 'true'",
+        "REQUEST_HEADERS:requesttoken": "CSRF token (base64 with ':' separator)",
+        "REQUEST_HEADERS:OCS-APIRequest": "'true' on API calls",
+        "reference": "URL to build a link preview for; the server fetches it (local addresses are refused by the HTTP client)"
+      },
+      "notes": "Link preview resolver (server-side fetch)."
+    },
+    {
+      "path": "/index.php/apps/files/ajax/download.php",
+      "methods": [
+        "GET"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:nc_sameSiteCookielax": "cookie: SameSite marker, value 'true'",
+        "REQUEST_COOKIES:nc_sameSiteCookiestrict": "cookie: SameSite marker, value 'true'",
+        "dir": "folder path",
+        "files": "file name(s) in that folder"
+      },
+      "notes": "Legacy download endpoint."
+    },
+    {
+      "path": "/index.php/apps/files_pdfviewer/",
+      "methods": [
+        "GET"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:nc_sameSiteCookielax": "cookie: SameSite marker, value 'true'",
+        "REQUEST_COOKIES:nc_sameSiteCookiestrict": "cookie: SameSite marker, value 'true'",
+        "file": "URL of the PDF to show in the viewer"
+      },
+      "notes": "PDF viewer."
+    },
+    {
+      "path": "/ocs/v2.php/apps/provisioning_api/api/v1/config/apps/*",
+      "methods": [
+        "GET",
+        "POST",
+        "DELETE"
+      ],
+      "parameters": {
+        "REQUEST_COOKIES:nc_sameSiteCookielax": "cookie: SameSite marker, value 'true'",
+        "REQUEST_COOKIES:nc_sameSiteCookiestrict": "cookie: SameSite marker, value 'true'",
+        "REQUEST_HEADERS:requesttoken": "CSRF token (base64 with ':' separator)",
+        "REQUEST_HEADERS:OCS-APIRequest": "'true' on API calls",
+        "value": "app config value"
+      },
+      "notes": "Admin app config."
+    },
+    {
+      "path": "/*",
+      "methods": [
+        "GET",
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE",
+        "HEAD",
+        "OPTIONS",
+        "PROPFIND",
+        "PROPPATCH",
+        "MKCOL",
+        "MOVE",
+        "COPY",
+        "REPORT",
+        "SEARCH"
+      ],
+      "parameters": {},
+      "notes": "General Nextcloud context for paths without a documented route."
+    }
+  ]
+}
