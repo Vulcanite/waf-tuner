@@ -128,9 +128,6 @@ export type IngestStatus = {
 }
 
 export type AppModeInfo = {
-  config_writes_enabled: boolean
-  deploy_enabled: boolean
-  engine_mode_control_enabled: boolean
   description: string
   service?: string
   ingest?: IngestStatus

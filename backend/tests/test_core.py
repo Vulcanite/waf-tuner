@@ -431,14 +431,10 @@ class DefaultProfileSeedTests(unittest.TestCase):
 
 
 class ProductInfoTests(unittest.TestCase):
-    def test_no_edge_writes(self):
+    def test_audit_log_contract(self):
         from services.app_mode import product_info
 
-        info = product_info()
-        self.assertFalse(info["deploy_enabled"])
-        self.assertFalse(info["config_writes_enabled"])
-        self.assertFalse(info["engine_mode_control_enabled"])
-        self.assertIn("JSON", info["audit_log_contract"]["format"])
+        self.assertIn("JSON", product_info()["audit_log_contract"]["format"])
 
 
 if __name__ == "__main__":

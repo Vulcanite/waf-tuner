@@ -136,7 +136,6 @@ async def health(response: Response):
         "status": "ok" if ingest == "running" else "degraded",
         "ingest": ingest,
         "ingest_error": INGEST_STATE["error"],
-        "deploy_enabled": info["deploy_enabled"],
         "service": info["service"],
     }
 
