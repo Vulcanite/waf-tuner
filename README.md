@@ -6,7 +6,7 @@ It is **not** a WAF, an authenticated SaaS, an edge control plane, or production
 
 Version `0.1.x` is for evaluation. Model classifications can be wrong, provider behavior varies, sanitized alert evidence may leave the host, and raw events and model responses remain in local storage until the operator removes them.
 
-[Architecture](./ARCHITECTURE.md) · [Security](./SECURITY.md) · [Integrations](./docs/integrations.md) · [Contributing](./CONTRIBUTING.md) · [Roadmap](./ROADMAP.md) · License: [Apache-2.0](./LICENSE)
+[Quickstart](./docs/quick-start.md) · [Architecture](./ARCHITECTURE.md) · [Documentation site](./website/README.md) · [Security](./SECURITY.md) · [Integrations](./docs/integrations.md) · [Contributing](./CONTRIBUTING.md) · [Roadmap](./ROADMAP.md) · License: [Apache-2.0](./LICENSE)
 
 Read [the story behind this project](https://amishtp.tech/blog/waf-tuner).
 
@@ -100,6 +100,6 @@ Run `bash scripts/e2e_fp_suppression.sh` to verify the generated host, method, p
 
 - One backend process owns each SQLite data directory.
 - No multi-version CRS compatibility guarantee.
-- No authentication, RBAC, multi-tenancy, or automatic retention service.
+- The UI and API require operator-managed access controls. Optional SQLite retention covers raw audit evidence and provider response excerpts.
 - No edge writes, automatic reloads, or deployment state.
 - LLM inference is off-path and recommendation-only.
