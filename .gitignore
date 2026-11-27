@@ -87,5 +87,6 @@ e2e-output/*
 
 # Live eval output (committed reports live under eval/reports/)
 eval/report.json
+eval/crs-rules/
 eval/ftw/
 eval/corpus/requests.json

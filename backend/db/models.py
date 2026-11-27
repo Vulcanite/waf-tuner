@@ -195,7 +195,11 @@ class AnalysisRevision(Base):
     classification = Column(Text, nullable=True)
     confidence = Column(Float, nullable=True)
     verdict = Column(Text, nullable=True)
+    # Kept so revisions written before offpath-v8 stay readable; v8 writes the three fields below.
     context_factors = Column(JSON, nullable=False, default=list)
+    rule_looks_for = Column(Text, nullable=True)
+    payload_is = Column(Text, nullable=True)
+    why = Column(Text, nullable=True)
     uncertainty_factors = Column(JSON, nullable=False, default=list)
     raw_response = Column(Text, nullable=True)
     proposed_rule_scope = Column(JSON, nullable=True)
@@ -222,6 +226,9 @@ class ExceptionDraft(Base):
     classification = Column(Text, nullable=False)
     confidence = Column(Float, nullable=False)
     verdict = Column(Text, nullable=False)
+    rule_looks_for = Column(Text, nullable=True)
+    payload_is = Column(Text, nullable=True)
+    why = Column(Text, nullable=True)
     crs_rule_raw = Column(Text, nullable=True)
     proposed_rule = Column(Text, nullable=True)
     proposed_rule_scope = Column(JSON, nullable=True)
@@ -332,7 +339,11 @@ def _migrate_schema(connection) -> None:
         AuditEvent: ("path", "anomaly_score"),
         AnalysisCase: ("application_host", "lease_token", "enqueued_at", "completed_generation"),
         IncidentOccurrence: (),
-        AnalysisRevision: ("stage_metrics", "pending_repair_input", "evidence_digest", "occurrence_id", "input_keys"),
+        AnalysisRevision: (
+            "stage_metrics", "pending_repair_input", "evidence_digest", "occurrence_id", "input_keys",
+            "rule_looks_for", "payload_is", "why",
+        ),
+        ExceptionDraft: ("rule_looks_for", "payload_is", "why"),
         InferenceAttempt: ("reasoning_tokens", "provider_ms"),
     }
     inspector = inspect(connection)

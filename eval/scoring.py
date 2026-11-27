@@ -1,17 +1,8 @@
 """Confusion-matrix scoring for recorded or live eval results."""
 from __future__ import annotations
 
-import sys
 from collections import Counter, defaultdict
-from pathlib import Path
 from typing import Any, Iterable
-
-_BACKEND = str(Path(__file__).resolve().parents[1] / "backend")
-if _BACKEND not in sys.path:
-    sys.path.insert(0, _BACKEND)
-
-# Stdlib-only module; the same set the worker's draft gate (can_build_exception) accepts.
-from services.exception_builder import SAFE_TARGET_COLLECTIONS  # noqa: E402
 
 
 CLASSIFICATIONS = ("true_positive", "false_positive", "uncertain", "invalid")
@@ -114,27 +105,26 @@ def _rate(num: int, den: int) -> float | None:
     return num / den if den else None
 
 
-def is_copyable_exclusion(row: dict[str, Any]) -> bool:
-    """A harmless match cleared as false_positive that passes the worker's offline-computable draft gates.
-
-    - the collection and parameter checks of exception_builder.can_build_exception;
-    - the route gate (`route_supports_exception`): a specific route in the fixture's
-      application_context documents this exact target;
-    - the evidence gate (`evidence_withheld`): the match's own target was not hidden or trimmed
-      and a matched value survived, as recorded from the exact context sent.
-
-    A gate input that is None (older recordings, fixtures without evidence) is not applied.
-    Not modelled: the captured host and method the worker requires, the rule builder's path,
-    host and method syntax checks, CRS rule availability, chained rules, ruleset changes,
-    true-positive scope conflicts and rule-ID collisions. This stays an upper estimate.
-    """
-    return (
-        expected_class(row) != "attack" and _predicted(row) == "false_positive"
-        and str(row.get("collection") or "").upper() in SAFE_TARGET_COLLECTIONS
-        and bool(str(row.get("parameter") or "").strip())
-        and row.get("route_supports_exception") is not False
-        and row.get("evidence_withheld") is not True
+def exclusion_metrics(attacks: list[dict[str, Any]], harmless: list[dict[str, Any]]) -> dict[str, Any]:
+    """A false positive identified (the model cleared a harmless match) is not yet an exclusion: the
+    server's draft gates must also pass (row `draft_status` == "valid", from evaluate.draft_status).
+    Exclusion counts are None when no row carries gate inputs (for example the oracle recording)."""
+    identified = [row for row in harmless if _predicted(row) == "false_positive"]
+    cleared = [row for row in attacks + harmless if _predicted(row) == "false_positive"]
+    measured = [row for row in cleared if row.get("draft_status") is not None]
+    known = bool(measured) or not cleared
+    withheld = Counter(
+        row["draft_status"] for row in identified if row.get("draft_status") not in (None, "valid")
     )
+    produced = sum(row.get("draft_status") == "valid" for row in harmless)
+    return {
+        "false_positives_identified": len(identified),
+        "exclusions_produced": produced if known else None,
+        "attack_exclusions_produced": sum(row.get("draft_status") == "valid" for row in attacks) if known else None,
+        "exclusions_measured": len(measured),
+        "exclusion_rate": _rate(produced, len(harmless)) if known else None,
+        "draft_withheld": dict(sorted(withheld.items())),
+    }
 
 
 def run_metrics(rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
@@ -170,7 +160,8 @@ def run_metrics(rows: Iterable[dict[str, Any]]) -> dict[str, Any]:
         "attack_detection": _rate(sum(_predicted(row) == "true_positive" for row in attacks), len(attacks)),
         "harmless_cleared_rate": _rate(sum(_predicted(row) == "false_positive" for row in harmless), len(harmless)),
         "uncertain_rate": _rate(sum(_predicted(row) == "uncertain" for row in rows), len(rows)),
-        "copyable_exclusions": sum(is_copyable_exclusion(row) for row in rows),
+        **exclusion_metrics(attacks, harmless),
+        "explanation_rate": _rate(sum(row.get("explanation_complete") is True for row in rows), len(rows)),
         "applies_to_stack": {label: dict(counts) for label, counts in stack.items()},
         "wrong_stack_attacks": wrong_stack,
     }

@@ -42,7 +42,7 @@ from services.llm_options import (
     ESCALATION_EFFORT_REJECTED, env_bool, is_escalation_effort_rejection, request_payload, request_settings,
 )
 from services.model_contract import (
-    JSON_REPAIR_PROMPT, PROMPT_SHA256, PROMPT_VERSION, RESPONSE_FORMAT,
+    EXPLANATION_KEYS, JSON_REPAIR_PROMPT, PROMPT_SHA256, PROMPT_VERSION, RESPONSE_FORMAT,
     CompletionOutputError, classify_repair_response, classify_response, completion_text, false_positive_threshold,
     repair_messages, response_messages,
 )
@@ -602,6 +602,8 @@ def refresh_active_false_positive_draft(
     existing.classification = result["classification"]
     existing.confidence = result["confidence"]
     existing.verdict = result["verdict"]
+    for key in EXPLANATION_KEYS:
+        setattr(existing, key, result.get(key))
     existing.transaction_id = transaction_id
     existing.event_line = event_line
     existing.analysis_revision_id = revision.id
@@ -827,7 +829,8 @@ async def _finalize_case(
         revision.classification = result["classification"]
         revision.confidence = result["confidence"]
         revision.verdict = result["verdict"]
-        revision.context_factors = result["context_factors"]
+        for key in EXPLANATION_KEYS:
+            setattr(revision, key, result.get(key))
         revision.uncertainty_factors = result["uncertainty_factors"]
         revision.pending_repair_input = None
         revision.proposed_rule_scope = scope
@@ -889,6 +892,7 @@ async def _finalize_case(
                     classification="false_positive",
                     confidence=result["confidence"],
                     verdict=result["verdict"],
+                    **{key: result.get(key) for key in EXPLANATION_KEYS},
                     crs_rule_raw=crs_raw or None,
                     proposed_rule=normalized_rule,
                     proposed_rule_scope=scope_payload,

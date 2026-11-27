@@ -91,6 +91,12 @@ def _stack(counts: dict | None) -> str:
     return ", ".join(f"{key} {counts[key]}" for key in sorted(counts)) or "none"
 
 
+def _exclusions(summary: dict) -> str:
+    if summary.get("exclusions_produced") is None:
+        return "n/a (no gate inputs recorded)"
+    return f"{summary['exclusions_produced']} ({_rate(summary.get('exclusion_rate'))} of harmless matches)"
+
+
 def run_metrics_markdown(report: dict[str, Any]) -> list[str]:
     summary = report["summary"]
     tokens = summary.get("tokens") or {}
@@ -103,7 +109,12 @@ def run_metrics_markdown(report: dict[str, Any]) -> list[str]:
         f"- Attack detection: {_rate(summary.get('attack_detection'))}",
         f"- Harmless correctly cleared: {_rate(summary.get('harmless_cleared_rate'))}",
         f"- Uncertain rate: {_rate(summary.get('uncertain_rate'))}",
-        f"- Copyable exclusions (estimate): {summary.get('copyable_exclusions')}",
+        f"- False positives identified (harmless matches classified false_positive): "
+        f"{summary.get('false_positives_identified')}",
+        f"- Exclusions produced (also pass the server's draft gates): {_exclusions(summary)}",
+        f"- Attack matches that would produce an exclusion (must be 0): {_num(summary.get('attack_exclusions_produced'))}",
+        f"- Drafts withheld by gate: {_stack(summary.get('draft_withheld'))}",
+        f"- Explanation fields present: {_rate(summary.get('explanation_rate'))}",
         f"- applies_to_stack on attacks: {_stack((summary.get('applies_to_stack') or {}).get('attack'))}",
         f"- applies_to_stack on harmless: {_stack((summary.get('applies_to_stack') or {}).get('false_positive'))}",
     ]
@@ -120,6 +131,8 @@ def run_metrics_markdown(report: dict[str, Any]) -> list[str]:
             f"prompt {_num(tokens['prompt_tokens'])}, cached {_num(tokens['cached_prompt_tokens'])}, completion "
             f"{_num(tokens['completion_tokens'])}, reasoning {_num(tokens['reasoning_tokens'])}"
         )
+    if summary.get("wall_time_s") is not None:
+        lines.append(f"- Wall time: {_num(summary['wall_time_s'])} s")
     lines.append("")
     return lines
 
@@ -134,7 +147,10 @@ _COMPARISON_ROWS = [
     ("attack detection", lambda r, s, t: _rate(s.get("attack_detection"))),
     ("harmless correctly cleared", lambda r, s, t: _rate(s.get("harmless_cleared_rate"))),
     ("uncertain rate", lambda r, s, t: _rate(s.get("uncertain_rate"))),
-    ("copyable exclusions (estimate)", lambda r, s, t: _num(s.get("copyable_exclusions"))),
+    ("false positives identified", lambda r, s, t: _num(s.get("false_positives_identified"))),
+    ("exclusions produced", lambda r, s, t: _num(s.get("exclusions_produced"))),
+    ("attack exclusions produced (must be 0)", lambda r, s, t: _num(s.get("attack_exclusions_produced"))),
+    ("explanation fields present", lambda r, s, t: _rate(s.get("explanation_rate"))),
     ("repair rate", lambda r, s, t: _rate(s.get("repair_rate"))),
     ("applies_to_stack, attacks", lambda r, s, t: _stack((s.get("applies_to_stack") or {}).get("attack"))),
     ("applies_to_stack, harmless", lambda r, s, t: _stack((s.get("applies_to_stack") or {}).get("false_positive"))),
@@ -157,6 +173,7 @@ _COMPARISON_ROWS = [
     ("p50 / p95 latency ms", lambda r, s, t: (
         f"{(s.get('latency_ms') or {}).get('p50')} / {(s.get('latency_ms') or {}).get('p95')}"
     )),
+    ("wall time s", lambda r, s, t: _num(s.get("wall_time_s"))),
 ]
 
 

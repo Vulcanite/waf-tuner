@@ -449,32 +449,94 @@ def test_repair_cannot_change_a_classification(settings, monkeypatch):
     assert replayed[0]["classification"] == "false_positive"
 
 
-def test_copyable_estimate_applies_the_route_and_evidence_gates(settings, monkeypatch):
-    def cleared(fixture):
-        mock_provider(monkeypatch, by_rule)
-        rows, calls, _ = evaluate.evaluate_fixture(fixture, settings=settings)
-        return evaluate.build_report([fixture], rows, settings, "mock", calls)["summary"], rows
+@pytest.fixture
+def crs_rules(monkeypatch, tmp_path):
+    """The two rules request_fixture() matches, as the worker would index them."""
+    for name in ("_index_dir", "_marker_key", "_status", "CRS_INDEX"):
+        monkeypatch.setattr(crs_index, name, getattr(crs_index, name))
+    rules = tmp_path / "crs"
+    rules.mkdir()
+    (rules / "LOCAL.conf").write_text(
+        'SecRule ARGS "@rx union" "id:942100,phase:2,log"\n'
+        'SecRule ARGS "@rx select" "id:942190,phase:2,log"\n'
+    )
+    crs_index.initialize_crs_index(rules)
+    return rules
 
-    summary, rows = cleared(request_fixture())
-    assert summary["copyable_exclusions"] == 1
-    assert (rows[1]["route_supports_exception"], rows[1]["evidence_withheld"]) == (True, False)
 
-    # The route does not document `comment`: the worker withholds the draft.
+def cleared(fixture, settings, monkeypatch, replies=None):
+    mock_provider(monkeypatch, replies or by_rule)
+    rows, calls, _ = evaluate.evaluate_fixture(fixture, settings=settings)
+    return evaluate.build_report([fixture], rows, settings, "mock", calls)["summary"], rows
+
+
+def test_an_identified_false_positive_needs_the_draft_gates_for_an_exclusion(settings, monkeypatch, crs_rules):
+    summary, rows = cleared(request_fixture(), settings, monkeypatch)
+    assert (summary["false_positives_identified"], summary["exclusions_produced"]) == (1, 1)
+    assert summary["attack_exclusions_produced"] == 0 and summary["exclusion_rate"] == 1
+    assert [row["draft_status"] for row in rows] == ["not_applicable", "valid"]
+
+    # The route does not document `comment`: identified, but the worker withholds the draft.
     undocumented = request_fixture()
     del undocumented["application_context"]["route"]["parameters"]["comment"]
-    summary, rows = cleared(undocumented)
-    assert summary["copyable_exclusions"] == 0 and rows[1]["route_supports_exception"] is False
+    summary, rows = cleared(undocumented, settings, monkeypatch)
+    assert (summary["false_positives_identified"], summary["exclusions_produced"]) == (1, 0)
+    assert summary["draft_withheld"] == {"missing_application_context": 1}
 
     # A cookie entry on the route never vouches for an argument of the same name.
     cookie_only = request_fixture()
     parameters = cookie_only["application_context"]["route"]["parameters"]
     parameters["REQUEST_COOKIES:comment"] = parameters.pop("comment")
-    assert cleared(cookie_only)[0]["copyable_exclusions"] == 0
+    assert cleared(cookie_only, settings, monkeypatch)[0]["exclusions_produced"] == 0
 
-    # The match's own evidence was trimmed: no copyable rule either.
+    # No captured host: the scope cannot be built.
+    hostless = request_fixture()
+    del hostless["modsec_audit"]["transaction"]["request"]["headers"]["Host"]
+    monkeypatch.setenv("REQUIRE_APPLICATION_CONTEXT", "false")
+    assert cleared(hostless, settings, monkeypatch)[0]["draft_withheld"] == {"cannot_build": 1}
+    monkeypatch.delenv("REQUIRE_APPLICATION_CONTEXT")
+
+    # The match's own evidence was trimmed: no exclusion either.
     monkeypatch.setenv("AI_MAX_CONTEXT_BYTES", "300")
-    summary, rows = cleared(request_fixture())
-    assert summary["copyable_exclusions"] == 0 and rows[1]["evidence_withheld"] is True
+    summary, rows = cleared(request_fixture(), settings, monkeypatch)
+    assert summary["exclusions_produced"] == 0 and rows[1]["evidence_withheld"] is True
+
+
+def test_a_true_positive_on_the_same_input_blocks_the_exclusion(settings, monkeypatch, crs_rules):
+    # Both rules fire on `q`; one is judged an attack, so the other's draft is a scope conflict.
+    fixture = request_fixture()
+    messages = fixture["modsec_audit"]["transaction"]["messages"]
+    messages[1]["details"]["data"] = f"Matched Data: {ATTACK_Q} found within ARGS:q: {ATTACK_Q}"
+    fixture["labels"][1]["expected"] = "attack"
+    summary, rows = cleared(fixture, settings, monkeypatch)
+    assert [row["draft_status"] for row in rows] == ["not_applicable", "scope_conflict"]
+    assert summary["attack_exclusions_produced"] == 0
+
+
+def test_a_profile_cut_from_the_prompt_withholds_the_exclusion(settings, monkeypatch, crs_rules):
+    fixture = request_fixture()
+    fixture["application_context"]["application"]["notes"] = "long profile note " * 28
+    mock_provider(monkeypatch, by_rule)
+    full = evaluate.match_context(fixture, *evaluate.fixture_event(fixture)[::2], 1)
+    without = {**full, "application_context": {}}
+    monkeypatch.setenv("AI_MAX_CONTEXT_BYTES", str(len(json.dumps(without, separators=(",", ":"))) - 120))
+    summary, rows = cleared(fixture, settings, monkeypatch)
+    assert rows[1]["classification"] == "false_positive"
+    assert rows[1]["draft_status"] == "missing_application_context"
+    assert summary["exclusions_produced"] == 0
+
+
+def test_explanation_rate_counts_only_real_explanations(settings, monkeypatch, crs_rules):
+    def reply(messages, attempt_type):
+        context = json.loads(messages[1]["content"])
+        if context["incident"]["rule_id"] == "942100":
+            return json.dumps(verdict("true_positive", why="Not stated"))
+        return json.dumps(verdict("false_positive"))
+
+    summary, rows = cleared(request_fixture(), settings, monkeypatch, reply)
+    assert [row["explanation_complete"] for row in rows] == [False, True]
+    assert summary["explanation_rate"] == 0.5
+    assert rows[1]["why"] == "recorded-oracle"
 
 
 def test_cut_off_output_is_never_parsed(settings, monkeypatch):
@@ -513,7 +575,7 @@ def test_cached_tokens_come_only_from_the_openai_compatible_field():
     assert usage_tokens(both)["cached_prompt_tokens"] == 256
 
 
-def test_metrics_cover_gates_copyable_exclusions_and_stack(settings, monkeypatch):
+def test_metrics_cover_gates_exclusions_and_stack(settings, monkeypatch, crs_rules):
     mock_provider(monkeypatch, by_rule)
     fixture = request_fixture(wrong_stack=True)
     rows, calls, _ = evaluate.evaluate_fixture(fixture, settings=settings)
@@ -521,7 +583,8 @@ def test_metrics_cover_gates_copyable_exclusions_and_stack(settings, monkeypatch
     assert summary["attacks_classified_false_positive"] == 0
     assert summary["attack_detection"] == 1 and summary["harmless_cleared_rate"] == 1
     assert summary["uncertain_rate"] == 0 and summary["invalid"] == 0
-    assert summary["copyable_exclusions"] == 1  # ARGS:comment
+    assert summary["exclusions_produced"] == 1  # ARGS:comment
+    assert summary["explanation_rate"] == 1
     assert summary["applies_to_stack"] == {"attack": {"yes": 1}, "false_positive": {"yes": 1}}
     assert summary["wrong_stack_attacks"]["attacks"] == 1 and summary["wrong_stack_attacks"]["true_positive"] == 1
 
@@ -585,7 +648,60 @@ def test_comparison_report_renders_one_column_per_run(tmp_path):
     assert rows["attack detection"].endswith("| 0.0% | 100.0% |")
     assert rows["model calls"].endswith("| 2 | 2 |")
     assert rows["prompt tokens"].endswith("| 2,000 | 2,000 |")
-    for label in ("cached prompt tokens", "reasoning tokens", "copyable exclusions (estimate)",
+    for label in ("cached prompt tokens", "reasoning tokens", "false positives identified", "exclusions produced",
+                  "explanation fields present", "wall time s",
                   "attacks classified false_positive (must be 0)", "harmless correctly cleared", "uncertain rate"):
         assert label in rows
     assert "Run metrics" in (out / "deepseek-pro.md").read_text()
+
+
+def test_concurrent_live_run_keeps_order_and_sums_tokens(settings, monkeypatch, tmp_path, crs_rules):
+    fixtures_path = tmp_path / "requests.jsonl"
+    ids = [f"req-{n}" for n in range(6)]
+    fixtures_path.write_text("".join(json.dumps(request_fixture(fixture_id)) + "\n" for fixture_id in ids))
+    sent = mock_provider(monkeypatch, by_rule)
+    output = tmp_path / "live.json"
+    argv = ["--fixtures", str(fixtures_path), "--recordings-dir", str(tmp_path), "--model", "mock",
+            "--crs-rules-dir", str(crs_rules), "--record", "--output", str(output), "--concurrency", "4"]
+    assert evaluate.main(argv) == 0
+    report_json = json.loads(output.read_text())
+    assert [row["id"] for row in report_json["results"]] == [f"{i}#{m}" for i in ids for m in (0, 1)]
+    assert len(sent) == 12 and report_json["summary"]["tokens"]["prompt_tokens"] == 12 * USAGE["prompt_tokens"]
+    assert report_json["summary"]["wall_time_s"] is not None
+    assert [item["id"] for item in load_recordings(tmp_path / "mock.jsonl").values()] == [
+        row["id"] for row in report_json["results"]]
+
+
+def test_transient_provider_errors_are_retried(settings, monkeypatch):
+    calls = []
+
+    class Response(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def urlopen(req, timeout=None, context=None):
+        calls.append(1)
+        if len(calls) == 1:
+            raise evaluate.urllib.error.HTTPError(req.full_url, 503, "busy", {}, io.BytesIO(b""))
+        if len(calls) == 2:
+            raise TimeoutError()
+        body = {"choices": [{"finish_reason": "stop", "message": {"content": "{}"}}], "usage": {"prompt_tokens": 1}}
+        return Response(json.dumps(body).encode())
+
+    monkeypatch.setattr(evaluate.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(evaluate.time, "sleep", lambda _: None)
+    choice, _, usage = evaluate.request([], settings)
+    assert len(calls) == 3 and choice["finish_reason"] == "stop" and usage == {"prompt_tokens": 1}
+
+    def rejected(req, timeout=None, context=None):
+        calls.append(1)
+        raise evaluate.urllib.error.HTTPError(req.full_url, 400, "bad", {}, io.BytesIO(b""))
+
+    calls.clear()
+    monkeypatch.setattr(evaluate.urllib.request, "urlopen", rejected)
+    with pytest.raises(evaluate.urllib.error.HTTPError):
+        evaluate.request([], settings)
+    assert len(calls) == 1

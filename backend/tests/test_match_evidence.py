@@ -256,7 +256,7 @@ def verdict(index, classification="true_positive", confidence=0.95, **extra):
     return {
         "match_index": index, "classification": classification, "confidence": confidence,
         "verdict": "The matched value is executable attack syntax in this request.",
-        "context_factors": ["attack syntax"], "uncertainty_factors": [], "applies_to_stack": "yes", **extra,
+        "rule_looks_for": "SQL injection syntax", "payload_is": "the matched input", "why": "fixture explanation", "uncertainty_factors": [], "applies_to_stack": "yes", **extra,
     }
 
 
@@ -266,11 +266,75 @@ def test_the_prompt_keeps_the_untrusted_evidence_and_tech_stack_rules():
     assert "applies_to_stack" in RESPONSE_FORMAT["json_schema"]["schema"]["required"]
 
 
+def test_the_prompt_judges_the_value_and_separates_the_verdict_from_the_draft():
+    prompt = " ".join(SYSTEM_PROMPT.split())
+    assert "Judge the value, not the rule's attack class" in prompt
+    assert "true_positive even when the rule was written for a different attack class" in prompt
+    # A clearly benign value can be cleared without a route profile; the server still gates drafts.
+    assert "false_positive is prohibited" not in prompt
+    assert "is not required for one" in prompt
+    assert "Missing application semantics must increase uncertainty" in prompt
+    assert "Never classify any of these as false_positive" in prompt
+    for never in ("executable SQL, shell or XSS syntax", "169.254.169.254", "decimal, hex or octal encoded IP",
+                  "eval, exec, system, popen, backticks", "loopback, private and link-local"):
+        assert never in prompt
+    required = RESPONSE_FORMAT["json_schema"]["schema"]["required"]
+    assert {"rule_looks_for", "payload_is", "why"} <= set(required) and "context_factors" not in required
+
+
+@pytest.mark.parametrize("change", [
+    {"why": ""}, {"why": "   "}, {"payload_is": None}, {"rule_looks_for": "x" * 601}, {"why": ["list"]},
+])
+def test_the_explanation_fields_are_required_and_non_empty(change):
+    result = verdict(0)
+    result.pop("match_index")
+    assert classify_response(json.dumps(result))["why"] == "fixture explanation"
+    with pytest.raises(ValueError):
+        classify_response(json.dumps({**result, **change}))
+    missing = dict(result)
+    missing.pop("why")
+    with pytest.raises(ValueError):
+        classify_response(json.dumps(missing))
+    # A v7 output with context_factors instead of the explanation is invalid.
+    v7 = {key: value for key, value in result.items() if key not in {"rule_looks_for", "payload_is", "why"}}
+    with pytest.raises(ValueError):
+        classify_response(json.dumps({**v7, "context_factors": ["attack syntax"]}))
+
+
+def test_older_databases_gain_the_explanation_columns(tmp_path, monkeypatch):
+    from sqlalchemy import inspect, text
+
+    monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///{tmp_path / 'old.db'}")
+    monkeypatch.setattr(models, "_async_engine", None)
+    monkeypatch.setattr(models, "_async_session_factory", None)
+    columns = ("rule_looks_for", "payload_is", "why")
+
+    async def run():
+        await models.init_db()
+        engine = models.get_async_engine()
+        try:
+            async with engine.begin() as connection:
+                for table in ("analysis_revisions", "exception_drafts"):
+                    for column in columns:
+                        await connection.execute(text(f'ALTER TABLE "{table}" DROP COLUMN "{column}"'))
+            await models.init_db()
+            async with engine.connect() as connection:
+                found = await connection.run_sync(lambda sync: {
+                    table: {column["name"] for column in inspect(sync).get_columns(table)}
+                    for table in ("analysis_revisions", "exception_drafts")
+                })
+            assert all(set(columns) <= names for names in found.values())
+        finally:
+            await engine.dispose()
+
+    asyncio.run(run())
+
+
 def test_applies_to_stack_is_unknown_when_an_output_omits_it():
     legacy = {
         "classification": "true_positive", "confidence": 0.95,
         "verdict": "Executable attack syntax is present in the inspected parameter.",
-        "context_factors": [], "uncertainty_factors": [],
+        "rule_looks_for": "SQL injection syntax", "payload_is": "the matched input", "why": "fixture explanation", "uncertainty_factors": [],
     }
     assert classify_response(json.dumps(legacy))["applies_to_stack"] == "unknown"
     assert classify_response(json.dumps({**legacy, "applies_to_stack": "no"}))["applies_to_stack"] == "no"

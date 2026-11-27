@@ -20,7 +20,7 @@ VALID = json.dumps({
     "classification": "true_positive",
     "confidence": 0.95,
     "verdict": "Executable attack syntax is present in the inspected parameter.",
-    "context_factors": ["attack syntax"],
+    "rule_looks_for": "SQL injection syntax", "payload_is": "the matched input", "why": "fixture explanation",
     "uncertainty_factors": [],
 })
 
@@ -377,7 +377,7 @@ class SqliteAgentTests(unittest.TestCase):
             "classification": "false_positive",
             "confidence": 0.96,
             "verdict": "Route profile explains a legitimate product search parameter.",
-            "context_factors": ["route match"],
+            "rule_looks_for": "SQL injection syntax", "payload_is": "the matched input", "why": "fixture explanation",
             "uncertainty_factors": [],
         }
 
@@ -552,7 +552,7 @@ class SqliteAgentTests(unittest.TestCase):
                         "classification": "false_positive",
                         "confidence": 0.5,
                         "verdict": "Should not overwrite approved drafts.",
-                        "context_factors": [],
+                        "rule_looks_for": "SQL injection syntax", "payload_is": "the matched input", "why": "fixture explanation",
                         "uncertainty_factors": [],
                     },
                     scope=scope,

@@ -24,8 +24,10 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.parse import urlencode
 
 
@@ -36,13 +38,17 @@ sys.path.insert(0, str(ROOT / "backend"))
 from scoring import expected_class, per_rule_matrix, run_metrics, summary_from_counts, token_totals  # noqa: E402
 from services.audit_event import normalize_audit_event  # noqa: E402
 from services.crs_index import get_rule_at, initialize_crs_index  # noqa: E402
+from services.draft_scope import case_exception_scope  # noqa: E402
+from services.exception_builder import can_build_exception  # noqa: E402
 from services.inference_context import (  # noqa: E402
-    bound_repair_input, build_inference_context, is_aggregate_match, match_evidence_withheld, match_target,
+    application_context_omitted, bound_repair_input, build_inference_context, is_aggregate_match,
+    match_evidence_withheld, match_target, prepare_request_evidence, resolve_input_target, split_request_uri,
 )
 from services.llm_options import (  # noqa: E402
-    ESCALATION_EFFORT_REJECTED, is_escalation_effort_rejection, request_payload, request_settings,
+    ESCALATION_EFFORT_REJECTED, env_bool, is_escalation_effort_rejection, request_payload, request_settings,
 )
 from services.model_contract import (  # noqa: E402
+    EXPLANATION_KEYS,
     CompletionOutputError,
     PROMPT_SHA256,
     PROMPT_VERSION,
@@ -58,6 +64,10 @@ from services.profile_match import route_supports_exception  # noqa: E402
 
 RECORDINGS_DIR = ROOT / "eval" / "recordings"
 DEFAULT_FIXTURES = ROOT / "eval" / "requests.jsonl"
+# Written by eval/extract_crs_rules.py from the WAF image the eval set was captured with.
+DEFAULT_CRS_RULES = ROOT / "eval" / "crs-rules"
+# Transient provider failures retried per call, like the worker's retryable errors.
+_RETRIES = 2
 PROVENANCE_KEYS = (
     "prompt_version", "prompt_sha256", "settings", "fixture_sha256", "input_sha256", "false_positive_threshold",
 )
@@ -163,14 +173,79 @@ def match_context(fixture: dict, event: dict, legacy: dict, match_index: int) ->
     )
 
 
-def gate_inputs(view: dict) -> dict:
-    """The worker's per-match evidence gate (agent._finalize_case) on a per-match context."""
+def gate_inputs(view: dict, crs_rule=None) -> dict:
+    """The worker's per-match context gates (agent._finalize_case), from the exact context sent."""
     redaction = view.get("redaction") or {}
+    chain = crs_rule.get("chain") if isinstance(crs_rule, dict) else getattr(crs_rule, "chain", False)
     return {
         "evidence_withheld": match_evidence_withheld(view),
         "target_hidden": bool(redaction.get("target_hidden")),
         "truncated": bool(redaction.get("truncated")),
+        "application_context_omitted": application_context_omitted(view),
+        "crs_rule_available": bool(crs_rule and view.get("crs_rule")),
+        "crs_rule_chain": bool(chain),
     }
+
+
+def draft_scope(event: dict, match: dict) -> dict:
+    """The worker's exclusion scope for one match (draft_scope.case_exception_scope of its case)."""
+    request = prepare_request_evidence(event)
+    path = split_request_uri(str(event.get("uri") or "/")).path or "/"
+    collection, parameter = match_target(match)
+    return case_exception_scope(SimpleNamespace(
+        path=path if path.startswith("/") else f"/{path}", collection=collection, parameter=parameter,
+        rule_id=str(match.get("rule_id") or ""), application_host=request["host"], method=request["method"],
+    ))
+
+
+def draft_status(classification: str | None, scope: dict, route_supported: bool | None, gate: dict) -> str | None:
+    """The validation status the worker would give this verdict's draft (agent._apply_draft_policy and
+    _finalize_case), in the worker's order. "valid" means an exclusion is produced.
+
+    Same-input true-positive conflicts within the request are applied in evaluate_fixture. Not modelled:
+    true positives on the same rule and target in other requests (they depend on the traffic history),
+    ruleset changes and rule-ID collisions. None when the recording has no gate inputs.
+    """
+    if classification != "false_positive":
+        return "not_applicable"
+    if not gate or gate.get("crs_rule_available") is None or route_supported is None:
+        return None
+    if env_bool("REQUIRE_APPLICATION_CONTEXT", True) and not (scope.get("host") and route_supported):
+        return "missing_application_context"
+    if not can_build_exception(scope)[0]:
+        return "cannot_build"
+    if not gate["crs_rule_available"]:
+        return "missing_crs_rule"
+    if gate.get("crs_rule_chain"):
+        return "chained_rule_review"
+    if gate.get("application_context_omitted"):
+        return "missing_application_context"
+    if gate.get("evidence_withheld"):
+        return "missing_match_evidence"
+    return "valid"
+
+
+def _input_identity(match: dict) -> tuple | None:
+    """The request input a match inspected, normalized as incidents.matched_input_keys does."""
+    collection, parameter = resolve_input_target(*match_target(match))
+    if not collection or not parameter:
+        return None
+    if collection in {"ARGS_GET", "ARGS_POST"}:
+        collection = "ARGS"
+    elif collection in {"ARGS_GET_NAMES", "ARGS_POST_NAMES"}:
+        collection = "ARGS_NAMES"
+    elif collection.startswith(("REQUEST_HEADERS", "REQUEST_COOKIES")):
+        parameter = parameter.lower()
+    return collection, parameter
+
+
+def explanation_complete(verdict: dict | None) -> bool:
+    """All three explanation fields are present with real content."""
+    return bool(verdict) and all(
+        isinstance(verdict.get(key), str) and verdict[key].strip()
+        and verdict[key].strip().casefold() != "not stated"
+        for key in EXPLANATION_KEYS
+    )
 
 
 def request(messages, settings, attempt_type="initial"):
@@ -185,10 +260,20 @@ def request(messages, settings, attempt_type="initial"):
         },
         method="POST",
     )
-    started = time.perf_counter()
     tls = ssl._create_unverified_context() if not settings["verify_ssl"] else None
-    with urllib.request.urlopen(req, timeout=settings["timeout"], context=tls) as response:
-        payload = json.load(response)
+    for attempt in range(_RETRIES + 1):
+        started = time.perf_counter()
+        try:
+            with urllib.request.urlopen(req, timeout=settings["timeout"], context=tls) as response:
+                payload = json.load(response)
+            break
+        except urllib.error.HTTPError as exc:
+            if attempt == _RETRIES or not (exc.code == 429 or exc.code >= 500):
+                raise
+        except (urllib.error.URLError, TimeoutError):
+            if attempt == _RETRIES:
+                raise
+        time.sleep(5 * (attempt + 1))
     latency = round((time.perf_counter() - started) * 1000)
     choices = payload.get("choices") or []
     choice = choices[0] if choices else {}
@@ -239,7 +324,9 @@ def oracle_response(expected: str) -> dict:
         "classification": classification,
         "confidence": 0.99,
         "verdict": "Recorded oracle label matching the fixture expected class.",
-        "context_factors": ["recorded-oracle"],
+        "rule_looks_for": "recorded-oracle",
+        "payload_is": "recorded-oracle",
+        "why": "recorded-oracle",
         "uncertainty_factors": [],
     }
 
@@ -402,7 +489,11 @@ def _row(fixture, label, event, legacy, recording, verdict, finish) -> dict:
     rule_ids = [str(match["rule_id"])] if match.get("rule_id") else list((recording or {}).get("crs_rule_ids") or [])
     available = (recording or {}).get("crs_rule_available")
     # Recorded at live time from the exact context sent; absent in older recordings.
-    gate = ((recording or {}).get("gate_inputs") or {}).get(str(index)) or {}
+    gate = dict(((recording or {}).get("gate_inputs") or {}).get(str(index)) or {})
+    if gate and gate.get("crs_rule_available") is None:
+        gate["crs_rule_available"] = available
+    route_supported = _route_supported(fixture, legacy, event, match)
+    classification = verdict["classification"] if verdict else None
     row = {
         "id": label["row_id"],
         "request_id": fixture["id"],
@@ -414,13 +505,17 @@ def _row(fixture, label, event, legacy, recording, verdict, finish) -> dict:
         "valid": verdict is not None,
         "repaired": bool((recording or {}).get("repaired")),
         "escalated": bool((recording or {}).get("escalated")),
-        "classification": verdict["classification"] if verdict else None,
+        "classification": classification,
         "applies_to_stack": verdict.get("applies_to_stack") if verdict else None,
+        **{key: verdict.get(key) if verdict else None for key in EXPLANATION_KEYS},
+        "explanation_complete": explanation_complete(verdict),
         "finish_reason": finish,
         "crs_rule_ids": rule_ids,
         "crs_rule_available": available,
         "evidence_withheld": gate.get("evidence_withheld"),
-        "route_supports_exception": _route_supported(fixture, legacy, event, match),
+        "route_supports_exception": route_supported,
+        "draft_status": draft_status(classification, draft_scope(event, match), route_supported, gate)
+        if event is not None and match else None,
     }
     if "wrong_stack" in label:
         row["wrong_stack"] = label["wrong_stack"]
@@ -450,10 +545,11 @@ def evaluate_fixture(fixture: dict, *, stored: dict | None = None, settings: dic
         if live:
             context = match_context(fixture, event, legacy, index)
             rule_id = event["matches"][index].get("rule_id")
+            crs_rule = _crs_rule(event, event["matches"][index], legacy)
             recording = {"id": call_id, "request_id": fixture["id"],
                          **call_live(response_messages(context), settings, context),
-                         "fixture_sha256": digest, "crs_rule_available": bool(context.get("crs_rule")),
-                         "gate_inputs": {str(index): gate_inputs(context)},
+                         "fixture_sha256": digest, "crs_rule_available": bool(crs_rule and context.get("crs_rule")),
+                         "gate_inputs": {str(index): gate_inputs(context, crs_rule)},
                          "crs_rule_ids": [str(rule_id)] if rule_id else []}
             recordings.append(recording)
         else:
@@ -471,7 +567,21 @@ def evaluate_fixture(fixture: dict, *, stored: dict | None = None, settings: dic
             "token_usage": (recording or {}).get("token_usage") or {},
             "finish_reason": finish,
         })
+    _apply_input_conflicts(rows, event)
     return rows, calls, recordings
+
+
+def _apply_input_conflicts(rows: list[dict], event: dict | None) -> None:
+    """A true positive on the same input in this request blocks the draft (scope_conflicts.has_true_positive)."""
+    matches = (event or {}).get("matches") or []
+    identity = {
+        row["id"]: _input_identity(matches[row["match_index"]])
+        for row in rows if type(row["match_index"]) is int and 0 <= row["match_index"] < len(matches)
+    }
+    detected = {identity.get(row["id"]) for row in rows if row["classification"] == "true_positive"} - {None}
+    for row in rows:
+        if row["draft_status"] == "valid" and identity.get(row["id"]) in detected:
+            row["draft_status"] = "scope_conflict"
 
 
 def public_settings(settings):
@@ -482,7 +592,7 @@ def public_settings(settings):
     }
 
 
-def build_report(fixtures, results, settings, model: str, calls: list[dict]) -> dict:
+def build_report(fixtures, results, settings, model: str, calls: list[dict], wall_time_s: float | None = None) -> dict:
     matrix = per_rule_matrix(fixtures, results)
     counts = matrix["overall"]["counts"]
     latencies = sorted(call["latency_ms"] for call in calls if call.get("latency_ms"))
@@ -501,6 +611,7 @@ def build_report(fixtures, results, settings, model: str, calls: list[dict]) -> 
     metrics = run_metrics(results)
     summary.update(metrics)
     summary["tokens"] = token_totals(calls, metrics["requests"], metrics["scored_matches"])
+    summary["wall_time_s"] = round(wall_time_s, 1) if wall_time_s is not None else None
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "model": model,
@@ -557,7 +668,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--mode", choices=["live", "recorded"], default="live")
     parser.add_argument("--model", default=os.getenv("LLM_MODEL", "Foundation-Sec-1.1-8B-Instruct"))
     parser.add_argument("--recordings-dir", default=str(RECORDINGS_DIR))
-    parser.add_argument("--crs-rules-dir", default=os.getenv("CRS_RULES_DIR") or str(ROOT / "lab-data" / "crs-rules"))
+    parser.add_argument(
+        "--crs-rules-dir", default=os.getenv("CRS_RULES_DIR") or str(DEFAULT_CRS_RULES),
+        help="CRS .conf/.data files (default: eval/crs-rules, written by eval/extract_crs_rules.py)",
+    )
+    parser.add_argument("--concurrency", type=int, default=1,
+                        help="live mode: fixtures analysed in parallel threads (default 1)")
     parser.add_argument("--record", action="store_true", help="save live responses after all calls complete")
     parser.add_argument(
         "--min-attack-detection", type=float,
@@ -589,19 +705,29 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError("live eval requires CRS .conf files or a verified snapshot via --crs-rules-dir")
         settings = {**request_settings(model=args.model), "mode": "live", "crs_ruleset_digest": ruleset["digest"]}
         stored = None
-    for fixture in fixtures:
-        if stored is None:
-            rows, fixture_calls, fixture_recordings = evaluate_fixture(fixture, settings=settings)
-        else:
-            rows, fixture_calls, fixture_recordings = evaluate_fixture(fixture, stored=stored)
-        results.extend(rows)
-        calls.extend(fixture_calls)
-        recordings.extend(fixture_recordings)
-        for row in rows:
-            print(f"{row['id']}: {row['classification'] or 'INVALID'}{' (repaired)' if row['repaired'] else ''}")
+    if args.concurrency < 1:
+        raise ValueError("--concurrency must be at least 1")
+    def run(fixture):
+        return evaluate_fixture(fixture, settings=settings) if stored is None else evaluate_fixture(fixture, stored=stored)
+
+    started = time.perf_counter()
+    pool = ThreadPoolExecutor(max_workers=args.concurrency if stored is None else 1)
+    try:
+        # map keeps fixture order, so rows, calls and recordings line up as in a serial run.
+        for rows, fixture_calls, fixture_recordings in pool.map(run, fixtures):
+            results.extend(rows)
+            calls.extend(fixture_calls)
+            recordings.extend(fixture_recordings)
+            for row in rows:
+                print(f"{row['id']}: {row['classification'] or 'INVALID'}{' (repaired)' if row['repaired'] else ''}",
+                      flush=True)
+    finally:
+        # On a provider failure, do not keep sending the queued fixtures.
+        pool.shutdown(cancel_futures=True)
+    wall_time_s = time.perf_counter() - started
     if args.mode == "live" and args.record:
         write_recordings(recording_path(name, recordings_dir), recordings)
-    report = build_report(fixtures, results, settings, args.model, calls)
+    report = build_report(fixtures, results, settings, args.model, calls, wall_time_s=wall_time_s)
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, indent=2) + "\n")
